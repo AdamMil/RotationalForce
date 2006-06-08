@@ -3,74 +3,16 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using GameLib.Mathematics.TwoD;
+using GameLib.Interop.OpenGL;
 using Color = System.Drawing.Color;
 
 namespace RotationalForce.Engine
 {
 
-/// <summary>Determines the type of shading to use.</summary>
-public enum ShadeModel : byte
+#region VectorAnimation
+public sealed class VectorAnimation : Animation
 {
-  Flat, Smooth
-}
-
-/// <summary>Determines how an animation loops.</summary>
-public enum LoopType : byte
-{
-  /// <summary>The animation does not loop, and stops at the end.</summary>
-  NoLoop,
-  /// <summary>The animation restarts from the beginning after it reaches the end.</summary>
-  Forward,
-  /// <summary>The animation plays backwards and restarts at the end after reaching the beginning.</summary>
-  Reverse,
-  /// <summary>The animation plays forwards and backwards, changing direction when it reaches the beginning or end.</summary>
-  PingPong
-}
-
-public class VectorObject : SceneObject
-{
-  #region Animation
-  public sealed class Animation
-  {
-    [Browsable(false)]
-    public ReadOnlyCollection<Frame> Frames
-    {
-      get { return new ReadOnlyCollection<Frame>(frames); }
-    }
-
-    [Category("Behavior")]
-    [Description("Determines how the animation loops by default.")]
-    [DefaultValue(LoopType.NoLoop)]
-    public LoopType Looping
-    {
-      get { return looping; }
-      set { looping = value; }
-    }
-
-    public void AddFrame(Frame frame)
-    {
-      if(frame == null) throw new ArgumentNullException("frame");
-      frames.Add(frame);
-    }
-    
-    public void InsertFrame(int index, Frame frame)
-    {
-      if(frame == null) throw new ArgumentNullException("frame");
-      frames.Insert(index, frame);
-    }
-
-    public void RemoveFrame(int index)
-    {
-      frames.RemoveAt(index);
-    }
-
-    /// <summary>The frames that make up this animation.</summary>
-    List<Frame> frames = new List<Frame>(4);
-    
-    LoopType looping;
-  }
-  #endregion
-
+  #region Nested classes
   #region Frame
   public sealed class Frame
   {
@@ -118,6 +60,14 @@ public class VectorObject : SceneObject
     public void RemovePolygon(int index)
     {
       polygons.RemoveAt(index);
+    }
+
+    public void Render(ref AnimationData data)
+    {
+      for(int i=0; i<polygons.Count; i++)
+      {
+        polygons[i].Render();
+      }
     }
 
     /// <summary>The length of this frame, in seconds.</summary>
@@ -279,6 +229,99 @@ public class VectorObject : SceneObject
     }
     #endregion
 
+    public void AddVertex(Vertex vertex)
+    {
+      vertices.Add(vertex);
+    }
+    
+    public void InsertVertex(int index, Vertex vertex)
+    {
+      vertices.Insert(index, vertex);
+    }
+
+    public void RemoveVertex(int index)
+    {
+      vertices.RemoveAt(index);
+    }
+
+    public void Render()
+    {
+      if(vertices.Count < 3) return; // if we don't have a valid polygon yet, return
+
+      bool blendWasDisabled = false; // is blending currently disabled? (meaning we need to enabled it?)
+
+      if(blendEnabled) // first set up the blending parameters
+      {
+        blendWasDisabled = GL.glIsEnabled(GL.GL_BLEND) == 0;
+        if(blendWasDisabled) GL.glEnable(GL.GL_BLEND); // enable blending if it was disabled
+
+        // set blend mode if necessary (pulling values from the parent object for Default)
+        if(sourceBlend != SourceBlend.Default || destBlend != DestinationBlend.Default)
+        {
+          GL.glBlendFunc((sourceBlend == SourceBlend.Default ?
+                            (uint)GL.glGetIntegerv(GL.GL_BLEND_SRC) : (uint)sourceBlend),
+                         (destBlend == DestinationBlend.Default ?
+                            (uint)GL.glGetIntegerv(GL.GL_BLEND_DST) : (uint)destBlend));
+        }
+      }
+
+      if(shadeModel == ShadeModel.Smooth) // set up the shade model (the default is flat)
+      {
+        GL.glShadeModel(GL.GL_SMOOTH);
+      }
+
+      // then, draw the interior of the polygon
+      GL.glBegin(GL.GL_POLYGON);
+      for(int i=0; i<vertices.Count; i++)
+      {
+        GL.glColor(vertices[i].Color);
+        GL.glVertex2d(vertices[i].Position);
+      }
+      GL.glEnd();
+
+      if(strokeWidth != 0 && strokeColor.A != 0) // if stroking is enabled
+      {
+        GL.glLineWidth(strokeWidth); // set the stroke width
+
+        if(blendEnabled) // if blending is enabled, we'll use antialiased lines
+        {
+          GL.glEnable(GL.GL_LINE_SMOOTH);
+          GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
+        }
+        else if(shadeModel == ShadeModel.Flat) // otherwise, if the shade model is flat, we'll set the color once
+        {
+          GL.glColor(vertices[0].Color.A, strokeColor);
+        }
+
+        // now stroke the edges of the polygon
+        GL.glBegin(GL.GL_LINE_LOOP);
+        for(int i=0; i<vertices.Count; i++)
+        {
+          // if we're using antialiased lines or a smooth shading model, we'll set the color at each vertex.
+          // this allows the alpha value of the border to match that of the polygon edge
+          if(blendEnabled || shadeModel == ShadeModel.Smooth)
+          {
+            GL.glColor(vertices[i].Color.A, strokeColor);
+          }
+          GL.glVertex2d(vertices[i].Position);
+        }
+        GL.glEnd();
+
+        if(blendEnabled) GL.glDisable(GL.GL_LINE_SMOOTH); // we enabled line smoothing above, so disable it here
+      }
+      
+      if(shadeModel == ShadeModel.Smooth)
+      {
+        GL.glShadeModel(GL.GL_FLAT); // restore the shading model
+      }
+
+      if(blendEnabled) // restore blending options to the default
+      {
+        if(blendWasDisabled) GL.glDisable(GL.GL_BLEND); // only disable blending if we were the one to enable it
+        GL.glHint(GL.GL_LINE_SMOOTH_HINT, GL.GL_FASTEST);
+      }
+    }
+
     /// <summary>The offset within the texture.</summary>
     Vector textureOffset;
     /// <summary>The texture rotation, in degrees.</summary>
@@ -318,19 +361,55 @@ public class VectorObject : SceneObject
     public Color Color;
   }
   #endregion
+  #endregion
 
-  struct AnimationData
+  [Browsable(false)]
+  public ReadOnlyCollection<Frame> Frames
   {
-    /// <summary>The position within the animation, in seconds.</summary>
-    public double Position;
-    /// <summary>Indicates whether the animation has completed.</summary>
-    public bool Complete;
+    get { return new ReadOnlyCollection<Frame>(frames); }
   }
 
-  /// <summary>The object's current animation.</summary>
-  Animation animation;
-  /// <summary>The object's animation speed, expressed as a multiple.</summary>
-  double animationSpeed;
+  public void AddFrame(Frame frame)
+  {
+    if(frame == null) throw new ArgumentNullException("frame");
+    frames.Add(frame);
+  }
+  
+  public void InsertFrame(int index, Frame frame)
+  {
+    if(frame == null) throw new ArgumentNullException("frame");
+    frames.Insert(index, frame);
+  }
+
+  public void RemoveFrame(int index)
+  {
+    frames.RemoveAt(index);
+  }
+
+  /// <summary>The frames that make up this animation.</summary>
+  List<Frame> frames = new List<Frame>(4);
+
+  protected internal override void Render(ref AnimationData data)
+  {
+    int frame = EngineMath.Clip(data.Frame, 0, Frames.Count-1);
+    if(frame == -1) return;
+    frames[frame].Render(ref data);
+  }
+
+  protected internal override void Simulate(ref AnimationData data, double timeDelta)
+  {
+    throw new NotImplementedException();
+  }
+}
+#endregion
+
+public class VectorObject : AnimatedObject
+{
+  protected override void ValidateAnimation(Animation animation)
+  {
+    if(!(animation is VectorAnimation))
+      throw new ArgumentException("This is not the right kind of animation! (Expecting a VectorAnimation)");
+  }
 }
 
 } // namespace RotationalForce.Engine

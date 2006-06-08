@@ -120,10 +120,10 @@ public class Scene : ITicker, IDisposable
   }
   #endregion
 
-  protected internal virtual void Render(ref Rectangle viewArea, uint layerMask, uint groupMask)
+  protected internal virtual void Render(ref Rectangle viewArea, uint layerMask, uint groupMask, bool renderInvisible)
   {
     // find objects to render within the view area (they will be placed in layeredRenderObjects)
-    if(FindObjects(ref viewArea, layerMask, groupMask, false, false,
+    if(FindObjects(ref viewArea, layerMask, groupMask, renderInvisible, false,
                    new ObjectFinderCallback(AddObjectToRender), null, null) > 0)
     {
       // loop through the layers, from back (31) to front (0)
@@ -134,7 +134,7 @@ public class Scene : ITicker, IDisposable
         
         foreach(SceneObject obj in layerObjects)
         {
-          if(!obj.Dead) obj.Render(ref viewArea);
+          if(!obj.Dead) obj.Render(); // visibility checking is handled by FindObjects
         }
         
         layerObjects.Clear();
