@@ -36,10 +36,14 @@ static class Video
     return viewport;
   }
   
-  public static void SetViewport(Rectangle viewport)
+  public static void SetViewport(Rectangle viewport) { SetViewport(screenHeight, viewport); }
+
+  public static void SetViewport(int screenHeight, Rectangle viewport)
   {
-    Video.viewport = viewport;
-    GL.glViewport(viewport.X, GLVideo.Height-viewport.Bottom, viewport.Width, viewport.Height);
+    Video.viewport     = viewport;
+    Video.screenHeight = screenHeight;
+
+    GL.glViewport(viewport.X, screenHeight-viewport.Bottom, viewport.Width, viewport.Height);
   }
 
   static void SetBlending()
@@ -55,6 +59,7 @@ static class Video
 
   static Rectangle viewport;
   static double pixelScale;
+  static int screenHeight;
 }
 
 } // namespace RotationalForce.Engine

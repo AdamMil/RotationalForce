@@ -60,6 +60,7 @@
     <Compile Include="GUI\DesktopControl.cs" />
     <Compile Include="GUI\GuiControl.cs" />
     <Compile Include="Math.cs" />
+    <Compile Include="Scene\AnimatedObject.cs" />
     <Compile Include="Scene\ContainerObjects.cs" />
     <Compile Include="Scene\GameObject.cs" />
     <Compile Include="Scene\SceneObject.cs" />

@@ -59,9 +59,27 @@ sealed class GLBuffer : IDisposable
       Dispose();
       throw new ApplicationException("Failure in wglCreateContext");
     }
+    
+    this.width  = width;
+    this.height = height;
   }
 
   ~GLBuffer() { Dispose(true); }
+
+  public int Width
+  {
+    get { return width; }
+  }
+  
+  public int Height
+  {
+    get { return height; }
+  }
+
+  public Size Size
+  {
+    get { return new Size(width, height); }
+  }
 
   public void Dispose()
   {
@@ -76,7 +94,7 @@ sealed class GLBuffer : IDisposable
   
   void Dispose(bool finalizing)
   {
-    if(currentBuffer.Target == this) SetCurrent(null);
+    if(currentBuffer != null && currentBuffer.Target == this) SetCurrent(null);
 
     if(hglrc != IntPtr.Zero)
     {
@@ -96,6 +114,7 @@ sealed class GLBuffer : IDisposable
   }
   
   IntPtr hbitmap, hdc, hglrc;
+  int width, height;
 
   public static void SetCurrent(GLBuffer buffer)
   {

@@ -25,6 +25,11 @@ public static class EngineMath
     Debug.Assert(!double.IsInfinity(value) && !double.IsNaN(value), "Not a valid floating point number.");
   }
   
+  public static int Clip(int value, int low, int high)
+  {
+    return value<low ? low : value>high ? high : value;
+  }
+
   #region Equivalent
   public static bool Equivalent(double a, double b)
   {

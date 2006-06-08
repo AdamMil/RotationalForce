@@ -395,7 +395,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
   #endregion
 
-  #region Group and layer masks, scene object
+  #region Group and layer masks, rendering flags, scene object
   /// <summary>Gets/sets the object group mask used for rendering.</summary>
   /// <remarks>Only objects that are members of the groups specified in the group mask will be rendered.</remarks>
   public uint GroupMask
@@ -426,6 +426,20 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     }
   }
 
+  /// <summary>Determines whether invisible objects will be rendered.</summary>
+  public bool RenderInvisible
+  {
+    get { return HasFlag(Flag.RenderInvisible); }
+    set
+    {
+      if(value != RenderInvisible)
+      {
+        SetFlag(Flag.RenderInvisible, value);
+        Invalidate();
+      }
+    }
+  }
+
   /// <summary>Gets/sets the scene that will be rendered in this scene view.</summary>
   /// <value>The <see cref="Scene"/> object to be rendered, or null.</value>
   public Scene Scene
@@ -448,7 +462,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     
     // set up a projection so that the area occupied by the viewport matches the area 
     GL.glMatrixMode(GL.GL_PROJECTION);
-    GL.glPushMatrix();
+    GL.glPushMatrix(); // save the old Projection matrix first
     GL.glLoadIdentity();
     CalculateCameraView();
     GLU.gluOrtho2D(ZoomedArea.X, ZoomedArea.Right, ZoomedArea.Bottom, ZoomedArea.Y);
@@ -457,19 +471,18 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     Video.SetViewport(ScreenRect); // set up the new viewport
 
     GL.glMatrixMode(GL.GL_MODELVIEW);
-    GL.glPushMatrix();
+    GL.glPushMatrix(); // save the old ModelView matrix
     GL.glLoadIdentity();
 
     Rectangle viewArea = ClientToScene(ScreenToClient(drawArea));
-    Scene.Render(ref viewArea, LayerMask, GroupMask);
+    Scene.Render(ref viewArea, LayerMask, GroupMask, false);
 
-    GL.glMatrixMode(GL.GL_PROJECTION);
-    GL.glPopMatrix();
-    GL.glMatrixMode(GL.GL_MODELVIEW);
-    GL.glPopMatrix();
-    GL.glMatrixMode(GL.GL_MODELVIEW);
+    GL.glPopMatrix(); // restore the ModelView matrix
+    GL.glMatrixMode(GL.GL_PROJECTION); // switch to Projection mode
+    GL.glPopMatrix(); // restore the Projection matrix
+    GL.glMatrixMode(GL.GL_MODELVIEW); // switch back to ModelView mode
 
-    Video.SetViewport(oldViewport); // restore old viewport
+    Video.SetViewport(oldViewport); // restore the old viewport
   }
 
   protected override void OnSizeChanged(Size oldSize)
@@ -548,6 +561,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     CameraMoving = 0x02,
     /// <summary>Indicates whether the current camera view has changed.</summary>
     CameraDirty = 0x04,
+    /// <summary>Indicates whether invisible objects should be rendered.</summary>
+    RenderInvisible = 0x08,
   }
 
   struct CameraView

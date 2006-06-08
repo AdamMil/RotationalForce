@@ -9,6 +9,12 @@ using Color = System.Drawing.Color;
 namespace RotationalForce.Engine
 {
 
+/// <summary>Determines the type of shading to use.</summary>
+public enum ShadeModel : byte
+{
+  Flat, Smooth
+}
+
 public class RectangleObject : SceneObject
 {
   public RectangleObject()
@@ -17,27 +23,21 @@ public class RectangleObject : SceneObject
     SetBlendingMode(SourceBlend.SrcAlpha, DestinationBlend.OneMinusSrcAlpha);
   }
 
-  protected internal override void Render(ref Rectangle viewArea)
+  protected override void RenderContent()
   {
-    SetRenderOptions();
     if(BlendingEnabled)
     {
       GL.glEnable(GL.GL_LINE_SMOOTH);
-      GL.glHint(GL.GL_LINE_SMOOTH_HINT, GL.GL_NICEST);
     }
 
-    Vector halfSize = Size/2;
     GL.glBegin(GL.GL_LINE_LOOP);
-      GL.glVertex2d(-halfSize.X, -halfSize.Y);
-      GL.glVertex2d(halfSize.X, -halfSize.Y);
-      GL.glVertex2d(halfSize.X, halfSize.Y);
-      GL.glVertex2d(-halfSize.X, halfSize.Y);
+      GL.glVertex2f(-1f, -1f);
+      GL.glVertex2f(1f, -1f);
+      GL.glVertex2f(1f, 1f);
+      GL.glVertex2f(-1f, 1f);
     GL.glEnd();
     
-    ResetRenderOptions();
     GL.glDisable(GL.GL_LINE_SMOOTH);
-
-    base.Render(ref viewArea);
   }
 }
 
@@ -139,7 +139,7 @@ public abstract class SceneObject : GameObject
 
   public void SetBlendingMode(SourceBlend source, DestinationBlend destination)
   {
-    srcBlend  = source;
+    sourceBlend  = source;
     destBlend = destination;
   }
   #endregion
@@ -765,30 +765,41 @@ public abstract class SceneObject : GameObject
   }
   #endregion
 
-  protected internal virtual void Render(ref Rectangle viewArea) { }
-  
-  protected void SetBlendOptions()
+  protected internal virtual void Render()
   {
-    if(HasFlag(Flag.BlendEnabled))
+    if(BlendingEnabled) // first set up the blending parameters
     {
-      GL.glColor(BlendColor);
       GL.glEnable(GL.GL_BLEND);
-      GL.glBlendFunc((uint)srcBlend, (uint)destBlend);
+      GL.glBlendFunc((uint)(sourceBlend == SourceBlend.Default ? SourceBlend.One : sourceBlend),
+                     (uint)(destBlend == DestinationBlend.Default ? DestinationBlend.Zero : destBlend));
+      GL.glColor(blendColor);
+    }
+
+    GL.glPushMatrix(); // we should be in ModelView mode
+    GL.glTranslated(X, Y, 0); // translate us to the origin
+    GL.glScaled(Width/2, Height/2, 1); // set up local coordinates (scale so that -1 to 1 covers our area)
+    if(rotation != 0) GL.glRotated(rotation, 0, 0, 1); // rotate, if necessary
+
+    RenderContent(); // now allow the derived class to render the content
+
+    GL.glPopMatrix(); // restore the old ModelView matrix
+
+    if(BlendingEnabled) // and reset blending options, if necessary
+    {
+      GL.glDisable(GL.GL_BLEND);
     }
   }
-
-  protected void SetRenderOptions()
+  
+  protected virtual void RenderContent()
   {
-    SetBlendOptions();
-    GL.glPushMatrix();
-    GL.glTranslated(X, Y, 0);
-    if(rotation != 0) GL.glRotated(rotation, 0, 0, 1);
-  }
-
-  protected void ResetRenderOptions()
-  {
-    GL.glDisable(GL.GL_BLEND);
-    GL.glPopMatrix();
+    // the default implementation just renders a white box
+    GL.glColor(Color.White);
+    GL.glBegin(GL.GL_QUADS);
+      GL.glVertex2f(-1, -1);
+      GL.glVertex2f( 1, -1);
+      GL.glVertex2f( 1,  1);
+      GL.glVertex2f(-1,  1);
+    GL.glEnd();
   }
 
   protected internal virtual void Simulate(double timeDelta)
@@ -958,7 +969,7 @@ public abstract class SceneObject : GameObject
   /// <summary>A bitfield that identifies the groups to which this object belongs.</summary>
   uint groups;
   /// <summary>The type of GL source blending to use.</summary>
-  SourceBlend srcBlend = SourceBlend.Default;
+  SourceBlend sourceBlend = SourceBlend.Default;
   /// <summary>The type of GL destination blending to use.</summary>
   DestinationBlend destBlend = DestinationBlend.Default;
   /// <summary>A custom collision detector, or null if one is not defined.</summary>
