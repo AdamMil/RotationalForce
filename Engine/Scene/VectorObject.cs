@@ -51,6 +51,11 @@ public sealed class VectorAnimation : Animation
       polygons.Add(polygon);
     }
     
+    public void ClearPolygons()
+    {
+      polygons.Clear();
+    }
+
     public void InsertPolygon(int index, Polygon polygon)
     {
       if(polygon == null) throw new ArgumentNullException("frame");
@@ -234,6 +239,11 @@ public sealed class VectorAnimation : Animation
       vertices.Add(vertex);
     }
     
+    public void ClearVertices()
+    {
+      vertices.Clear();
+    }
+
     public void InsertVertex(int index, Vertex vertex)
     {
       vertices.Insert(index, vertex);
@@ -375,6 +385,11 @@ public sealed class VectorAnimation : Animation
     frames.Add(frame);
   }
   
+  public void ClearFrames()
+  {
+    frames.Clear();
+  }
+
   public void InsertFrame(int index, Frame frame)
   {
     if(frame == null) throw new ArgumentNullException("frame");

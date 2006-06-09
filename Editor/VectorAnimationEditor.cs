@@ -3,25 +3,27 @@ using System.Drawing;
 using System.Windows.Forms;
 using GameLib.Interop.OpenGL;
 using RotationalForce.Engine;
+using GLPoint = GameLib.Mathematics.TwoD.Point;
+using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
 
 namespace RotationalForce.Editor
 {
 
 class VectorAnimationEditor : Form
 {
-  private MenuStrip menuBar;
-  private ListBox listBox;
-  private ToolStripMenuItem editMenu;
-  private CheckBox chkAsk;
-  private Button btnUp;
-  private Button btnDown;
-  private Button btnNew;
-  private Button btnDelete;
-  private Button btnBackColor;
-  private Panel renderPanel;
-  private CheckBox chkDrawToCurrent;
-  private ToolStripMenuItem animationModeMenuItem;
-  private PropertyGrid propertyGrid;
+  MenuStrip menuBar;
+  ListBox listBox;
+  ToolStripMenuItem editMenu;
+  CheckBox chkAsk;
+  Button btnUp;
+  Button btnDown;
+  Button btnNew;
+  Button btnDelete;
+  Button btnBackColor;
+  Panel renderPanel;
+  CheckBox chkDrawToCurrent;
+  ToolStripMenuItem animationModeMenuItem;
+  PropertyGrid propertyGrid;
 
   public VectorAnimationEditor()
   {
@@ -31,62 +33,7 @@ class VectorAnimationEditor : Form
   public void CreateNew()
   {
     animation = new VectorAnimation();
-
-    VectorAnimation.Frame frame = new VectorAnimation.Frame();
-    
-    VectorAnimation.Polygon poly = new VectorAnimation.Polygon();
-    poly.StrokeWidth = 3;
-    poly.BlendingEnabled = true;
-    poly.SourceBlendMode = SourceBlend.One;
-    poly.DestinationBlendMode = DestinationBlend.Zero;
-    poly.ShadeModel = ShadeModel.Smooth;
-
-    VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
-
-    vertex.Color = Color.FromArgb(64, 64, 64);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(-0.9, 0);
-    poly.AddVertex(vertex);
-
-    vertex.Color = Color.FromArgb(80, 80, 80);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(-0.8, -0.6);
-    poly.AddVertex(vertex);
-
-    vertex.Color = Color.FromArgb(128, 128, 128);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(0.9, 0);
-    poly.AddVertex(vertex);
-
-    vertex.Color = Color.FromArgb(80, 80, 80);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(-0.8, 0.6);
-    poly.AddVertex(vertex);
-
-    frame.AddPolygon(poly);
-
-    poly = new VectorAnimation.Polygon();
-    poly.ShadeModel           = ShadeModel.Smooth;
-    poly.BlendingEnabled      = true;
-    poly.SourceBlendMode      = SourceBlend.SrcAlpha;
-    poly.DestinationBlendMode = DestinationBlend.OneMinusSrcAlpha;
-
-    vertex.Color = Color.FromArgb(80, 0, 48, 128);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(0, -0.3);
-    poly.AddVertex(vertex);
-    
-    vertex.Color = Color.FromArgb(96, 0, 64, 160);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(0.3, 0);
-    poly.AddVertex(vertex);
-
-    vertex.Color = Color.FromArgb(80, 0, 48, 128);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(0, 0.3);
-    poly.AddVertex(vertex);
-
-    vertex.Color = Color.FromArgb(0, 0, 32, 96);
-    vertex.Position = new GameLib.Mathematics.TwoD.Point(-0.3, 0);
-    poly.AddVertex(vertex);
-
-    frame.AddPolygon(poly);
-
-    animation.AddFrame(frame);
-
+    animation.AddFrame(new VectorAnimation.Frame());
     Mode = EditMode.Animation;
   }
 
@@ -132,17 +79,7 @@ class VectorAnimationEditor : Form
     }
   }
 
-  VectorAnimation.Frame SelectedFrame
-  {
-    get { return animation.Frames[selectedFrame]; }
-  }
-  
-  VectorAnimation.Polygon SelectedPolygon
-  {
-    get { return SelectedFrame.Polygons[selectedPolygon]; }
-  }
-
-  void MoveSelectedItem(int distance)
+  void ReorderListItem(int distance)
   {
     // don't move the first item up or the last item down
     if(distance<0 && listBox.SelectedIndex-distance < 0 ||
@@ -205,6 +142,23 @@ class VectorAnimationEditor : Form
     }
   }
 
+  #region Rendering
+  // invalidate the things we add to the scene, but not the scene itself.
+  void InvalidateDecoration()
+  {
+    renderPanel.Invalidate();
+  }
+
+  // invalidate the scene (if it's not already invalidated) as well as the decoration
+  void InvalidateRender()
+  {
+    if(!needRender)
+    {
+      needRender = true;
+      renderPanel.Invalidate();
+    }
+  }
+  
   void RenderFrame()
   {
     if(buffer == null)
@@ -244,9 +198,7 @@ class VectorAnimationEditor : Form
     GL.glMatrixMode(GL.GL_MODELVIEW);
     GL.glLoadIdentity();
 
-    int endPolygon = chkDrawToCurrent.Checked && mode != EditMode.Animation ?
-      selectedPolygon : SelectedFrame.Polygons.Count-1;
-    for(int i=0; i<=endPolygon; i++)
+    for(int i=0,last=GetTopmostVisiblePolygonIndex(); i<=last; i++)
     {
       SelectedFrame.Polygons[i].Render();
     }
@@ -254,9 +206,26 @@ class VectorAnimationEditor : Form
     GL.glFlush();
     GLBuffer.SetCurrent(null);
     
-    if(renderPanel.BackgroundImage != null) renderPanel.BackgroundImage.Dispose();
-    renderPanel.BackgroundImage = buffer.CreateBitmap();
+    if(backgroundImage != null) backgroundImage.Dispose();
+    backgroundImage = buffer.CreateBitmap();
   }
+
+  private void renderPanel_Paint(object sender, PaintEventArgs e)
+  {
+    if(needRender)
+    {
+      RenderFrame();
+      needRender = false;
+    }
+    
+    e.Graphics.DrawImageUnscaled(backgroundImage, (renderPanel.Width-buffer.Width)/2,
+                                 (renderPanel.Height-buffer.Height)/2);
+  }
+
+  Bitmap backgroundImage;
+  GLBuffer buffer;
+  bool needRender = true;
+  #endregion
 
   void SelectListItem()
   {
@@ -272,12 +241,11 @@ class VectorAnimationEditor : Form
   }
 
   VectorAnimation animation;
-  int selectedFrame, selectedPolygon = -1;
+  int selectedFrame, selectedPolygon = -1, selectedVertex = -1;
   EditMode mode;
-  GLBuffer buffer;
 
   #region InitializeComponent
-  private void InitializeComponent()
+  void InitializeComponent()
   {
     System.Windows.Forms.ToolStripMenuItem frameModeMenuItem;
     System.Windows.Forms.ToolStripMenuItem polygonModeMenuItem;
@@ -299,15 +267,6 @@ class VectorAnimationEditor : Form
     this.menuBar.SuspendLayout();
     this.SuspendLayout();
     // 
-    // animationModeMenuItem
-    // 
-    this.animationModeMenuItem.Name = "animationModeMenuItem";
-    this.animationModeMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.A)));
-    this.animationModeMenuItem.Size = new System.Drawing.Size(189, 22);
-    this.animationModeMenuItem.Tag = RotationalForce.Editor.VectorAnimationEditor.EditMode.Animation;
-    this.animationModeMenuItem.Text = "&Animation Mode";
-    this.animationModeMenuItem.Click += new System.EventHandler(this.editModeMenuItem_Click);
-    // 
     // frameModeMenuItem
     // 
     frameModeMenuItem.Name = "frameModeMenuItem";
@@ -326,18 +285,30 @@ class VectorAnimationEditor : Form
     polygonModeMenuItem.Text = "&Polygon Mode";
     polygonModeMenuItem.Click += new System.EventHandler(this.editModeMenuItem_Click);
     // 
+    // animationModeMenuItem
+    // 
+    this.animationModeMenuItem.Name = "animationModeMenuItem";
+    this.animationModeMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.A)));
+    this.animationModeMenuItem.Size = new System.Drawing.Size(189, 22);
+    this.animationModeMenuItem.Tag = RotationalForce.Editor.VectorAnimationEditor.EditMode.Animation;
+    this.animationModeMenuItem.Text = "&Animation Mode";
+    this.animationModeMenuItem.Click += new System.EventHandler(this.editModeMenuItem_Click);
+    // 
     // renderPanel
     // 
     this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
                 | System.Windows.Forms.AnchorStyles.Left)
                 | System.Windows.Forms.AnchorStyles.Right)));
     this.renderPanel.BackColor = System.Drawing.Color.Black;
-    this.renderPanel.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Center;
     this.renderPanel.Location = new System.Drawing.Point(3, 3);
     this.renderPanel.Name = "renderPanel";
     this.renderPanel.Size = new System.Drawing.Size(465, 453);
     this.renderPanel.TabIndex = 1;
+    this.renderPanel.MouseDown += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseDown);
+    this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
     this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
+    this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
+    this.renderPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseUp);
     // 
     // btnUp
     // 
@@ -492,17 +463,17 @@ class VectorAnimationEditor : Form
     Mode = (EditMode)((ToolStripMenuItem)sender).Tag;
   }
 
-  private void btnUp_Click(object sender, EventArgs e)
+  void btnUp_Click(object sender, EventArgs e)
   {
-    MoveSelectedItem(-1);
+    ReorderListItem(-1);
   }
 
-  private void btnDown_Click(object sender, EventArgs e)
+  void btnDown_Click(object sender, EventArgs e)
   {
-    MoveSelectedItem(1);
+    ReorderListItem(1);
   }
 
-  private void listBox_SelectedIndexChanged(object sender, EventArgs e)
+  void listBox_SelectedIndexChanged(object sender, EventArgs e)
   {
     switch(Mode)
     {
@@ -510,13 +481,12 @@ class VectorAnimationEditor : Form
         selectedFrame = listBox.SelectedIndex;
         break;
       case EditMode.Frame:
-        selectedPolygon = listBox.SelectedIndex;
-        if(chkDrawToCurrent.Checked) RenderFrame();
+        SelectPolygon(listBox.SelectedIndex);
         break;
     }
   }
 
-  private void btnNew_Click(object sender, EventArgs e)
+  void btnNew_Click(object sender, EventArgs e)
   {
     switch(Mode)
     {
@@ -531,7 +501,7 @@ class VectorAnimationEditor : Form
     }
   }
 
-  private void btnDelete_Click(object sender, EventArgs e)
+  void btnDelete_Click(object sender, EventArgs e)
   {
     // if we're in animation or frame mode, and the "Ask" checkbox is checked, verify deletion
     if((Mode == EditMode.Animation || Mode == EditMode.Frame) && chkAsk.Checked &&
@@ -566,12 +536,12 @@ class VectorAnimationEditor : Form
     }
   }
 
-  private void listBox_DoubleClick(object sender, EventArgs e)
+  void listBox_DoubleClick(object sender, EventArgs e)
   {
     SelectListItem();
   }
 
-  private void editMenu_DropDownOpening(object sender, EventArgs e)
+  void editMenu_DropDownOpening(object sender, EventArgs e)
   {
     foreach(ToolStripMenuItem item in editMenu.DropDownItems)
     {
@@ -585,7 +555,7 @@ class VectorAnimationEditor : Form
     }
   }
 
-  private void btnBackColor_Click(object sender, EventArgs e)
+  void btnBackColor_Click(object sender, EventArgs e)
   {
     ColorDialog picker = new ColorDialog();
     picker.Color = renderPanel.BackColor;
@@ -593,7 +563,7 @@ class VectorAnimationEditor : Form
     RenderFrame();
   }
 
-  private void renderPanel_Resize(object sender, EventArgs e)
+  void renderPanel_Resize(object sender, EventArgs e)
   {
     if(buffer != null)
     {
@@ -603,40 +573,366 @@ class VectorAnimationEditor : Form
     RenderFrame();
   }
 
-  private void VectorAnimationEditor_FormClosed(object sender, FormClosedEventArgs e)
+  void VectorAnimationEditor_FormClosed(object sender, FormClosedEventArgs e)
   {
     if(buffer != null)
     {
       buffer.Dispose();
       buffer = null;
     }
-    if(renderPanel.BackgroundImage != null)
+    if(backgroundImage != null)
     {
-      renderPanel.BackgroundImage.Dispose();
-      renderPanel.BackgroundImage = null;
+      backgroundImage.Dispose();
+      backgroundImage = null;
     }
   }
 
-  private void chkDrawToCurrent_CheckedChanged(object sender, EventArgs e)
+  void chkDrawToCurrent_CheckedChanged(object sender, EventArgs e)
   {
     if(mode != EditMode.Animation && selectedPolygon < SelectedFrame.Polygons.Count-1) RenderFrame();
   }
 
-  private void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
+  void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
   {
-    if(propertyGrid.SelectedObject is VectorAnimation.Polygon ||
-       propertyGrid.SelectedObject is VectorAnimation.Vertex)
+    // if we've edited a polygon or a vertex, re-render the scene
+    switch(Mode)
     {
-      RenderFrame();
+      case EditMode.Polygon:
+        InvalidateRender();
+        break;
+      case EditMode.Vertex:
+        // and since vertices are value objects, we need to replace them by hand
+        ReplaceSelectedVertex((VectorAnimation.Vertex)propertyGrid.SelectedObject);
+        InvalidateRender();
+        break;
     }
   }
 
-  private void listBox_KeyPress(object sender, KeyPressEventArgs e)
+  void listBox_KeyPress(object sender, KeyPressEventArgs e)
   {
     if(e.KeyChar == '\r')
     {
       SelectListItem();
     }
+  }
+  #endregion
+
+  #region Modification of vertices and polygons
+  void MoveSelectedVertexTo(Point pt)
+  {
+    VectorAnimation.Vertex vertex = SelectedVertex;
+    vertex.Position = ControlToLocal(pt);
+    ReplaceSelectedVertex(vertex);
+  }
+  
+  void MoveSelectedPolygon(Size offset)
+  {
+    // convert the offset to local coordinates
+    GLPoint localOffset = ControlToLocal(new Point(offset.Width, offset.Height));
+
+    VectorAnimation.Polygon polygon = SelectedPolygon;
+
+    // create a copy of the polygon's vertices
+    VectorAnimation.Vertex[] vertices = new VectorAnimation.Vertex[polygon.Vertices.Count];
+    polygon.Vertices.CopyTo(vertices, 0);
+    polygon.ClearVertices(); // and then clear them
+
+    for(int i=0; i<vertices.Length; i++) // offset each vertex and add it back to the polygon
+    {
+      vertices[i].Position.Offset(localOffset.X, localOffset.Y);
+      polygon.AddVertex(vertices[i]);
+    }
+  }
+  
+  void ReplaceSelectedVertex(VectorAnimation.Vertex vertex)
+  {
+    SelectedPolygon.RemoveVertex(selectedVertex);
+    SelectedPolygon.InsertVertex(selectedVertex, vertex);
+  }
+  #endregion
+
+  #region Selecting items in the UI and data structures
+  /// <summary>Gets a the current frame. This is guaranteed to be non-null.</summary>
+  VectorAnimation.Frame SelectedFrame
+  {
+    get { return animation.Frames[selectedFrame]; }
+  }
+  
+  /// <summary>Gets the currently selected polygon. This will be null if no polygon is selected.</summary>
+  VectorAnimation.Polygon SelectedPolygon
+  {
+    get { return selectedPolygon == -1 ? null : SelectedFrame.Polygons[selectedPolygon]; }
+  }
+  
+  /// <summary>Gets the currently selected vertex. This will throw an exception if no vertex is selected.</summary>
+  VectorAnimation.Vertex SelectedVertex
+  {
+    get { return SelectedPolygon.Vertices[selectedVertex]; }
+  }
+
+  void CloneAndSelectVertex(int index)
+  {
+    SelectedPolygon.InsertVertex(index, SelectedPolygon.Vertices[index]);
+    SelectVertex(index + 1);
+  }
+
+  /// <summary>Selects a polygon in the current frame, given its index.</summary>
+  /// <remarks>If the index doesn't match the currently-selected polygon, the selected vertex will be reset.
+  /// The mode will be set to Polygon.
+  /// </remarks>
+  void SelectPolygon(int index)
+  {
+    if(index<0 || index>=SelectedFrame.Polygons.Count) throw new ArgumentOutOfRangeException("index");
+
+    if(index != selectedPolygon) // if selecting a different polygon
+    {
+      selectedPolygon = index; // set the index
+      selectedVertex  = -1;    // clear the vertex
+
+      if(Mode == EditMode.Polygon) // if we're already in polygon mode, select the new polygon into the property editor
+      {
+        propertyGrid.SelectedObject = SelectedPolygon;
+      }
+      else // otherwise switch to polygon mode, which will take care of the selection too.
+      {
+        Mode = EditMode.Polygon;
+      }
+
+      if(chkDrawToCurrent.Checked) InvalidateRender();
+      InvalidateDecoration(); // and invalidate the decoration
+    }
+    else if(Mode != EditMode.Polygon) // otherwise, if it's the same polygon, but we're in the wrong mode
+    {
+      Mode = EditMode.Polygon; // switch to polygon mode
+    }
+  }
+  
+  void SelectVertex(int index)
+  {
+    if(SelectedPolygon == null) throw new InvalidOperationException("No polygon selected.");
+    if(index<0 || index>=SelectedPolygon.Vertices.Count) throw new ArgumentOutOfRangeException("index");
+
+    if(index != selectedVertex) // if selecting a different vertex
+    {
+      selectedVertex = index;
+      if(Mode == EditMode.Vertex) // if already in vertex mode, select the new vertex into the property grid
+      {
+        propertyGrid.SelectedObject = SelectedVertex;
+      }
+      else // otherwise, switch to vertex mode, which will take care of the selection too.
+      {
+        Mode = EditMode.Vertex;
+      }
+    }
+    else if(Mode != EditMode.Vertex) // otherwise, if it's the same vertex, but we're in the wrong mode
+    {
+      Mode = EditMode.Vertex; // switch to vertex mode
+    }
+  }
+
+  /// <summary>If a polygon is selected, this method deselects it and sets the mode to Frame.</summary>
+  void DeselectPolygon()
+  {
+    if(selectedPolygon != -1)
+    {
+      selectedPolygon = -1;
+      selectedVertex  = -1;
+      Mode = EditMode.Frame;
+    }
+  }
+  #endregion
+
+  #region Selecting and finding items spatially
+  /// <summary>Returns the index of the topmost visible polygon.</summary>
+  int GetTopmostVisiblePolygonIndex()
+  {
+    return chkDrawToCurrent.Checked && mode != EditMode.Animation ? selectedPolygon : SelectedFrame.Polygons.Count-1;
+  }
+
+  /// <summary>Select the polygon and possibly the vertex at the given point.</summary>
+  void SelectPolygonAndVertex(Point pt)
+  {
+    GLPoint localPoint = ControlToLocal(pt);
+    int polyIndex = GetTopmostVisiblePolygonIndex();
+    // scan from the topmost visible polygon downwards and select the first one that contains the point
+    for(; polyIndex >= 0; polyIndex--)
+    {
+      if(PolygonContains(SelectedFrame.Polygons[polyIndex], localPoint)) // if the polygon contains the point, select it.
+      {
+        SelectPolygon(polyIndex);
+        
+        // now see if the point was sufficiently close to any of the polygon's vertices
+        VectorAnimation.Polygon poly = SelectedPolygon;
+        for(int i=0; i<poly.Vertices.Count; i++)
+        {
+          Point vertex = LocalToControl(poly.Vertices[i].Position); // compare vertices in window space
+          int xd = vertex.X-pt.X, yd = vertex.Y-yd;
+          int distSqr = xd*xd + yd*yd; // calculate the squared distance
+          if(distSqr<=32) // if the point is within ~5.66 pixels of the vertex, select it
+          {
+            SelectVertex(i);
+            break;
+          }
+        }
+        // SelectPolygon() will deselect if necessary, so we don't need to worry about deselecting the current vertex
+
+        return;
+      }
+    }
+    
+    // if the point didn't intersect any polygon, we'll get here.
+    DeselectPolygon(); // deselect any polygon and vertex already selected
+  }
+
+  /// <summary>Determines whether the specified polygon contains the given point.</summary>
+  static bool PolygonContains(VectorAnimation.Polygon poly, GLPoint point)
+  {
+    if(poly.Vertices.Count < 3) return false; // if it's not a proper polygon, it won't contain the point.
+
+    // create a GameLib polygon, since it has the appropriate functionality already
+    GLPoly glPoly = new GLPoly(poly.Vertices.Count);
+    foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+    {
+      glPoly.AddPoint(vertex.Position);
+    }
+
+    if(glPoly.IsConvex()) // if the created polygon is convex, we can check immediately
+    {
+      return glPoly.ConvexContains(point);
+    }
+    else // otherwise, it's non-convex, so we need to split it into convex polygons
+    {
+      foreach(GLPoly convexPoly in glPoly.Split()) // split it
+      {
+        if(convexPoly.ConvexContains(point)) return true; // and check each one
+      }
+      return false;
+    }
+  }
+  #endregion
+
+  #region High-level mouse handling
+  void OnClick(MouseEventArgs e)
+  {
+    if(e.Button != MouseButtons.Left) return; // we only care about left clicks
+
+    SelectPolygonAndVertex(e.Location); // select the polygon/vertex under the mouse cursor
+  }
+
+  void OnDragStart(MouseEventArgs e)
+  {
+    if(e.Button == MouseButtons.Left) // for a left drag, we move the selected vertex/polygon
+    {
+      SelectPolygonAndVertex(e.Location);
+      if(selectedPolygon == -1) CancelDrag(); // if the user didn't click on anything, cancel the drag
+    }
+    else if(e.Button == MouseButtons.Right) // for right drags, we clone and drag vertices
+    {
+      SelectPolygonAndVertex(e.Location);
+      if(selectedVertex != -1) // if the user selected a vertex, clone it and select the clone
+      {
+        CloneAndSelectVertex(selectedVertex);
+      }
+      else // otherwise, cancel the drag
+      {
+        CancelDrag();
+      }
+    }
+  }
+
+  void OnDrag(MouseEventArgs e, Size offset)
+  {
+    if(selectedVertex != -1)
+    {
+      MoveSelectedVertexTo(e.Location); // if a vertex is selected, drag it.
+    }
+    else
+    {
+      MoveSelectedPolygon(offset); // otherwise, move the selected polygon (there should be one)
+    }
+  }
+
+  void OnDragEnd(MouseEventArgs e) { }
+
+  void CancelDrag()
+  {
+    if(dragButton != MouseButtons.None)
+    {
+      mouseDownPos[ButtonToIndex(dragButton)] = new Point(-1, -1); // mark the drag button as released
+      dragButton = MouseButtons.None; // clear the dragging flag
+      renderPanel.Capture = false; // stop capturing the mouse
+    }
+  }
+  #endregion
+
+  #region Low-level mouse handling
+  /* use low-level mouse events to implement higher-level click and drag events */
+
+  void renderPanel_MouseDown(object sender, MouseEventArgs e)
+  {
+    int button = ButtonToIndex(e.Button);
+    if(button == -1) return; // ignore unsupported buttons
+    // when a mouse button is pressed, mark the location. this serves as both an indication that the button is pressed
+    // and stores the beginning of the drag, if the user drags the mouse
+    mouseDownPos[button] = e.Location;
+  }
+
+  void renderPanel_MouseMove(object sender, MouseEventArgs e)
+  {
+    if(dragButton != MouseButtons.None) // if we're currently dragging, fire a drag event
+    {
+      OnDrag(e, new Size(e.X-lastDragPos.X, e.Y-lastDragPos.Y));
+      // update the last drag point so we can send a delta to OnDrag()
+      lastDragPos = mouseDownPos[ButtonToIndex(dragButton)];
+    }
+    else // otherwise, see if we should start dragging.
+    {
+      int button = ButtonToIndex(e.Button);
+      if(button == -1 || !IsMouseDown(button)) return; // ignore unsupported buttons
+
+      int xd = mouseDownPos[button].X-e.X, yd = mouseDownPos[button].Y-e.Y;
+      int dist = xd*xd + yd*yd; // the squared distance
+      if(dist >= 16) // if the mouse is moved four pixels or more, start a drag event
+      {
+        dragButton = e.Button;
+        lastDragPos = mouseDownPos[button];
+        // issue a drag start using the stored location of where the mouse was originally pressed
+        OnDragStart(new MouseEventArgs(e.Button, e.Clicks, mouseDownPos[button].X, mouseDownPos[button].Y, e.Delta));
+        // then issue a drag event because the mouse has since moved. always specify the original drag button.
+        OnDrag(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta), new Size(xd, yd));
+        renderPanel.Capture = true; // capture the mouse so we can be sure to receive the end of the drag
+      }
+    }
+  }
+
+  void renderPanel_MouseUp(object sender, MouseEventArgs e)
+  {
+    int button = ButtonToIndex(e.Button);
+    if(button == -1) return; // ignore unsupported buttons
+
+    if(dragButton == e.Button) // if we're currently dragging, end the drag
+    {
+      OnDragEnd(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta)); // specify the original drag button
+      dragButton = MouseButtons.None; // clear our drag button flag
+      renderPanel.Capture = false; // stop capturing the mouse so other things can use it
+    }
+    else if(IsMouseDown(button)) // otherwise we're not currently dragging. was the button pressed over the control?
+    {
+      OnClick(e); // yes, so now that it's been released, signal a click event.
+    }
+
+    mouseDownPos[button] = new Point(-1, -1); // in any case, mark the button as released.
+  }
+
+  bool IsMouseDown(int index) { return mouseDownPos[index].X >= 0; }
+
+  Point[] mouseDownPos = new Point[3] { new Point(-1, -1), new Point(-1, -1), new Point(-1, -1) };
+  Point lastDragPos;
+  MouseButtons dragButton = MouseButtons.None;
+
+  static int ButtonToIndex(MouseButtons button)
+  {
+    return button == MouseButtons.Left ? 0 : button == MouseButtons.Middle ? 1 : button == MouseButtons.Right ? 2 : -1;
   }
   #endregion
 }
