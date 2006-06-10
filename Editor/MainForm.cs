@@ -26,6 +26,10 @@ sealed class MainForm : Form
 
   private void NewLevel()
   {
+    SceneEditor form = new SceneEditor();
+    form.CreateNew();
+    form.MdiParent = this;
+    form.Show();
   }
 
   private void NewObject()

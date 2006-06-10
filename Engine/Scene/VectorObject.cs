@@ -10,10 +10,12 @@ namespace RotationalForce.Engine
 {
 
 #region VectorAnimation
+[Serializable]
 public sealed class VectorAnimation : Animation
 {
   #region Nested classes
   #region Frame
+  [Serializable]
   public sealed class Frame
   {
     /// <summary>The length of time spent rendering this frame, in seconds, at the default animation speed.</summary>
@@ -85,6 +87,7 @@ public sealed class VectorAnimation : Animation
   #endregion
 
   #region Polygon
+  [Serializable]
   public sealed class Polygon
   {
     [Browsable(false)]
@@ -359,16 +362,41 @@ public sealed class VectorAnimation : Animation
   #endregion
 
   #region Vertex
+  [Serializable]
   public struct Vertex
   {
-    /// <summary>This vertex's position within the object.</summary>
-    public Point Position;
+    /// <summary>Gets/sets the vertex's position within the polygon, in local coordinates (-1 to 1).</summary>
+    [Description("The vertex's position within the polygon, in local coordinates (-1 to 1).")]
+    public Point Position
+    {
+      get { return position; }
+      set { position = value; }
+    }
+    
+    /// <summary>Gets/sets the vertex's texture coordinates (0 to 1).</summary>
+    [Description("The vertex's texture coordinates, which range from 0 to 1.")]
+    public Point TextureCoord
+    {
+      get { return textureCoord; }
+      set { textureCoord = value; }
+    }
+    
+    /// <summary>Gets/sets the vertex's color.</summary>
+    [Description("The vertex's color.")]
+    public Color Color
+    {
+      get { return color; }
+      set { color = value; }
+    }
+
+    /// <summary>This vertex's position within the polygon.</summary>
+    Point position;
     /// <summary>This vertex's texture coordinate. It will only be used if a texture is specified in the parent
     /// polygon.
     /// </summary>
-    public Point TextureCoord;
+    Point textureCoord;
     /// <summary>The vertex's color.</summary>
-    public Color Color;
+    Color color;
   }
   #endregion
   #endregion

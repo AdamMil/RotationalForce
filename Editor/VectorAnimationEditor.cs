@@ -9,6 +9,13 @@ using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
 namespace RotationalForce.Editor
 {
 
+class RenderPanel : Panel
+{
+  protected override void OnPaintBackground(PaintEventArgs e)
+  {
+  }
+}
+
 class VectorAnimationEditor : Form
 {
   MenuStrip menuBar;
@@ -20,7 +27,7 @@ class VectorAnimationEditor : Form
   Button btnNew;
   Button btnDelete;
   Button btnBackColor;
-  Panel renderPanel;
+  RenderPanel renderPanel;
   CheckBox chkDrawToCurrent;
   ToolStripMenuItem animationModeMenuItem;
   PropertyGrid propertyGrid;
@@ -59,13 +66,16 @@ class VectorAnimationEditor : Form
             break;
           case EditMode.Frame:
             propertyGrid.SelectedObject = SelectedFrame;
-            select = selectedPolygon == -1 ? SelectedFrame.Polygons.Count-1 : selectedPolygon;
+            select = selectedPolygon;
             break;
           case EditMode.Polygon:
             if(SelectedFrame.Polygons.Count == 0) return;
             else if(selectedPolygon == -1) selectedPolygon = 0;
             else if(selectedPolygon >= SelectedFrame.Polygons.Count) selectedPolygon = SelectedFrame.Polygons.Count-1;
             propertyGrid.SelectedObject = SelectedPolygon;
+            break;
+          case EditMode.Vertex:
+            propertyGrid.SelectedObject = SelectedVertex;
             break;
         }
 
@@ -74,7 +84,7 @@ class VectorAnimationEditor : Form
 
         mode = value;
         PopulateListbox(select);
-        RenderFrame();
+        InvalidateRender();
       }
     }
   }
@@ -143,18 +153,29 @@ class VectorAnimationEditor : Form
   }
 
   #region Rendering
+  public Color RenderForeColor
+  {
+    get
+    {
+      return Color.FromArgb(255-renderPanel.BackColor.R, 255-renderPanel.BackColor.G, 255-renderPanel.BackColor.B);
+    }
+  }
+
   // invalidate the things we add to the scene, but not the scene itself.
   void InvalidateDecoration()
   {
     renderPanel.Invalidate();
   }
 
+  void InvalidateRender() { InvalidateRender(false); }
+
   // invalidate the scene (if it's not already invalidated) as well as the decoration
-  void InvalidateRender()
+  void InvalidateRender(bool renderImmediately)
   {
     if(!needRender)
     {
       needRender = true;
+      if(renderImmediately) RenderFrame();
       renderPanel.Invalidate();
     }
   }
@@ -174,8 +195,7 @@ class VectorAnimationEditor : Form
     GL.glClear(GL.GL_COLOR_BUFFER_BIT);
 
     GL.glBegin(GL.GL_LINES);
-    GL.glColor3ub((byte)(255-renderPanel.BackColor.R), (byte)(255-renderPanel.BackColor.G),
-                  (byte)(255-renderPanel.BackColor.B));
+    GL.glColor(RenderForeColor);
 
     // draw a grid
     float pos=0, add = (buffer.Width-1)/10f;
@@ -208,18 +228,36 @@ class VectorAnimationEditor : Form
     
     if(backgroundImage != null) backgroundImage.Dispose();
     backgroundImage = buffer.CreateBitmap();
+
+    needRender = false;
   }
 
   private void renderPanel_Paint(object sender, PaintEventArgs e)
   {
-    if(needRender)
-    {
-      RenderFrame();
-      needRender = false;
-    }
-    
+    if(needRender) RenderFrame();
     e.Graphics.DrawImageUnscaled(backgroundImage, (renderPanel.Width-buffer.Width)/2,
                                  (renderPanel.Height-buffer.Height)/2);
+
+    VectorAnimation.Polygon poly = SelectedPolygon;
+    if(poly != null)
+    {
+      Point[] points = new Point[poly.Vertices.Count];
+      for(int i=0; i<points.Length; i++)
+      {
+        points[i] = LocalToControl(poly.Vertices[i].Position);
+      }
+
+      if(points.Length > 1)
+      {
+        e.Graphics.DrawLines(Pens.Green, points);
+        e.Graphics.DrawLine(Pens.Green, points[points.Length-1], points[0]);
+      }
+      
+      for(int i=0; i<points.Length; i++)
+      {
+        e.Graphics.FillEllipse(i==selectedVertex ? Brushes.Red : Brushes.Green, points[i].X-2, points[i].Y-2, 5, 5);
+      }
+    }
   }
 
   Bitmap backgroundImage;
@@ -229,13 +267,16 @@ class VectorAnimationEditor : Form
 
   void SelectListItem()
   {
+    if(listBox.SelectedIndex == -1) return;
+
     switch(Mode)
     {
       case EditMode.Animation:
+        selectedFrame = listBox.SelectedIndex;
         Mode = EditMode.Frame;
         break;
       case EditMode.Frame:
-        if(listBox.SelectedIndex != -1) Mode = EditMode.Polygon;
+        SelectPolygon(listBox.SelectedIndex);
         break;
     }
   }
@@ -247,10 +288,9 @@ class VectorAnimationEditor : Form
   #region InitializeComponent
   void InitializeComponent()
   {
-    System.Windows.Forms.ToolStripMenuItem frameModeMenuItem;
     System.Windows.Forms.ToolStripMenuItem polygonModeMenuItem;
     this.animationModeMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-    this.renderPanel = new System.Windows.Forms.Panel();
+    this.renderPanel = new RenderPanel();
     this.btnUp = new System.Windows.Forms.Button();
     this.btnDown = new System.Windows.Forms.Button();
     this.btnNew = new System.Windows.Forms.Button();
@@ -262,19 +302,9 @@ class VectorAnimationEditor : Form
     this.chkAsk = new System.Windows.Forms.CheckBox();
     this.btnBackColor = new System.Windows.Forms.Button();
     this.chkDrawToCurrent = new System.Windows.Forms.CheckBox();
-    frameModeMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     polygonModeMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.menuBar.SuspendLayout();
     this.SuspendLayout();
-    // 
-    // frameModeMenuItem
-    // 
-    frameModeMenuItem.Name = "frameModeMenuItem";
-    frameModeMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.F)));
-    frameModeMenuItem.Size = new System.Drawing.Size(189, 22);
-    frameModeMenuItem.Tag = RotationalForce.Editor.VectorAnimationEditor.EditMode.Frame;
-    frameModeMenuItem.Text = "&Frame Mode";
-    frameModeMenuItem.Click += new System.EventHandler(this.editModeMenuItem_Click);
     // 
     // polygonModeMenuItem
     // 
@@ -354,7 +384,6 @@ class VectorAnimationEditor : Form
     // 
     this.editMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.animationModeMenuItem,
-            frameModeMenuItem,
             polygonModeMenuItem});
     this.editMenu.MergeAction = System.Windows.Forms.MergeAction.Insert;
     this.editMenu.MergeIndex = 1;
@@ -393,7 +422,6 @@ class VectorAnimationEditor : Form
     this.listBox.Size = new System.Drawing.Size(175, 196);
     this.listBox.TabIndex = 2;
     this.listBox.DoubleClick += new System.EventHandler(this.listBox_DoubleClick);
-    this.listBox.SelectedIndexChanged += new System.EventHandler(this.listBox_SelectedIndexChanged);
     this.listBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.listBox_KeyPress);
     // 
     // chkAsk
@@ -420,8 +448,6 @@ class VectorAnimationEditor : Form
     // chkDrawToCurrent
     // 
     this.chkDrawToCurrent.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-    this.chkDrawToCurrent.Checked = true;
-    this.chkDrawToCurrent.CheckState = System.Windows.Forms.CheckState.Checked;
     this.chkDrawToCurrent.Location = new System.Drawing.Point(655, 396);
     this.chkDrawToCurrent.Name = "chkDrawToCurrent";
     this.chkDrawToCurrent.Size = new System.Drawing.Size(64, 31);
@@ -473,19 +499,6 @@ class VectorAnimationEditor : Form
     ReorderListItem(1);
   }
 
-  void listBox_SelectedIndexChanged(object sender, EventArgs e)
-  {
-    switch(Mode)
-    {
-      case EditMode.Animation:
-        selectedFrame = listBox.SelectedIndex;
-        break;
-      case EditMode.Frame:
-        SelectPolygon(listBox.SelectedIndex);
-        break;
-    }
-  }
-
   void btnNew_Click(object sender, EventArgs e)
   {
     switch(Mode)
@@ -534,6 +547,8 @@ class VectorAnimationEditor : Form
         if(listBox.Items.Count == 0) selectedPolygon = -1;
         break;
     }
+    
+    InvalidateRender();
   }
 
   void listBox_DoubleClick(object sender, EventArgs e)
@@ -560,17 +575,18 @@ class VectorAnimationEditor : Form
     ColorDialog picker = new ColorDialog();
     picker.Color = renderPanel.BackColor;
     if(picker.ShowDialog() == DialogResult.OK) renderPanel.BackColor = picker.Color;
-    RenderFrame();
+    InvalidateRender();
   }
 
   void renderPanel_Resize(object sender, EventArgs e)
   {
-    if(buffer != null)
+    if(buffer != null) // dispose of the current buffer so a new one will be created of the proper size
     {
       buffer.Dispose();
       buffer = null;
     }
-    RenderFrame();
+
+    InvalidateRender(true); // and force re-rendering
   }
 
   void VectorAnimationEditor_FormClosed(object sender, FormClosedEventArgs e)
@@ -589,7 +605,7 @@ class VectorAnimationEditor : Form
 
   void chkDrawToCurrent_CheckedChanged(object sender, EventArgs e)
   {
-    if(mode != EditMode.Animation && selectedPolygon < SelectedFrame.Polygons.Count-1) RenderFrame();
+    if(mode != EditMode.Animation && selectedPolygon < SelectedFrame.Polygons.Count-1) InvalidateRender();
   }
 
   void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
@@ -618,17 +634,34 @@ class VectorAnimationEditor : Form
   #endregion
 
   #region Modification of vertices and polygons
+  void CreateNewPolygon(Point pt)
+  {
+    VectorAnimation.Polygon poly = new VectorAnimation.Polygon();
+    SelectedFrame.AddPolygon(poly);
+    SelectPolygon(SelectedFrame.Polygons.Count - 1);
+
+    VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
+    vertex.Color    = Color.White;
+    vertex.Position = ControlToLocal(pt);
+    poly.AddVertex(vertex);
+    SelectVertex(0);
+  }
+  
   void MoveSelectedVertexTo(Point pt)
   {
     VectorAnimation.Vertex vertex = SelectedVertex;
     vertex.Position = ControlToLocal(pt);
     ReplaceSelectedVertex(vertex);
+    InvalidateDecoration();
   }
   
   void MoveSelectedPolygon(Size offset)
   {
+    if(offset.IsEmpty) return;
+
     // convert the offset to local coordinates
-    GLPoint localOffset = ControlToLocal(new Point(offset.Width, offset.Height));
+    GLPoint localOffset = new GLPoint(offset.Width *2/(double)buffer.Width,
+                                      offset.Height*2/(double)buffer.Height);
 
     VectorAnimation.Polygon polygon = SelectedPolygon;
 
@@ -639,9 +672,15 @@ class VectorAnimationEditor : Form
 
     for(int i=0; i<vertices.Length; i++) // offset each vertex and add it back to the polygon
     {
-      vertices[i].Position.Offset(localOffset.X, localOffset.Y);
+      vertices[i].Position = new GLPoint(vertices[i].Position.X+localOffset.X,
+                                         vertices[i].Position.Y+localOffset.Y);
       polygon.AddVertex(vertices[i]);
     }
+    
+    // since the vertices are value types, they won't automatically be updated in the property grid. do it manually.
+    if(selectedVertex != -1) propertyGrid.SelectedObject = SelectedVertex;
+
+    InvalidateDecoration();
   }
   
   void ReplaceSelectedVertex(VectorAnimation.Vertex vertex)
@@ -740,48 +779,104 @@ class VectorAnimationEditor : Form
       Mode = EditMode.Frame;
     }
   }
+  
+  void DeselectVertex()
+  {
+    if(selectedVertex != -1)
+    {
+      selectedVertex = -1;
+      SelectPolygon(selectedPolygon);
+    }
+  }
   #endregion
 
   #region Selecting and finding items spatially
+  public GLPoint ControlToLocal(Point controlPoint)
+  {
+    Point topLeft = GetControlRenderRect().Location; // get the top-left corner of the render area
+    controlPoint.Offset(-topLeft.X, -topLeft.Y);     // orient the control point to the render area
+    // first multiply by two because the total range of local space is 2 units (-1 to 1), then divide by the size of
+    // the render area minus one pixel. one pixel is subtracted because we want the rightmost pixel to be 2.0, not
+    // slightly less than 2.0. finally, one is subtracted to shift it from the range 0-2 to -1 to 1
+    return new GLPoint(controlPoint.X*2/(double)(buffer.Width -1) - 1.0,
+                       controlPoint.Y*2/(double)(buffer.Height-1) - 1.0);
+  }
+  
+  public Point LocalToControl(GLPoint localPoint)
+  {
+    Point topLeft = GetControlRenderRect().Location; // get the top-left corner of the render area
+    localPoint.Offset(1, 1); // first, shift the coordinate space from -1 to 1 to 0-2.
+    // then, multiply the point by the buffer width minus one pixel. one pixel is subtracted because we want the
+    // rightmost pixel to correspond to the end of the local space, rather than one pixel beyond the rightmost. then,
+    // the values are divided by 2 because the original coordinate space was from 0-2, resulting in the offsets being
+    // doubled. last, the values are rounded to the nearest pixel and offset by the top-left corner of the render area
+    return new Point((int)Math.Round(localPoint.X*(buffer.Width -1)/2) + topLeft.X,
+                     (int)Math.Round(localPoint.Y*(buffer.Height-1)/2) + topLeft.Y);
+  }
+
+  Rectangle GetControlRenderRect()
+  {
+    return new Rectangle((renderPanel.Width - buffer.Width)/2, (renderPanel.Height - buffer.Height)/2, 
+                         buffer.Width, buffer.Height);
+  }
+
   /// <summary>Returns the index of the topmost visible polygon.</summary>
   int GetTopmostVisiblePolygonIndex()
   {
-    return chkDrawToCurrent.Checked && mode != EditMode.Animation ? selectedPolygon : SelectedFrame.Polygons.Count-1;
+    return selectedPolygon != -1 && chkDrawToCurrent.Checked && mode != EditMode.Animation ?
+      selectedPolygon : SelectedFrame.Polygons.Count-1;
   }
 
   /// <summary>Select the polygon and possibly the vertex at the given point.</summary>
   void SelectPolygonAndVertex(Point pt)
   {
     GLPoint localPoint = ControlToLocal(pt);
-    int polyIndex = GetTopmostVisiblePolygonIndex();
+    int topPoly = GetTopmostVisiblePolygonIndex();
     // scan from the topmost visible polygon downwards and select the first one that contains the point
-    for(; polyIndex >= 0; polyIndex--)
+    for(int polyIndex=topPoly; polyIndex >= 0; polyIndex--)
     {
       if(PolygonContains(SelectedFrame.Polygons[polyIndex], localPoint)) // if the polygon contains the point, select it.
       {
         SelectPolygon(polyIndex);
-        
+
         // now see if the point was sufficiently close to any of the polygon's vertices
-        VectorAnimation.Polygon poly = SelectedPolygon;
-        for(int i=0; i<poly.Vertices.Count; i++)
+        if(!SelectPolygonAndVertex(polyIndex, pt))
         {
-          Point vertex = LocalToControl(poly.Vertices[i].Position); // compare vertices in window space
-          int xd = vertex.X-pt.X, yd = vertex.Y-yd;
-          int distSqr = xd*xd + yd*yd; // calculate the squared distance
-          if(distSqr<=32) // if the point is within ~5.66 pixels of the vertex, select it
-          {
-            SelectVertex(i);
-            break;
-          }
+          DeselectVertex(); // if not, deselect the current vertex
         }
-        // SelectPolygon() will deselect if necessary, so we don't need to worry about deselecting the current vertex
 
         return;
       }
     }
     
-    // if the point didn't intersect any polygon, we'll get here.
-    DeselectPolygon(); // deselect any polygon and vertex already selected
+    // if the point didn't intersect any polygon, we'll get here. examine polygons that wouldn't have been caught by
+    // the above check because they either don't have enough points or the point was close to, but outside the polygon
+    for(int polyIndex=topPoly; polyIndex >= 0; polyIndex--)
+    {
+      if(SelectPolygonAndVertex(polyIndex, pt)) return;
+    }
+
+    DeselectPolygon(); // the point doesn't intersect anything. deselect any polygon and vertex already selected
+  }
+
+  // see if the point intersects any vertices of the given polygon. if so, select the polygon and vertex.
+  // returns true if anything was selected and false otherwise.
+  bool SelectPolygonAndVertex(int polygonIndex, Point pt)
+  {
+    VectorAnimation.Polygon poly = SelectedFrame.Polygons[polygonIndex];
+    for(int i=0; i<poly.Vertices.Count; i++)
+    {
+      Point vertex = LocalToControl(poly.Vertices[i].Position); // compare vertices in window space
+      int xd = vertex.X-pt.X, yd = vertex.Y-pt.Y;
+      int distSqr = xd*xd + yd*yd; // calculate the squared distance
+      if(distSqr<=32) // if the point is within ~5.66 pixels of the vertex, select it
+      {
+        SelectPolygon(polygonIndex);
+        SelectVertex(i);
+        return true;
+      }
+    }
+    return false;
   }
 
   /// <summary>Determines whether the specified polygon contains the given point.</summary>
@@ -802,10 +897,15 @@ class VectorAnimationEditor : Form
     }
     else // otherwise, it's non-convex, so we need to split it into convex polygons
     {
-      foreach(GLPoly convexPoly in glPoly.Split()) // split it
+      try
       {
-        if(convexPoly.ConvexContains(point)) return true; // and check each one
+        foreach(GLPoly convexPoly in glPoly.Split()) // split it
+        {
+          if(convexPoly.ConvexContains(point)) return true; // and check each one
+        }
       }
+      catch(NotSupportedException) { } // this can happen if the polygon is complex. we just return false, then.
+
       return false;
     }
   }
@@ -816,7 +916,14 @@ class VectorAnimationEditor : Form
   {
     if(e.Button != MouseButtons.Left) return; // we only care about left clicks
 
-    SelectPolygonAndVertex(e.Location); // select the polygon/vertex under the mouse cursor
+    if(Control.ModifierKeys == 0) // if it was a plain left click, do selection
+    {
+      SelectPolygonAndVertex(e.Location); // select the polygon/vertex under the mouse cursor
+    }
+    else if(Control.ModifierKeys == Keys.Control) // otherwise, if it was a ctrl-click, create a new polygon
+    {
+      CreateNewPolygon(e.Location);
+    }
   }
 
   void OnDragStart(MouseEventArgs e)
@@ -852,7 +959,10 @@ class VectorAnimationEditor : Form
     }
   }
 
-  void OnDragEnd(MouseEventArgs e) { }
+  void OnDragEnd(MouseEventArgs e)
+  {
+    InvalidateRender();
+  }
 
   void CancelDrag()
   {
@@ -883,24 +993,29 @@ class VectorAnimationEditor : Form
     {
       OnDrag(e, new Size(e.X-lastDragPos.X, e.Y-lastDragPos.Y));
       // update the last drag point so we can send a delta to OnDrag()
-      lastDragPos = mouseDownPos[ButtonToIndex(dragButton)];
+      lastDragPos = e.Location;
     }
     else // otherwise, see if we should start dragging.
     {
       int button = ButtonToIndex(e.Button);
       if(button == -1 || !IsMouseDown(button)) return; // ignore unsupported buttons
 
-      int xd = mouseDownPos[button].X-e.X, yd = mouseDownPos[button].Y-e.Y;
+      int xd = e.X-mouseDownPos[button].X, yd = e.Y-mouseDownPos[button].Y;
       int dist = xd*xd + yd*yd; // the squared distance
       if(dist >= 16) // if the mouse is moved four pixels or more, start a drag event
       {
         dragButton = e.Button;
-        lastDragPos = mouseDownPos[button];
+        lastDragPos = e.Location;
+
         // issue a drag start using the stored location of where the mouse was originally pressed
         OnDragStart(new MouseEventArgs(e.Button, e.Clicks, mouseDownPos[button].X, mouseDownPos[button].Y, e.Delta));
-        // then issue a drag event because the mouse has since moved. always specify the original drag button.
-        OnDrag(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta), new Size(xd, yd));
-        renderPanel.Capture = true; // capture the mouse so we can be sure to receive the end of the drag
+
+        if(dragButton != MouseButtons.None) // if the drag wasn't immediately cancelled
+        {
+          renderPanel.Capture = true; // capture the mouse so we can be sure to receive the end of the drag
+          // then issue a drag event because the mouse has since moved. always specify the original drag button.
+          OnDrag(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta), new Size(xd, yd));
+        }
       }
     }
   }
