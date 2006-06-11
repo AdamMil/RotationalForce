@@ -8,6 +8,13 @@ namespace RotationalForce.Engine
 
 public delegate void ObjectFinderCallback(SceneObject obj, object context);
 
+public class PickOptions
+{
+  public SceneObject ObjectToIgnore;
+  public uint GroupMask, LayerMask;
+  public bool AllowInvisible, AllowUnpickable, RequireContainment, SortByLayer;
+}
+
 public class Scene : ITicker, IDisposable
 {
   public Scene()
@@ -97,42 +104,337 @@ public class Scene : ITicker, IDisposable
   }
 
   #region Picking and finding objects
-  IEnumerable<SceneObject> FindObjects(Rectangle searchArea, uint layerMask, uint groupMask,
-                                       bool returnInvisible, bool picking, SceneObject objectToIgnore)
+  #region PickEnumerable
+  abstract class PickEnumerable : IEnumerable<SceneObject>
   {
-    foreach(SceneObject obj in objects)
+    public PickEnumerable(List<SceneObject> objects, PickOptions options)
+    { 
+      if(objects == null || options == null) throw new ArgumentNullException();
+      this.objects = objects;
+      this.options = options;
+    }
+
+    protected abstract class PickEnumerator : IEnumerator<SceneObject>
     {
-      // only return objects that are not ignored, dead, unpickable (when picking), or
-      // invisible (when not returning invisible), and that match the layer/group masks
-      // and are within the search area
-      if(obj != objectToIgnore && !obj.Dead && (!picking || obj.PickingAllowed) && (returnInvisible || obj.Visible) &&
-         (obj.GroupMask & groupMask) != 0 && (obj.LayerMask & layerMask) != 0 &&
-         searchArea.Intersects(obj.Area))
-      {
-        yield return obj;
+      public PickEnumerator(IEnumerable<SceneObject> objects)
+      { 
+        this.objects = objects.GetEnumerator();
       }
+      
+      public abstract bool MoveNext();
+
+      SceneObject IEnumerator<SceneObject>.Current
+      {
+	      get { return objects.Current; }
+      }
+
+      void IDisposable.Dispose() { }
+
+      object System.Collections.IEnumerator.Current
+      {
+	      get { return objects.Current; }
+      }
+
+      void System.Collections.IEnumerator.Reset()
+      {
+ 	      objects.Reset();
+      }
+
+      protected IEnumerator<SceneObject> objects;
+    }
+
+    public abstract IEnumerator<SceneObject> GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+    {
+      return GetEnumerator();
+    }
+
+    protected List<SceneObject> objects;
+    protected PickOptions options;
+  }
+  #endregion
+  
+  #region CircleEnumerable
+  sealed class CircleEnumerable : PickEnumerable
+  {
+    public CircleEnumerable(List<SceneObject> objects, PickOptions options, Point worldPoint, double radius)
+      : base(objects, options)
+    { 
+      this.circle = new Circle(worldPoint.X, worldPoint.Y, radius);
+    }
+
+    public override IEnumerator<SceneObject> GetEnumerator()
+    {
+      return new CircleEnumerator(this);
+    }
+
+    sealed class CircleEnumerator : PickEnumerator
+    {
+      public CircleEnumerator(CircleEnumerable parent) : base(parent.objects)
+      { 
+        this.parent = parent;
+      }
+      
+      public override bool MoveNext()
+      {
+ 	      while(objects.MoveNext())
+ 	      {
+ 	        SceneObject obj = objects.Current;
+ 	        if(CanPick(obj, parent.options))
+ 	        {
+ 	          if(parent.options.RequireContainment)
+ 	          {
+ 	            if(parent.circle.Contains(obj.Area)) return true;
+ 	          }
+ 	          else if(obj.Area.Intersects(parent.circle))
+ 	          {
+ 	            return true;
+ 	          }
+ 	        }
+ 	      }
+ 	      return false;
+      }
+
+      CircleEnumerable parent;
+    }
+
+    Circle circle;
+  }
+  #endregion
+  
+  #region LineEnumerable
+  sealed class LineEnumerable : PickEnumerable
+  {
+    public LineEnumerable(List<SceneObject> objects, PickOptions options, Point startPoint, Point endPoint)
+      : base(objects, options)
+    { 
+      this.line = new Line(startPoint, endPoint);
+    }
+
+    public override IEnumerator<SceneObject> GetEnumerator()
+    {
+      return new LineEnumerator(this);
+    }
+
+    sealed class LineEnumerator : PickEnumerator
+    {
+      public LineEnumerator(LineEnumerable parent) : base(parent.objects)
+      { 
+        this.parent = parent;
+      }
+      
+      public override bool MoveNext()
+      {
+ 	      while(objects.MoveNext())
+ 	      {
+ 	        SceneObject obj = objects.Current;
+ 	        if(CanPick(obj, parent.options))
+ 	        {
+ 	          if(parent.line.SegmentIntersects(obj.Area))
+ 	          {
+ 	            return true;
+ 	          }
+ 	        }
+ 	      }
+ 	      return false;
+      }
+
+      LineEnumerable parent;
+    }
+
+    Line line;
+  }
+  #endregion
+
+  #region PointEnumerable
+  sealed class PointEnumerable : PickEnumerable
+  {
+    public PointEnumerable(List<SceneObject> objects, PickOptions options, Point worldPoint)
+      : base(objects, options)
+    { 
+      point = worldPoint;
+    }
+
+    public override IEnumerator<SceneObject> GetEnumerator()
+    {
+      return new PointEnumerator(this);
+    }
+
+    sealed class PointEnumerator : PickEnumerator
+    {
+      public PointEnumerator(PointEnumerable parent) : base(parent.objects)
+      { 
+        this.parent = parent;
+      }
+      
+      public override bool MoveNext()
+      {
+ 	      while(objects.MoveNext())
+ 	      {
+ 	        SceneObject obj = objects.Current;
+ 	        if(CanPick(obj, parent.options) && obj.Area.Contains(parent.point))
+ 	        {
+            return true;
+ 	        }
+ 	      }
+ 	      return false;
+      }
+
+      PointEnumerable parent;
+    }
+
+    Point point;
+  }
+  #endregion
+
+  #region RectangleEnumerable
+  sealed class RectangleEnumerable : PickEnumerable
+  {
+    public RectangleEnumerable(List<SceneObject> objects, PickOptions options, Rectangle worldArea)
+      : base(objects, options)
+    { 
+      rect = worldArea;
+    }
+
+    public override IEnumerator<SceneObject> GetEnumerator()
+    {
+      return new RectangleEnumerator(this);
+    }
+
+    sealed class RectangleEnumerator : PickEnumerator
+    {
+      public RectangleEnumerator(RectangleEnumerable parent) : base(parent.objects)
+      { 
+        this.parent = parent;
+      }
+      
+      public override bool MoveNext()
+      {
+ 	      while(objects.MoveNext())
+ 	      {
+ 	        SceneObject obj = objects.Current;
+ 	        if(CanPick(obj, parent.options))
+ 	        {
+ 	          if(parent.options.RequireContainment)
+ 	          {
+ 	            if(parent.rect.Contains(obj.Area)) return true;
+ 	          }
+ 	          else if(parent.rect.Intersects(obj.Area))
+ 	          {
+ 	            return true;
+ 	          }
+ 	        }
+ 	      }
+ 	      return false;
+      }
+
+      RectangleEnumerable parent;
+    }
+
+    Rectangle rect;
+  }
+  #endregion
+
+  #region ObjectLayerSorter
+  sealed class ObjectLayerSorter : Comparer<SceneObject>
+  {
+    ObjectLayerSorter() { }
+
+    public override int Compare(SceneObject x, SceneObject y)
+    {
+      return y.Layer - x.Layer;
+    }
+    
+    public static readonly ObjectLayerSorter Instance = new ObjectLayerSorter();
+  }
+  #endregion
+
+  static bool CanPick(SceneObject obj, PickOptions opts)
+  {
+    return obj != opts.ObjectToIgnore && !obj.Dead &&
+           (opts.AllowUnpickable || obj.PickingAllowed) && (opts.AllowInvisible || obj.Visible) &&
+           (obj.GroupMask & opts.GroupMask) != 0 && (obj.LayerMask & opts.LayerMask) != 0;
+  }
+
+  public IEnumerable<SceneObject> PickCircle(Point worldPoint, double radius, PickOptions options)
+  {
+    return Pick(new CircleEnumerable(objects, options, worldPoint, radius), options.SortByLayer);
+  }
+
+  public uint PickCircle(Point worldPoint, double radius, PickOptions options,
+                         ObjectFinderCallback callback, object context)
+  {
+    return Pick(PickCircle(worldPoint, radius, options), callback, context);
+  }
+
+  public IEnumerable<SceneObject> PickLine(Point startPoint, Point endPoint, PickOptions options)
+  {
+    return Pick(new LineEnumerable(objects, options, startPoint, endPoint), options.SortByLayer);
+  }
+
+  public uint PickLine(Point startPoint, Point endPoint, PickOptions options,
+                       ObjectFinderCallback callback, object context)
+  {
+    return Pick(PickLine(startPoint, endPoint, options), callback, context);
+  }
+
+  public IEnumerable<SceneObject> PickPoint(Point worldPoint, PickOptions options)
+  {
+    return Pick(new PointEnumerable(objects, options, worldPoint), options.SortByLayer);
+  }
+
+  public uint PickPoint(Point worldPoint, PickOptions options, ObjectFinderCallback callback, object context)
+  {
+    return Pick(PickPoint(worldPoint, options), callback, context);
+  }
+
+  public IEnumerable<SceneObject> PickRectangle(Rectangle worldArea, PickOptions options)
+  {
+    return Pick(new RectangleEnumerable(objects, options, worldArea), options.SortByLayer);
+  }
+
+  public uint PickRectangle(Rectangle worldArea, PickOptions options, ObjectFinderCallback callback, object context)
+  {
+    return Pick(PickRectangle(worldArea, options), callback, context);
+  }
+
+  static IEnumerable<SceneObject> Pick(IEnumerable<SceneObject> enumerable, bool sortByLayer)
+  {
+    if(!sortByLayer)
+    {
+      return enumerable;
+    }
+    else
+    {
+      List<SceneObject> sorted = new List<SceneObject>(enumerable);
+      sorted.Sort(ObjectLayerSorter.Instance);
+      return sorted;
     }
   }
 
-  uint FindObjects(ref Rectangle searchArea, uint layerMask, uint groupMask, bool returnInvisible, bool picking,
-                   ObjectFinderCallback callback, object context, SceneObject objectToIgnore)
+  static uint Pick(IEnumerable<SceneObject> enumerable, ObjectFinderCallback callback, object context)
   {
     uint objectsFound = 0;
-
-    foreach(SceneObject obj in FindObjects(searchArea, layerMask, groupMask, returnInvisible, picking, objectToIgnore))
+    foreach(SceneObject obj in enumerable)
     {
       callback(obj, context);
       objectsFound++;
     }
-
     return objectsFound;
   }
   #endregion
 
   protected internal virtual void Render(ref Rectangle viewArea, uint layerMask, uint groupMask, bool renderInvisible)
   {
+    PickOptions options = new PickOptions();
+    options.AllowInvisible  = renderInvisible;
+    options.AllowUnpickable = true;
+    options.GroupMask       = groupMask;
+    options.LayerMask       = layerMask;
+
     // find objects to render within the view area and place them in layeredRenderObjects
-    foreach(SceneObject obj in FindObjects(viewArea, layerMask, groupMask, renderInvisible, false, null))
+    foreach(SceneObject obj in PickRectangle(viewArea, options))
     {
       int layer = obj.Layer;
       if(layeredRenderObjects[layer] == null) layeredRenderObjects[layer] = new List<SceneObject>();
