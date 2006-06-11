@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using RotationalForce.Engine;
+using GameLib.Interop.OpenGL;
 using GLPoint = GameLib.Mathematics.TwoD.Point;
 using GLRect  = GameLib.Mathematics.TwoD.Rectangle;
+using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
 using Vector  = GameLib.Mathematics.TwoD.Vector;
 
 namespace RotationalForce.Editor
@@ -12,11 +14,8 @@ namespace RotationalForce.Editor
 
 public class SceneEditor : Form
 {
-  const string TriggerName = "__trigger__";
-  static SceneEditor()
-  {
-    ToolboxItem.RegisterItem(TriggerName, new TriggerItem());
-  }
+  const string TriggerName = "__trigger__"; // public so that the designer can access it.
+  const int VertexRadius = 2;
   
   private ToolStrip toolBar;
   private ToolStripMenuItem editMenu;
@@ -32,6 +31,15 @@ public class SceneEditor : Form
   public SceneEditor()
   {
     InitializeComponent();
+
+    ListViewItem triggerItem = new ListViewItem("Trigger", 0, objectList.Groups[3]);
+    triggerItem.Tag = TriggerName;
+    objectList.Items.Add(triggerItem);
+  }
+
+  static SceneEditor()
+  {
+    ToolboxItem.RegisterItem(TriggerName, new TriggerItem());
   }
 
   public void CreateNew()
@@ -56,7 +64,62 @@ public class SceneEditor : Form
     return sceneView.SceneToClient(scenePoint);
   }
 
-  void SelectObject(SceneObject obj) { }
+  void InvalidateDecoration(Rectangle rect)
+  {
+    renderPanel.Invalidate(rect);
+  }
+
+  void InvalidateRender(Rectangle rect)
+  {
+    sceneView.Invalidate(rect);
+  }
+
+  void InvalidateObjectBounds(SceneObject obj, bool invalidateRender)
+  {
+    Rectangle controlRect = sceneView.SceneToClient(obj.GetRotatedArea().GetBounds()); // get the client rectangle
+    controlRect.Inflate(VertexRadius*2+1, VertexRadius*2+1); // include space for our decoration
+    if(invalidateRender)
+    {
+      InvalidateRender(controlRect);
+    }
+    else
+    {
+      InvalidateDecoration(controlRect);
+    }
+  }
+
+  #region Object selection
+  void DeselectObjects()
+  {
+    if(selectedObjects.Count != 0)
+    {
+      foreach(SceneObject selectedObj in selectedObjects)
+      {
+        InvalidateObjectBounds(selectedObj, false);
+      }
+      selectedObjects.Clear();
+    }
+  }
+
+  void SelectObject(SceneObject obj, bool deselectOthers)
+  {
+    if(obj == null) throw new ArgumentNullException();
+
+    if(deselectOthers)
+    {
+      DeselectObjects();
+      selectedObjects.Add(obj);
+      InvalidateObjectBounds(obj, false);
+    }
+    else if(!selectedObjects.Contains(obj))
+    {
+      selectedObjects.Add(obj);
+      InvalidateObjectBounds(obj, false);
+    }
+  }
+
+  List<SceneObject> selectedObjects = new List<SceneObject>();
+  #endregion
 
   DesktopControl desktop;
   SceneViewControl sceneView;
@@ -80,7 +143,6 @@ public class SceneEditor : Form
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewItem listViewItem1 = new System.Windows.Forms.ListViewItem("Trigger", 0);
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
     this.renderPanel = new RotationalForce.Editor.RenderPanel();
     this.toolBar = new System.Windows.Forms.ToolStrip();
@@ -228,6 +290,7 @@ public class SceneEditor : Form
     this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
     this.renderPanel.DragEnter += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragEnter);
     this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
+    this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
     // 
     // toolBar
     // 
@@ -322,10 +385,6 @@ public class SceneEditor : Form
             listViewGroup2,
             listViewGroup3,
             listViewGroup4});
-    listViewItem1.Group = listViewGroup4;
-    listViewItem1.Tag = TriggerName;
-    this.objectList.Items.AddRange(new System.Windows.Forms.ListViewItem[] {
-            listViewItem1});
     this.objectList.LargeImageList = this.objectImgs;
     this.objectList.Location = new System.Drawing.Point(4, 24);
     this.objectList.MultiSelect = false;
@@ -382,7 +441,8 @@ public class SceneEditor : Form
       SceneObject obj = item.CreateSceneObject();
       obj.Position = ControlToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
       scene.AddObject(obj);
-      SelectObject(obj);
+      SelectObject(obj, true);
+      InvalidateObjectBounds(obj, true);
     }
   }
 
@@ -396,6 +456,28 @@ public class SceneEditor : Form
     Engine.Engine.ResetOpenGL(renderPanel.Width, renderPanel.Height, renderPanel.ClientRectangle);
     sceneView.Invalidate();
     desktop.Render();
+  }
+
+  private void renderPanel_Paint(object sender, PaintEventArgs e)
+  {
+    if(selectedObjects.Count != 0)
+    {
+      Point[] scenePoints = new Point[5];
+      GLPoint[] objPoints = new GLPoint[4];
+
+      // draw boxes around selected items
+      foreach(SceneObject obj in selectedObjects)
+      {
+        obj.GetRotatedArea().CopyTo(objPoints, 0); // copy the objects rotated bounding box into the point array
+        for(int i=0; i<4; i++)
+        {
+          scenePoints[i] = SceneToControl(objPoints[i]); // transform from scene space to control space
+        }
+        scenePoints[4] = scenePoints[0]; // form a loop
+        
+        e.Graphics.DrawLines(Pens.White, scenePoints);
+      }
+    }
   }
 }
 

@@ -6,6 +6,8 @@ using GameLib.Mathematics.TwoD;
 using GameLib.Interop.OpenGL;
 using Color = System.Drawing.Color;
 
+// TODO: optimize by hand-inlining some of GameLib's intersection/contains algorithms into SceneObject.
+
 namespace RotationalForce.Engine
 {
 
@@ -97,19 +99,6 @@ public enum CollisionResponse : byte
   Stop,
   /// <summary>The object will be deleted.</summary>
   Kill
-}
-
-/// <summary>Describes a circle as a point and a radius.</summary>
-public struct Circle
-{
-  public Circle(double x, double y, double radius)
-  {
-    Point  = new Point(x, y);
-    Radius = radius;
-  }
-
-  public Point  Point;
-  public double Radius;
 }
 
 /// <param name="sender">The object under consideration. For the <see cref="CollisionObject.Hit"/> event, this is
@@ -523,7 +512,7 @@ public abstract class SceneObject : GameObject
   {
     get
     { 
-      return new Rectangle(position.X-size.X/2, position.Y-size.Y/2, size.X, size.Y);
+      return new Rectangle(position.X-size.X*0.5, position.Y-size.Y*0.5, size.X, size.Y);
     }
     set
     {
@@ -532,7 +521,7 @@ public abstract class SceneObject : GameObject
       EngineMath.AssertValidFloat(value.Width);
       EngineMath.AssertValidFloat(value.Height);
 
-      Vector halfSize = new Vector(value.Width/2, value.Height/2);
+      Vector halfSize = new Vector(value.Width*0.5, value.Height*0.5);
       Point  center   = new Point(value.X+halfSize.X, value.Y+halfSize.Y);
       if(size.X != value.Width || size.Y != value.Height || center != position)
       {
@@ -642,6 +631,19 @@ public abstract class SceneObject : GameObject
   public uint LayerMask
   {
     get { return (uint)1 << layer; }
+  }
+
+  public Polygon GetRotatedArea()
+  {
+    Polygon poly = new Polygon(4);
+    Vector halfSize = size*0.5;
+    poly.AddPoint(-halfSize.X, -halfSize.Y);
+    poly.AddPoint( halfSize.X, -halfSize.Y);
+    poly.AddPoint( halfSize.X,  halfSize.Y);
+    poly.AddPoint(-halfSize.X,  halfSize.Y);
+    if(rotation != 0) poly.Rotate(rotation * MathConst.DegreesToRadians);
+    poly.Offset(position.X, position.Y);
+    return poly;
   }
 
   public void SetBounds(double x, double y, double width, double height)
@@ -842,7 +844,7 @@ public abstract class SceneObject : GameObject
 
     GL.glPushMatrix(); // we should be in ModelView mode
     GL.glTranslated(X, Y, 0); // translate us to the origin
-    GL.glScaled(Width/2, Height/2, 1); // set up local coordinates (scale so that -1 to 1 covers our area)
+    GL.glScaled(Width*0.5, Height*0.5, 1); // set up local coordinates (scale so that -1 to 1 covers our area)
     if(rotation != 0) GL.glRotated(rotation, 0, 0, 1); // rotate, if necessary
 
     RenderContent(); // now allow the derived class to render the content
@@ -964,7 +966,7 @@ public abstract class SceneObject : GameObject
     // if the underlying info hasn't changed, or we're not part of a scene, return immediately.
     if(!HasFlag(Flag.SpatialInfoDirty) || Scene == null) return;
 
-    Vector halfSize = size/2;
+    Vector halfSize = size*0.5;
 
     // recalculate the world points associated with each link point
     for(int i=0; i<numLinkPoints; i++)

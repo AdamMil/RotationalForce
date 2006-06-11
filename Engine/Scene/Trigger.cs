@@ -90,7 +90,7 @@ public class TriggerObject : SceneObject
       case CollisionArea.Circular:
       {
         Circle circle = (Circle)GetCollisionData();
-        Video.FillCircle(circle.Point, circle.Radius);
+        Video.FillCircle(circle.Center, circle.Radius);
         break;
       }
       case CollisionArea.Rectangular:
