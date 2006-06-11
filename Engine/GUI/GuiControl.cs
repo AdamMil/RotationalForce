@@ -320,7 +320,7 @@ public abstract class GuiControl
     Color backColor = BackColor;
     if(backColor.A != 0)
     {
-      Video.FillRectangle(drawArea, backColor);
+      Video.FillBox(drawArea, backColor);
     }
 
     RenderContent(drawArea); // draw this control

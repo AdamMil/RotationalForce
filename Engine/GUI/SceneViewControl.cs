@@ -17,8 +17,9 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
 {
   public SceneViewControl()
   {
-    TargetCameraArea = CameraArea = new Rectangle(0, 0, 100, 100);
-    TargetCameraZoom = CameraZoom = 1;
+    TargetCameraPosition = CameraPosition = new Point(0, 0);
+    TargetCameraSize     = CameraSize     = 100;
+    TargetCameraZoom     = CameraZoom     = 1;
     Engine.AddTicker(this);
   }
   ~SceneViewControl() { Dispose(true); }
@@ -47,21 +48,14 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return HasFlag(Flag.CameraMoving); }
   }
 
-  /// <summary>Gets/sets the area of the scene covered by the current camera view, in world units.</summary>
+  /// <summary>Gets the area of the scene covered by the current camera view, in world units.</summary>
   public Rectangle CameraArea
   {
     get
     {
-      return new Rectangle(currentCamera.Center.X-currentCamera.Size.X/2,
-                           currentCamera.Center.Y-currentCamera.Size.Y/2,
-                           currentCamera.Size.X, currentCamera.Size.Y);
-    }
-    set
-    {
-      StopCameraMove();
-      currentCamera.Center = new Point(value.X-value.Width/2, value.Y-value.Height/2);
-      currentCamera.Size   = value.Size;
-      OnCameraChanged();
+      double cameraScale = currentCamera.Size / Math.Max(Width, Height); // number of units per pixel on the major axis
+      Vector size = new Vector(cameraScale*Width, cameraScale*Height);
+      return new Rectangle(currentCamera.Center.X-size.X/2, currentCamera.Center.Y-size.Y/2, size.X, size.Y);
     }
   }
 
@@ -78,8 +72,10 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the size of the current camera view within the scene, in world units.</summary>
-  /// <remarks>This property can be set even while the camera is mounted.</remarks>
-  public Vector CameraSize
+  /// <remarks>The camera size is the number of world units visible on the major axis of the scene view control.
+  /// This property can be set even while the camera is mounted.
+  /// </remarks>
+  public double CameraSize
   {
     get { return currentCamera.Size; }
     set
@@ -108,22 +104,6 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     }
   }
   
-  /// <summary>Gets/sets the area of the scene covered by the target camera view, in world units.</summary>
-  public Rectangle TargetCameraArea
-  {
-    get
-    {
-      return new Rectangle(targetCamera.Center.X-targetCamera.Size.X/2,
-                           targetCamera.Center.Y-targetCamera.Size.Y/2,
-                           targetCamera.Size.X, targetCamera.Size.Y);
-    }
-    set
-    {
-      targetCamera.Center = new Point(value.X-value.Width/2, value.Y-value.Height/2);
-      targetCamera.Size   = value.Size;
-    }
-  }
-  
   /// <summary>Gets/sets the center point of the target camera view within the scene, in world units.</summary>
   public Point TargetCameraPosition
   {
@@ -132,7 +112,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the size of the target camera view within the scene, in world units.</summary>
-  public Vector TargetCameraSize
+  /// <remarks>The camera size is the number of world units visible along the major axis of the scene view control.</remarks>
+  public double TargetCameraSize
   {
     get { return targetCamera.Size; }
     set { targetCamera.Size = value; }
@@ -240,16 +221,11 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   {
     if(HasFlag(Flag.CameraDirty))
     {
-      ZoomedArea = CameraArea;
+      double zoomedSize = currentCamera.Size / currentCamera.CameraZoom;
+      UnitsPerPixel = zoomedSize / Math.Max(Width, Height); // number of units per pixel on the major axis
 
-      // calculate the amounts by which the view width/height will shrink.
-      double shrinkX = currentCamera.Size.X - currentCamera.Size.X/currentCamera.CameraZoom;
-      double shrinkY = currentCamera.Size.Y - currentCamera.Size.Y/currentCamera.CameraZoom;
-      // calculate the zoomed window. (we negate and divide by 2 because of the way .Inflate() works)
-      ZoomedArea.Inflate(-shrinkX/2, -shrinkY/2);
-
-      // calculate the number of world units per pixel for this camera
-      UnitsPerPixel = new Vector(ZoomedArea.Width/Width, ZoomedArea.Height/Height);
+      Vector size = new Vector(UnitsPerPixel*Width, UnitsPerPixel*Height);
+      ZoomedArea = new Rectangle(currentCamera.Center.X-size.X/2, currentCamera.Center.Y-size.Y/2, size.X, size.Y);
     }
   }
 
@@ -362,7 +338,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public Point ClientToScene(SPoint clientPoint)
   {
     CalculateCameraView();
-    return new Point(ZoomedArea.X + clientPoint.X*UnitsPerPixel.X, ZoomedArea.Y + clientPoint.Y*UnitsPerPixel.Y);
+    return new Point(ZoomedArea.X + clientPoint.X*UnitsPerPixel, ZoomedArea.Y + clientPoint.Y*UnitsPerPixel);
   }
 
   /// <summary>Converts a rectangle relative to the client area of the scene view to a rectangle within the scene.</summary>
@@ -371,7 +347,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public Rectangle ClientToScene(SRectangle clientRect)
   {
     return new Rectangle(ClientToScene(clientRect.Location), // ClientToScene will call CalculateCameraView
-                         new Vector(clientRect.Width*UnitsPerPixel.X, clientRect.Height*UnitsPerPixel.Y));
+                         new Vector(clientRect.Width*UnitsPerPixel, clientRect.Height*UnitsPerPixel));
   }
 
   /// <summary>Converts a point within the scene to a point relative to the client area of the scene view.</summary>
@@ -380,8 +356,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public SPoint SceneToClient(Point scenePoint)
   {
     CalculateCameraView();
-    return new SPoint((int)Math.Round((scenePoint.X-ZoomedArea.X) / UnitsPerPixel.X),
-                      (int)Math.Round((scenePoint.Y-ZoomedArea.Y) / UnitsPerPixel.Y));
+    return new SPoint((int)Math.Round((scenePoint.X-ZoomedArea.X) / UnitsPerPixel),
+                      (int)Math.Round((scenePoint.Y-ZoomedArea.Y) / UnitsPerPixel));
   }
   
   /// <summary>Converts a rectangle within the scene to a rectangle relative to the client area of the scene view.</summary>
@@ -390,8 +366,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public SRectangle SceneToClient(Rectangle sceneRect)
   {
     return new SRectangle(SceneToClient(sceneRect.Location), // SceneToClient will call CalculateCameraView
-                          new Size((int)Math.Round(sceneRect.Width  / UnitsPerPixel.X),
-                                   (int)Math.Round(sceneRect.Height / UnitsPerPixel.Y)));
+                          new Size((int)Math.Round(sceneRect.Width  / UnitsPerPixel),
+                                   (int)Math.Round(sceneRect.Height / UnitsPerPixel)));
   }
   #endregion
 
@@ -475,7 +451,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     GL.glLoadIdentity();
 
     Rectangle viewArea = ClientToScene(ScreenToClient(drawArea));
-    Scene.Render(ref viewArea, LayerMask, GroupMask, false);
+    Scene.Render(ref viewArea, LayerMask, GroupMask, RenderInvisible);
 
     GL.glPopMatrix(); // restore the ModelView matrix
     GL.glMatrixMode(GL.GL_PROJECTION); // switch to Projection mode
@@ -508,7 +484,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
       {
         currentCamera.Center = EngineMath.Interpolate(ref sourceCamera.Center, ref targetCamera.Center,
                                                       interpolationPosition, interpolationMode);
-        currentCamera.Size = EngineMath.Interpolate(ref sourceCamera.Size, ref targetCamera.Size,
+        currentCamera.Size = EngineMath.Interpolate(sourceCamera.Size, targetCamera.Size,
                                                     interpolationPosition, interpolationMode);
         currentCamera.CameraZoom = EngineMath.Interpolate(sourceCamera.CameraZoom, targetCamera.CameraZoom,
                                                           interpolationPosition, interpolationMode);
@@ -570,13 +546,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     /// <summary>The center of the scene to view, in world units.</summary>
     public Point Center;
     /// <summary>The size of the scene to view, in world units, assuming the camera is not zoomed.</summary>
-    public Vector Size;
+    public double Size;
     /// <summary>The zoom factor of the camera, which should be a positive number.</summary>
-    /// <value>The camera zoom factor. A factor of 1.0 indicates no zooming, and that the whole
-    /// <see cref="CameraArea"/> will be visible. A factor of 2.0 indicates that the width and height of the viewed
-    /// area will be half that specified by <see cref="CameraArea"/>. A factor of 0.5 indicates that the width and
-    /// height of the viewed area will be double that specified by the <see cref="CameraArea"/>.
-    /// </value>
     public double CameraZoom;
   }
 
@@ -603,7 +574,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// <summary>The viewed area of the current camera after camera zooming is taken into account.</summary>
   Rectangle ZoomedArea;
   /// <summary>The ratio of world units to pixels of the current camera, after zooming is taken into account.</summary>
-  Vector UnitsPerPixel;
+  double UnitsPerPixel;
 
   /// <summary>How long, in seconds, the camera will take to morph to the target view.</summary>
   double interpolationTime;

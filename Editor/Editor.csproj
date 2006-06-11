@@ -46,15 +46,11 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="GLBuffer.cs" />
+    <Compile Include="RenderPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="main.cs" />
     <Compile Include="MainForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="SceneEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="VectorAnimationEditor.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Properties\Resources.Designer.cs">
@@ -62,11 +58,22 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <Compile Include="SceneEditor.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="VectorAnimationEditor.cs">
+      <SubType>Form</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="MainForm.resx">
       <SubType>Designer</SubType>
       <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <SubType>Designer</SubType>
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
     <EmbeddedResource Include="SceneEditor.resx">
       <SubType>Designer</SubType>
@@ -75,11 +82,6 @@
     <EmbeddedResource Include="VectorAnimationEditor.resx">
       <SubType>Designer</SubType>
       <DependentUpon>VectorAnimationEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <SubType>Designer</SubType>
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
@@ -91,5 +93,14 @@
       <Project>{7121478A-660F-4D27-B51E-63C94CEF1DCF}</Project>
       <Name>Engine</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\LinkTool.bmp" />
+    <None Include="Resources\LayerTool.bmp" />
+    <None Include="Resources\CollisionTool.bmp" />
+    <Content Include="Resources\SelectTool.bmp" />
+    <Content Include="Resources\TriggerIcon.bmp" />
+    <None Include="Resources\TerrainTool.bmp" />
+    <None Include="Resources\ZoomTool.bmp" />
   </ItemGroup>
 </Project>

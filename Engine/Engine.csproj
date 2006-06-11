@@ -63,6 +63,7 @@
     <Compile Include="Scene\GameObject.cs" />
     <Compile Include="Scene\SceneObject.cs" />
     <Compile Include="GUI\SceneViewControl.cs" />
+    <Compile Include="Scene\Trigger.cs" />
     <Compile Include="Scene\VectorObject.cs" />
     <Compile Include="Scene\Scene.cs" />
     <Compile Include="Video.cs" />

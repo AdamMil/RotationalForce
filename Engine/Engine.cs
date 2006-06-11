@@ -75,9 +75,9 @@ public static class Engine
     ResetOpenGL();
   }
 
-  public static void ResetOpenGL() { ResetOpenGL(GLVideo.Width, GLVideo.Height); }
+  public static void ResetOpenGL() { ResetOpenGL(GLVideo.Width, GLVideo.Height, GLVideo.DisplaySurface.Bounds); }
 
-  public static void ResetOpenGL(int screenWidth, int screenHeight)
+  public static void ResetOpenGL(int screenWidth, int screenHeight, Rectangle viewport)
   {
     // everything is parallel to the screen, so perspective correction is not necessary
     GL.glHint(GL.GL_PERSPECTIVE_CORRECTION_HINT, GL.GL_FASTEST);
@@ -101,13 +101,13 @@ public static class Engine
     
     GL.glMatrixMode(GL.GL_PROJECTION);
     GL.glLoadIdentity();
-    GLU.gluOrtho2D(0, screenWidth, screenHeight, 0);
+    GLU.gluOrtho2D(0, viewport.Width, viewport.Height, 0);
 
     GL.glMatrixMode(GL.GL_MODELVIEW);
     GL.glLoadIdentity();
     GL.glTranslated(0.375, 0.375, 0); // opengl "exact pixelization" hack described in Redbook appendix H
 
-    Video.SetViewport(screenHeight, new Rectangle(0, 0, screenWidth, screenHeight));
+    Video.SetViewport(screenHeight, viewport);
   }
   
   public static void Render(DesktopControl desktop)

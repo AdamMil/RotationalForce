@@ -97,11 +97,9 @@ public class Scene : ITicker, IDisposable
   }
 
   #region Picking and finding objects
-  uint FindObjects(ref Rectangle searchArea, uint layerMask, uint groupMask, bool returnInvisible, bool picking,
-                   ObjectFinderCallback callback, object context, SceneObject objectToIgnore)
+  IEnumerable<SceneObject> FindObjects(Rectangle searchArea, uint layerMask, uint groupMask,
+                                       bool returnInvisible, bool picking, SceneObject objectToIgnore)
   {
-    uint objectsFound = 0;
-
     foreach(SceneObject obj in objects)
     {
       // only return objects that are not ignored, dead, unpickable (when picking), or
@@ -111,9 +109,20 @@ public class Scene : ITicker, IDisposable
          (obj.GroupMask & groupMask) != 0 && (obj.LayerMask & layerMask) != 0 &&
          searchArea.Intersects(obj.Area))
       {
-        callback(obj, context);
-        objectsFound++;
+        yield return obj;
       }
+    }
+  }
+
+  uint FindObjects(ref Rectangle searchArea, uint layerMask, uint groupMask, bool returnInvisible, bool picking,
+                   ObjectFinderCallback callback, object context, SceneObject objectToIgnore)
+  {
+    uint objectsFound = 0;
+
+    foreach(SceneObject obj in FindObjects(searchArea, layerMask, groupMask, returnInvisible, picking, objectToIgnore))
+    {
+      callback(obj, context);
+      objectsFound++;
     }
 
     return objectsFound;
@@ -122,23 +131,26 @@ public class Scene : ITicker, IDisposable
 
   protected internal virtual void Render(ref Rectangle viewArea, uint layerMask, uint groupMask, bool renderInvisible)
   {
-    // find objects to render within the view area (they will be placed in layeredRenderObjects)
-    if(FindObjects(ref viewArea, layerMask, groupMask, renderInvisible, false,
-                   new ObjectFinderCallback(AddObjectToRender), null, null) > 0)
+    // find objects to render within the view area and place them in layeredRenderObjects
+    foreach(SceneObject obj in FindObjects(viewArea, layerMask, groupMask, renderInvisible, false, null))
     {
-      // loop through the layers, from back (31) to front (0)
-      for(int layer=layeredRenderObjects.Length-1; layer >= 0; layer--)
+      int layer = obj.Layer;
+      if(layeredRenderObjects[layer] == null) layeredRenderObjects[layer] = new List<SceneObject>();
+      layeredRenderObjects[layer].Add(obj);
+    }
+
+    // loop through the layers, from back (31) to front (0)
+    for(int layer=layeredRenderObjects.Length-1; layer >= 0; layer--)
+    {
+      List<SceneObject> layerObjects = layeredRenderObjects[layer];
+      if(layerObjects == null || layerObjects.Count == 0) continue;
+
+      foreach(SceneObject obj in layerObjects)
       {
-        List<SceneObject> layerObjects = layeredRenderObjects[layer];
-        if(layerObjects == null || layerObjects.Count == 0) continue;
-        
-        foreach(SceneObject obj in layerObjects)
-        {
-          if(!obj.Dead) obj.Render(); // visibility checking is handled by FindObjects
-        }
-        
-        layerObjects.Clear();
+        if(!obj.Dead) obj.Render(); // visibility checking is handled by FindObjects
       }
+
+      layerObjects.Clear();
     }
   }
 
@@ -156,7 +168,13 @@ public class Scene : ITicker, IDisposable
         }
         if(obj.Dead) deleted.Add(obj);
       }
-      
+
+      foreach(SceneObject obj in objects)
+      {
+        if(!obj.Dead) obj.PostSimulate();
+      }
+
+      // remove dead objects from the scene
       foreach(SceneObject obj in deleted)
       {
         RemoveObject(obj);
@@ -186,13 +204,6 @@ public class Scene : ITicker, IDisposable
   {
     if(on) flags |= flag;
     else flags &= ~flag;
-  }
-
-  void AddObjectToRender(SceneObject obj, object context)
-  {
-    int layer = obj.Layer;
-    if(layeredRenderObjects[layer] == null) layeredRenderObjects[layer] = new List<SceneObject>();
-    layeredRenderObjects[layer].Add(obj);
   }
 
   void ITicker.Tick(double timeDelta) { Simulate(timeDelta); }
