@@ -1,13 +1,16 @@
+using System;
 using System.Drawing;
 using GameLib.Interop.OpenGL;
 using GLVideo = GameLib.Video.Video;
-
+using GLPoint = GameLib.Mathematics.TwoD.Point;
+using Vector  = GameLib.Mathematics.TwoD.Vector;
 
 namespace RotationalForce.Engine
 {
 
 static class Video
 {
+  #region Window space functions
   public static void DrawBox(Rectangle area, Color color)
   {
     GL.glColor(color);
@@ -23,7 +26,7 @@ static class Video
     ResetBlending();
   }
 
-  public static void FillRectangle(Rectangle area, Color color)
+  public static void FillBox(Rectangle area, Color color)
   {
     GL.glColor(color);
     if(color.A != 255) SetBlending();
@@ -45,6 +48,26 @@ static class Video
 
     GL.glViewport(viewport.X, screenHeight-viewport.Bottom, viewport.Width, viewport.Height);
   }
+  #endregion
+  
+  #region World space functions
+  public static void FillCircle(GLPoint center, double radius)
+  {
+    const int Subdivisions = 32;
+    const double AngleScale = Math.PI / (Subdivisions/2); // 2pi/subdivisions. NOTE: revise if Subdivisions is odd
+
+    Vector vector = new Vector(radius, 0);
+
+    GL.glBegin(GL.GL_TRIANGLE_FAN);
+      GL.glVertex2d(center);
+      GL.glVertex2d(vector);
+      for(int i=0; i<Subdivisions; i++)
+      {
+        GL.glVertex2d(vector.Rotated(AngleScale * i));
+      }
+    GL.glEnd();
+  }
+  #endregion
 
   static void SetBlending()
   {

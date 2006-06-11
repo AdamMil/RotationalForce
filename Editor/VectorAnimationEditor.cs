@@ -4,17 +4,11 @@ using System.Windows.Forms;
 using GameLib.Interop.OpenGL;
 using RotationalForce.Engine;
 using GLPoint = GameLib.Mathematics.TwoD.Point;
+using GLRect  = GameLib.Mathematics.TwoD.Rectangle;
 using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
 
 namespace RotationalForce.Editor
 {
-
-class RenderPanel : Panel
-{
-  protected override void OnPaintBackground(PaintEventArgs e)
-  {
-  }
-}
 
 class VectorAnimationEditor : Form
 {
@@ -43,6 +37,8 @@ class VectorAnimationEditor : Form
     animation.AddFrame(new VectorAnimation.Frame());
     Mode = EditMode.Animation;
   }
+
+  const int VertexRadius = 2;
 
   enum EditMode
   {
@@ -84,7 +80,7 @@ class VectorAnimationEditor : Form
 
         mode = value;
         PopulateListbox(select);
-        InvalidateRender();
+        renderPanel.InvalidateRender();
       }
     }
   }
@@ -161,35 +157,11 @@ class VectorAnimationEditor : Form
     }
   }
 
-  // invalidate the things we add to the scene, but not the scene itself.
-  void InvalidateDecoration()
+  void renderPanel_RenderBackground(object sender, EventArgs e)
   {
-    renderPanel.Invalidate();
-  }
-
-  void InvalidateRender() { InvalidateRender(false); }
-
-  // invalidate the scene (if it's not already invalidated) as well as the decoration
-  void InvalidateRender(bool renderImmediately)
-  {
-    if(!needRender)
-    {
-      needRender = true;
-      if(renderImmediately) RenderFrame();
-      renderPanel.Invalidate();
-    }
-  }
-  
-  void RenderFrame()
-  {
-    if(buffer == null)
-    {
-      int size = Math.Min(renderPanel.Width, renderPanel.Height) * 9 / 10;
-      buffer = new GLBuffer(size, size);
-    }
-    
-    GLBuffer.SetCurrent(buffer);
-    Engine.Engine.ResetOpenGL(buffer.Width, buffer.Height);
+    int size = Math.Min(renderPanel.Width, renderPanel.Height);
+    viewArea = new Rectangle((renderPanel.Width-size)/2, (renderPanel.Height-size)/2, size, size);
+    Engine.Engine.ResetOpenGL(renderPanel.Width, renderPanel.Height, viewArea);
 
     GL.glClearColor(renderPanel.BackColor);
     GL.glClear(GL.GL_COLOR_BUFFER_BIT);
@@ -198,15 +170,15 @@ class VectorAnimationEditor : Form
     GL.glColor(RenderForeColor);
 
     // draw a grid
-    float pos=0, add = (buffer.Width-1)/10f;
+    float pos=0, add = (viewArea.Width-1)/10f;
     for(int i=0; i<11; pos+=add,i++)
     {
       // horizontal
       GL.glVertex2f(0, pos);
-      GL.glVertex2f(buffer.Width-1, pos);
+      GL.glVertex2f(viewArea.Width-1, pos);
       // vertical
       GL.glVertex2f(pos, 0);
-      GL.glVertex2f(pos, buffer.Height-1);
+      GL.glVertex2f(pos, viewArea.Height-1);
     }
     GL.glEnd();
 
@@ -222,22 +194,10 @@ class VectorAnimationEditor : Form
     {
       SelectedFrame.Polygons[i].Render();
     }
-
-    GL.glFlush();
-    GLBuffer.SetCurrent(null);
-    
-    if(backgroundImage != null) backgroundImage.Dispose();
-    backgroundImage = buffer.CreateBitmap();
-
-    needRender = false;
   }
 
   private void renderPanel_Paint(object sender, PaintEventArgs e)
   {
-    if(needRender) RenderFrame();
-    e.Graphics.DrawImageUnscaled(backgroundImage, (renderPanel.Width-buffer.Width)/2,
-                                 (renderPanel.Height-buffer.Height)/2);
-
     VectorAnimation.Polygon poly = SelectedPolygon;
     if(poly != null)
     {
@@ -255,14 +215,13 @@ class VectorAnimationEditor : Form
       
       for(int i=0; i<points.Length; i++)
       {
-        e.Graphics.FillEllipse(i==selectedVertex ? Brushes.Red : Brushes.Green, points[i].X-2, points[i].Y-2, 5, 5);
+        e.Graphics.FillEllipse(i==selectedVertex ? Brushes.Red : Brushes.Green,
+                               points[i].X-VertexRadius, points[i].Y-VertexRadius, VertexRadius*2+1, VertexRadius*2+1);
       }
     }
   }
 
-  Bitmap backgroundImage;
-  GLBuffer buffer;
-  bool needRender = true;
+  Rectangle viewArea;
   #endregion
 
   void SelectListItem()
@@ -334,11 +293,12 @@ class VectorAnimationEditor : Form
     this.renderPanel.Name = "renderPanel";
     this.renderPanel.Size = new System.Drawing.Size(465, 453);
     this.renderPanel.TabIndex = 1;
-    this.renderPanel.MouseDown += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseDown);
-    this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
-    this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
+    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
     this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
-    this.renderPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseUp);
+    this.renderPanel.MouseDragStart += new MouseEventHandler(this.renderPanel_MouseDragStart);
+    this.renderPanel.MouseDrag += new MouseDragEventHandler(this.renderPanel_MouseDrag);
+    this.renderPanel.MouseDragEnd += new MouseEventHandler(this.renderPanel_MouseDragEnd);
+    this.renderPanel.MouseClick += new MouseEventHandler(this.renderPanel_MouseClick);
     // 
     // btnUp
     // 
@@ -474,7 +434,6 @@ class VectorAnimationEditor : Form
     this.Name = "VectorAnimationEditor";
     this.Text = "Vector Animation";
     this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
-    this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.VectorAnimationEditor_FormClosed);
     this.menuBar.ResumeLayout(false);
     this.menuBar.PerformLayout();
     this.ResumeLayout(false);
@@ -548,7 +507,7 @@ class VectorAnimationEditor : Form
         break;
     }
     
-    InvalidateRender();
+    renderPanel.InvalidateRender();
   }
 
   void listBox_DoubleClick(object sender, EventArgs e)
@@ -575,37 +534,12 @@ class VectorAnimationEditor : Form
     ColorDialog picker = new ColorDialog();
     picker.Color = renderPanel.BackColor;
     if(picker.ShowDialog() == DialogResult.OK) renderPanel.BackColor = picker.Color;
-    InvalidateRender();
-  }
-
-  void renderPanel_Resize(object sender, EventArgs e)
-  {
-    if(buffer != null) // dispose of the current buffer so a new one will be created of the proper size
-    {
-      buffer.Dispose();
-      buffer = null;
-    }
-
-    InvalidateRender(true); // and force re-rendering
-  }
-
-  void VectorAnimationEditor_FormClosed(object sender, FormClosedEventArgs e)
-  {
-    if(buffer != null)
-    {
-      buffer.Dispose();
-      buffer = null;
-    }
-    if(backgroundImage != null)
-    {
-      backgroundImage.Dispose();
-      backgroundImage = null;
-    }
+    renderPanel.InvalidateRender();
   }
 
   void chkDrawToCurrent_CheckedChanged(object sender, EventArgs e)
   {
-    if(mode != EditMode.Animation && selectedPolygon < SelectedFrame.Polygons.Count-1) InvalidateRender();
+    if(mode != EditMode.Animation && selectedPolygon < SelectedFrame.Polygons.Count-1) renderPanel.InvalidateRender();
   }
 
   void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
@@ -614,12 +548,11 @@ class VectorAnimationEditor : Form
     switch(Mode)
     {
       case EditMode.Polygon:
-        InvalidateRender();
+        InvalidatePolygonBounds(SelectedPolygon, true);
         break;
       case EditMode.Vertex:
         // and since vertices are value objects, we need to replace them by hand
-        ReplaceSelectedVertex((VectorAnimation.Vertex)propertyGrid.SelectedObject);
-        InvalidateRender();
+        ReplaceSelectedVertex((VectorAnimation.Vertex)propertyGrid.SelectedObject, false);
         break;
     }
   }
@@ -632,6 +565,37 @@ class VectorAnimationEditor : Form
     }
   }
   #endregion
+
+  void InvalidatePolygonBounds(VectorAnimation.Polygon poly, bool invalidateRender)
+  {
+    if(poly.Vertices.Count == 0) return; // nothing to invalidate!
+
+    // find the polygon's bounding area, in local space coordinates
+    double left=double.MaxValue, right=double.MinValue, top=double.MaxValue, bottom=double.MinValue;
+    foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+    {
+      if(vertex.Position.X < left) left = vertex.Position.X;
+      if(vertex.Position.X > right) right = vertex.Position.X;
+      if(vertex.Position.Y < top) top = vertex.Position.Y;
+      if(vertex.Position.Y > bottom) bottom = vertex.Position.Y;
+    }
+    
+    // convert the bounding area to control coordinates and offset it by the size of our decoration
+    Point topLeft = LocalToControl(new GLPoint(left, top)), bottomRight = LocalToControl(new GLPoint(right, bottom));
+    topLeft.Offset(-VertexRadius-1, -VertexRadius-1);
+    bottomRight.Offset(VertexRadius+1, VertexRadius+1);
+
+    // invalidate the calculated area.
+    Rectangle invalidArea = Rectangle.FromLTRB(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y);
+    if(invalidateRender)
+    {
+      renderPanel.InvalidateRender(invalidArea);
+    }
+    else
+    {
+      renderPanel.Invalidate(invalidArea);
+    }
+  }
 
   #region Modification of vertices and polygons
   void CreateNewPolygon(Point pt)
@@ -651,17 +615,18 @@ class VectorAnimationEditor : Form
   {
     VectorAnimation.Vertex vertex = SelectedVertex;
     vertex.Position = ControlToLocal(pt);
-    ReplaceSelectedVertex(vertex);
-    InvalidateDecoration();
+    ReplaceSelectedVertex(vertex, true);
   }
   
   void MoveSelectedPolygon(Size offset)
   {
     if(offset.IsEmpty) return;
 
+    InvalidatePolygonBounds(SelectedPolygon, false); // invalidate where the polygon currently is
+
     // convert the offset to local coordinates
-    GLPoint localOffset = new GLPoint(offset.Width *2/(double)buffer.Width,
-                                      offset.Height*2/(double)buffer.Height);
+    GLPoint localOffset = new GLPoint(offset.Width *2/(double)viewArea.Width,
+                                      offset.Height*2/(double)viewArea.Height);
 
     VectorAnimation.Polygon polygon = SelectedPolygon;
 
@@ -680,13 +645,17 @@ class VectorAnimationEditor : Form
     // since the vertices are value types, they won't automatically be updated in the property grid. do it manually.
     if(selectedVertex != -1) propertyGrid.SelectedObject = SelectedVertex;
 
-    InvalidateDecoration();
+    InvalidatePolygonBounds(SelectedPolygon, false); // invalidate where the polygon has moved to
   }
   
-  void ReplaceSelectedVertex(VectorAnimation.Vertex vertex)
+  void ReplaceSelectedVertex(VectorAnimation.Vertex vertex, bool updatePropertyGrid)
   {
+    InvalidatePolygonBounds(SelectedPolygon, false);
     SelectedPolygon.RemoveVertex(selectedVertex);
     SelectedPolygon.InsertVertex(selectedVertex, vertex);
+    InvalidatePolygonBounds(SelectedPolygon, false);
+    
+    if(updatePropertyGrid && Mode == EditMode.Vertex) propertyGrid.SelectedObject = vertex;
   }
   #endregion
 
@@ -737,8 +706,8 @@ class VectorAnimationEditor : Form
         Mode = EditMode.Polygon;
       }
 
-      if(chkDrawToCurrent.Checked) InvalidateRender();
-      InvalidateDecoration(); // and invalidate the decoration
+      if(chkDrawToCurrent.Checked) renderPanel.InvalidateRender();
+      renderPanel.Invalidate(); // and invalidate the decoration
     }
     else if(Mode != EditMode.Polygon) // otherwise, if it's the same polygon, but we're in the wrong mode
     {
@@ -798,26 +767,26 @@ class VectorAnimationEditor : Form
     // first multiply by two because the total range of local space is 2 units (-1 to 1), then divide by the size of
     // the render area minus one pixel. one pixel is subtracted because we want the rightmost pixel to be 2.0, not
     // slightly less than 2.0. finally, one is subtracted to shift it from the range 0-2 to -1 to 1
-    return new GLPoint(controlPoint.X*2/(double)(buffer.Width -1) - 1.0,
-                       controlPoint.Y*2/(double)(buffer.Height-1) - 1.0);
+    return new GLPoint(controlPoint.X*2/(double)(viewArea.Width -1) - 1.0,
+                       controlPoint.Y*2/(double)(viewArea.Height-1) - 1.0);
   }
   
   public Point LocalToControl(GLPoint localPoint)
   {
     Point topLeft = GetControlRenderRect().Location; // get the top-left corner of the render area
     localPoint.Offset(1, 1); // first, shift the coordinate space from -1 to 1 to 0-2.
-    // then, multiply the point by the buffer width minus one pixel. one pixel is subtracted because we want the
+    // then, multiply the point by the view width minus one pixel. one pixel is subtracted because we want the
     // rightmost pixel to correspond to the end of the local space, rather than one pixel beyond the rightmost. then,
     // the values are divided by 2 because the original coordinate space was from 0-2, resulting in the offsets being
     // doubled. last, the values are rounded to the nearest pixel and offset by the top-left corner of the render area
-    return new Point((int)Math.Round(localPoint.X*(buffer.Width -1)/2) + topLeft.X,
-                     (int)Math.Round(localPoint.Y*(buffer.Height-1)/2) + topLeft.Y);
+    return new Point((int)Math.Round(localPoint.X*(viewArea.Width -1)/2) + topLeft.X,
+                     (int)Math.Round(localPoint.Y*(viewArea.Height-1)/2) + topLeft.Y);
   }
 
   Rectangle GetControlRenderRect()
   {
-    return new Rectangle((renderPanel.Width - buffer.Width)/2, (renderPanel.Height - buffer.Height)/2, 
-                         buffer.Width, buffer.Height);
+    return new Rectangle((renderPanel.Width - viewArea.Width)/2, (renderPanel.Height - viewArea.Height)/2, 
+                         viewArea.Width, viewArea.Height);
   }
 
   /// <summary>Returns the index of the topmost visible polygon.</summary>
@@ -847,13 +816,10 @@ class VectorAnimationEditor : Form
 
         return;
       }
-    }
-    
-    // if the point didn't intersect any polygon, we'll get here. examine polygons that wouldn't have been caught by
-    // the above check because they either don't have enough points or the point was close to, but outside the polygon
-    for(int polyIndex=topPoly; polyIndex >= 0; polyIndex--)
-    {
-      if(SelectPolygonAndVertex(polyIndex, pt)) return;
+      else if(SelectPolygonAndVertex(polyIndex, pt))
+      {
+        return;
+      }
     }
 
     DeselectPolygon(); // the point doesn't intersect anything. deselect any polygon and vertex already selected
@@ -911,8 +877,8 @@ class VectorAnimationEditor : Form
   }
   #endregion
 
-  #region High-level mouse handling
-  void OnClick(MouseEventArgs e)
+  #region Render panel mouse handling
+  void renderPanel_MouseClick(object sender, MouseEventArgs e)
   {
     if(e.Button != MouseButtons.Left) return; // we only care about left clicks
 
@@ -926,12 +892,12 @@ class VectorAnimationEditor : Form
     }
   }
 
-  void OnDragStart(MouseEventArgs e)
+  void renderPanel_MouseDragStart(object sender, MouseEventArgs e)
   {
     if(e.Button == MouseButtons.Left) // for a left drag, we move the selected vertex/polygon
     {
       SelectPolygonAndVertex(e.Location);
-      if(selectedPolygon == -1) CancelDrag(); // if the user didn't click on anything, cancel the drag
+      if(selectedPolygon == -1) renderPanel.CancelMouseDrag(); // if the user didn't click on anything, cancel the drag
     }
     else if(e.Button == MouseButtons.Right) // for right drags, we clone and drag vertices
     {
@@ -942,12 +908,12 @@ class VectorAnimationEditor : Form
       }
       else // otherwise, cancel the drag
       {
-        CancelDrag();
+        renderPanel.CancelMouseDrag();
       }
     }
   }
 
-  void OnDrag(MouseEventArgs e, Size offset)
+  void renderPanel_MouseDrag(object sender, MouseDragEventArgs e)
   {
     if(selectedVertex != -1)
     {
@@ -955,99 +921,13 @@ class VectorAnimationEditor : Form
     }
     else
     {
-      MoveSelectedPolygon(offset); // otherwise, move the selected polygon (there should be one)
+      MoveSelectedPolygon(e.Offset); // otherwise, move the selected polygon (there should be one)
     }
   }
 
-  void OnDragEnd(MouseEventArgs e)
+  void renderPanel_MouseDragEnd(object sender, MouseEventArgs e)
   {
-    InvalidateRender();
-  }
-
-  void CancelDrag()
-  {
-    if(dragButton != MouseButtons.None)
-    {
-      mouseDownPos[ButtonToIndex(dragButton)] = new Point(-1, -1); // mark the drag button as released
-      dragButton = MouseButtons.None; // clear the dragging flag
-      renderPanel.Capture = false; // stop capturing the mouse
-    }
-  }
-  #endregion
-
-  #region Low-level mouse handling
-  /* use low-level mouse events to implement higher-level click and drag events */
-
-  void renderPanel_MouseDown(object sender, MouseEventArgs e)
-  {
-    int button = ButtonToIndex(e.Button);
-    if(button == -1) return; // ignore unsupported buttons
-    // when a mouse button is pressed, mark the location. this serves as both an indication that the button is pressed
-    // and stores the beginning of the drag, if the user drags the mouse
-    mouseDownPos[button] = e.Location;
-  }
-
-  void renderPanel_MouseMove(object sender, MouseEventArgs e)
-  {
-    if(dragButton != MouseButtons.None) // if we're currently dragging, fire a drag event
-    {
-      OnDrag(e, new Size(e.X-lastDragPos.X, e.Y-lastDragPos.Y));
-      // update the last drag point so we can send a delta to OnDrag()
-      lastDragPos = e.Location;
-    }
-    else // otherwise, see if we should start dragging.
-    {
-      int button = ButtonToIndex(e.Button);
-      if(button == -1 || !IsMouseDown(button)) return; // ignore unsupported buttons
-
-      int xd = e.X-mouseDownPos[button].X, yd = e.Y-mouseDownPos[button].Y;
-      int dist = xd*xd + yd*yd; // the squared distance
-      if(dist >= 16) // if the mouse is moved four pixels or more, start a drag event
-      {
-        dragButton = e.Button;
-        lastDragPos = e.Location;
-
-        // issue a drag start using the stored location of where the mouse was originally pressed
-        OnDragStart(new MouseEventArgs(e.Button, e.Clicks, mouseDownPos[button].X, mouseDownPos[button].Y, e.Delta));
-
-        if(dragButton != MouseButtons.None) // if the drag wasn't immediately cancelled
-        {
-          renderPanel.Capture = true; // capture the mouse so we can be sure to receive the end of the drag
-          // then issue a drag event because the mouse has since moved. always specify the original drag button.
-          OnDrag(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta), new Size(xd, yd));
-        }
-      }
-    }
-  }
-
-  void renderPanel_MouseUp(object sender, MouseEventArgs e)
-  {
-    int button = ButtonToIndex(e.Button);
-    if(button == -1) return; // ignore unsupported buttons
-
-    if(dragButton == e.Button) // if we're currently dragging, end the drag
-    {
-      OnDragEnd(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta)); // specify the original drag button
-      dragButton = MouseButtons.None; // clear our drag button flag
-      renderPanel.Capture = false; // stop capturing the mouse so other things can use it
-    }
-    else if(IsMouseDown(button)) // otherwise we're not currently dragging. was the button pressed over the control?
-    {
-      OnClick(e); // yes, so now that it's been released, signal a click event.
-    }
-
-    mouseDownPos[button] = new Point(-1, -1); // in any case, mark the button as released.
-  }
-
-  bool IsMouseDown(int index) { return mouseDownPos[index].X >= 0; }
-
-  Point[] mouseDownPos = new Point[3] { new Point(-1, -1), new Point(-1, -1), new Point(-1, -1) };
-  Point lastDragPos;
-  MouseButtons dragButton = MouseButtons.None;
-
-  static int ButtonToIndex(MouseButtons button)
-  {
-    return button == MouseButtons.Left ? 0 : button == MouseButtons.Middle ? 1 : button == MouseButtons.Right ? 2 : -1;
+    InvalidatePolygonBounds(SelectedPolygon, true);
   }
   #endregion
 }

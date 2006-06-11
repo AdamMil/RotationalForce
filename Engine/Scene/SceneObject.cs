@@ -75,6 +75,12 @@ public enum DestinationBlend : uint
 #endregion
 
 #region Collision-related types
+/// <summary>Describes the shape of an object's collision area.</summary>
+public enum CollisionArea
+{
+  None, Rectangular, Circular, Polygonal,
+}
+
 /// <summary>Determines what will happen to an object when it collides with something.</summary>
 public enum CollisionResponse : byte
 {
@@ -93,6 +99,19 @@ public enum CollisionResponse : byte
   Kill
 }
 
+/// <summary>Describes a circle as a point and a radius.</summary>
+public struct Circle
+{
+  public Circle(double x, double y, double radius)
+  {
+    Point  = new Point(x, y);
+    Radius = radius;
+  }
+
+  public Point  Point;
+  public double Radius;
+}
+
 /// <param name="sender">The object under consideration. For the <see cref="CollisionObject.Hit"/> event, this is
 /// the object that has hit <paramref name="other"/>. For the <see cref="CollisionObject.HitBy"/> event, this is the
 /// object that has been hit by <paramref name="other"/>.
@@ -108,12 +127,17 @@ public delegate void CollisionEventHandler(SceneObject sender, SceneObject other
 public delegate bool CustomCollisionDetector(SceneObject a, SceneObject b);
 #endregion
 
-public delegate void ClickEventHandler(SceneObject hit, MouseButton button, Point worldPosition);
-public delegate void MouseMoveEventHandler(SceneObject hit, Point worldPosition);
+public delegate void ClickEventHandler(SceneObject obj, MouseButton button, Point worldPosition);
+public delegate void MouseMoveEventHandler(SceneObject obj, Point worldPosition);
 
 /// <summary>The base class of all renderable game objects.</summary>
 public abstract class SceneObject : GameObject
 {
+  public SceneObject()
+  {
+    SetRectangularCollisionArea(-1, -1, 1, 1);
+  }
+
   #region Blending
   public bool BlendingEnabled
   {
@@ -158,6 +182,17 @@ public abstract class SceneObject : GameObject
     set { collisionDetector = value; }
   }
 
+  public CollisionArea CollisionArea
+  {
+    get
+    {
+      return HasFlag(Flag.RectangleCollision) ? CollisionArea.Rectangular :
+             HasFlag(Flag.CircleCollision)    ? CollisionArea.Circular    :
+             HasFlag(Flag.PolygonCollision)   ? CollisionArea.Polygonal   :
+             CollisionArea.None;
+    }
+  }
+
   public bool CollisionEnabled
   {
     get { return HasFlag(Flag.CollisionEnabled); }
@@ -182,18 +217,33 @@ public abstract class SceneObject : GameObject
     set { collisionResponse = value; }
   }
 
-  public bool RaisesHit
+  public bool SendsCollisions
   {
-    get { return HasFlag(Flag.RaisesHit); }
-    set { SetFlag(Flag.RaisesHit, value); }
+    get { return HasFlag(Flag.SendsCollisions); }
+    set { SetFlag(Flag.SendsCollisions, value); }
   }
   
-  public bool RaisesHitBy
+  public bool ReceivesCollisions
   {
-    get { return HasFlag(Flag.RaisesHitBy); }
-    set { SetFlag(Flag.RaisesHitBy, value); }
+    get { return HasFlag(Flag.ReceivesCollisions); }
+    set { SetFlag(Flag.ReceivesCollisions, value); }
   }
   
+  public object GetCollisionData()
+  {
+    switch(CollisionArea)
+    {
+      case CollisionArea.Circular:
+        return new Circle(collisionX, collisionY, collisionRadius);
+      case CollisionArea.Rectangular:
+        return new Rectangle(collisionX, collisionY, collisionRight-collisionX, collisionBottom-collisionY);
+      case CollisionArea.Polygonal:
+        throw new NotImplementedException();
+      default:
+        return null;
+    }
+  }
+
   public void SetNullCollisionArea()
   {
     flags &= ~Flag.CollisionMask;
@@ -233,6 +283,21 @@ public abstract class SceneObject : GameObject
 
     flags = (flags & ~Flag.CollisionMask) | Flag.RectangleCollision;
   }
+
+  public void SetPolygonalCollisionArea(params Point[] points)
+  {
+    throw new NotImplementedException();
+  }
+
+  protected virtual void OnHit(SceneObject hit)
+  {
+    if(Hit != null) Hit(this, hit);
+  }
+  
+  protected virtual void OnHitBy(SceneObject hitter)
+  {
+    if(HitBy != null) HitBy(this, hitter);
+  }
   #endregion
 
   #region Coordinate conversion
@@ -263,7 +328,7 @@ public abstract class SceneObject : GameObject
     if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
 
     // then scale it by half our world size and offset it by our world position
-    return new Point(position.X + offset.X/2*size.X, position.Y + offset.Y/2*size.Y);
+    return new Point(position.X + offset.X*0.5*size.X, position.Y + offset.Y*0.5*size.Y);
   }
   #endregion
 
@@ -815,15 +880,21 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  protected internal virtual void PostSimulate() { }
+
   [Flags]
   enum Flag : ushort
   {
     /// <summary>Determines whether collision detection is enabled.</summary>
     CollisionEnabled=0x01,
-    /// <summary>Determines whether this object's <see cref="Hit"/> event will be raised.</summary>
-    RaisesHit=0x02,
-    /// <summary>Determines whether this object's <see cref="HitBy"/> event will be raised.</summary>
-    RaisesHitBy=0x03,
+    /// <summary>Determines whether this object will trigger collision events in other objects, and whether the
+    /// <see cref="Hit"/> event will be raised.
+    /// </summary>
+    SendsCollisions=0x02,
+    /// <summary>Determines whether this object will receive collisions from other objects, and whether the
+    /// <see cref="HitBy"/> event will be raised.
+    /// </summary>
+    ReceivesCollisions=0x03,
     /// <summary>No collision area will be defined. Collision detection will always fail, unless combined with custom
     /// collision detection.
     /// </summary>
@@ -949,7 +1020,7 @@ public abstract class SceneObject : GameObject
   /// <summary>The position of the object, in world units, within the parent object.</summary>
   Point position;
   /// <summary>The size of the object, in world units.</summary>
-  Vector size;
+  Vector size = new Vector(10, 10);
   /// <summary>The velocity of the object, in world units per second.</summary>
   Vector velocity;
   /// <summary>The acceleration of the object, in world units per second per second.</summary>
@@ -967,7 +1038,7 @@ public abstract class SceneObject : GameObject
   /// <summary>The object to which this object is mounted.</summary>
   SceneObject mountParent;
   /// <summary>A bitfield that identifies the groups to which this object belongs.</summary>
-  uint groups;
+  uint groups = 1;
   /// <summary>The type of GL source blending to use.</summary>
   SourceBlend sourceBlend = SourceBlend.Default;
   /// <summary>The type of GL destination blending to use.</summary>
