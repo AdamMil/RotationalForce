@@ -14,8 +14,8 @@ namespace RotationalForce.Editor
 
 public class SceneEditor : Form
 {
-  const string TriggerName = "__trigger__"; // public so that the designer can access it.
-  const int VertexRadius = 2;
+  const string TriggerName = "__trigger__";
+  const int DecorationRadius = 7;
   
   private ToolStrip toolBar;
   private ToolStripMenuItem editMenu;
@@ -64,6 +64,11 @@ public class SceneEditor : Form
     return sceneView.SceneToClient(scenePoint);
   }
 
+  void InvalidateDecoration()
+  {
+    renderPanel.Invalidate();
+  }
+
   void InvalidateDecoration(Rectangle rect)
   {
     renderPanel.Invalidate(rect);
@@ -72,12 +77,13 @@ public class SceneEditor : Form
   void InvalidateRender(Rectangle rect)
   {
     sceneView.Invalidate(rect);
+    renderPanel.InvalidateRender(rect);
   }
 
   void InvalidateObjectBounds(SceneObject obj, bool invalidateRender)
   {
-    Rectangle controlRect = sceneView.SceneToClient(obj.GetRotatedArea().GetBounds()); // get the client rectangle
-    controlRect.Inflate(VertexRadius*2+1, VertexRadius*2+1); // include space for our decoration
+    Rectangle controlRect = sceneView.SceneToClient(obj.GetRotatedAreaBounds()); // get the client rectangle
+    controlRect.Inflate(DecorationRadius*2+1, DecorationRadius*2+1); // include space for our decoration
     if(invalidateRender)
     {
       InvalidateRender(controlRect);
@@ -98,6 +104,7 @@ public class SceneEditor : Form
         InvalidateObjectBounds(selectedObj, false);
       }
       selectedObjects.Clear();
+      selectedObjectBounds = new GLRect();
     }
   }
 
@@ -116,8 +123,20 @@ public class SceneEditor : Form
       selectedObjects.Add(obj);
       InvalidateObjectBounds(obj, false);
     }
+    
+    GLRect objRect = obj.GetRotatedAreaBounds();
+
+    if(selectedObjectBounds.Width == 0)
+    {
+      selectedObjectBounds = objRect;
+    }
+    else
+    {
+      selectedObjectBounds.Unite(objRect);
+    }
   }
 
+  GLRect selectedObjectBounds;
   List<SceneObject> selectedObjects = new List<SceneObject>();
   #endregion
 
@@ -129,7 +148,6 @@ public class SceneEditor : Form
   private void InitializeComponent()
   {
     this.components = new System.ComponentModel.Container();
-    System.Windows.Forms.MenuStrip menuBar;
     System.Windows.Forms.ToolStripButton newStaticImg;
     System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     System.Windows.Forms.ToolStripButton newAnimatedImg;
@@ -143,16 +161,16 @@ public class SceneEditor : Form
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
-    this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
-    this.renderPanel = new RotationalForce.Editor.RenderPanel();
+    System.Windows.Forms.MenuStrip menuBar;
     this.toolBar = new System.Windows.Forms.ToolStrip();
     this.collisionTool = new System.Windows.Forms.ToolStripButton();
     this.rightPane = new System.Windows.Forms.SplitContainer();
     this.objToolBar = new System.Windows.Forms.ToolStrip();
     this.newVectorAnim = new System.Windows.Forms.ToolStripButton();
-    this.objectList = new RotationalForce.Editor.ToolboxList();
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
-    menuBar = new System.Windows.Forms.MenuStrip();
+    this.objectList = new RotationalForce.Editor.ToolboxList();
+    this.renderPanel = new RotationalForce.Editor.RenderPanel();
+    this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
     newStaticImg = new System.Windows.Forms.ToolStripButton();
     newAnimatedImg = new System.Windows.Forms.ToolStripButton();
     deleteItem = new System.Windows.Forms.ToolStripButton();
@@ -161,31 +179,14 @@ public class SceneEditor : Form
     cameraTool = new System.Windows.Forms.ToolStripButton();
     terrainTool = new System.Windows.Forms.ToolStripButton();
     mountTool = new System.Windows.Forms.ToolStripButton();
-    menuBar.SuspendLayout();
-    this.renderPanel.SuspendLayout();
+    menuBar = new System.Windows.Forms.MenuStrip();
     this.toolBar.SuspendLayout();
     this.rightPane.Panel1.SuspendLayout();
     this.rightPane.SuspendLayout();
     this.objToolBar.SuspendLayout();
+    this.renderPanel.SuspendLayout();
+    menuBar.SuspendLayout();
     this.SuspendLayout();
-    // 
-    // menuBar
-    // 
-    menuBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.editMenu});
-    menuBar.Location = new System.Drawing.Point(0, 0);
-    menuBar.Name = "menuBar";
-    menuBar.Size = new System.Drawing.Size(552, 24);
-    menuBar.TabIndex = 0;
-    menuBar.Visible = false;
-    // 
-    // editMenu
-    // 
-    this.editMenu.MergeAction = System.Windows.Forms.MergeAction.Insert;
-    this.editMenu.MergeIndex = 1;
-    this.editMenu.Name = "editMenu";
-    this.editMenu.Size = new System.Drawing.Size(37, 20);
-    this.editMenu.Text = "&Edit";
     // 
     // newStaticImg
     // 
@@ -274,24 +275,6 @@ public class SceneEditor : Form
     mountTool.Text = "Mount Points";
     mountTool.ToolTipText = "Mount points. Use this tool to set the mount points of the selected object.";
     // 
-    // renderPanel
-    // 
-    this.renderPanel.AllowDrop = true;
-    this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
-                | System.Windows.Forms.AnchorStyles.Left)
-                | System.Windows.Forms.AnchorStyles.Right)));
-    this.renderPanel.BackColor = System.Drawing.Color.Black;
-    this.renderPanel.Controls.Add(menuBar);
-    this.renderPanel.Location = new System.Drawing.Point(2, 3);
-    this.renderPanel.Name = "renderPanel";
-    this.renderPanel.Size = new System.Drawing.Size(552, 518);
-    this.renderPanel.TabIndex = 0;
-    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
-    this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
-    this.renderPanel.DragEnter += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragEnter);
-    this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
-    this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
-    // 
     // toolBar
     // 
     this.toolBar.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
@@ -367,6 +350,12 @@ public class SceneEditor : Form
     this.newVectorAnim.Text = "Import Vector Animation";
     this.newVectorAnim.ToolTipText = "Import a new vector animation.";
     // 
+    // objectImgs
+    // 
+    this.objectImgs.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("objectImgs.ImageStream")));
+    this.objectImgs.TransparentColor = System.Drawing.Color.Transparent;
+    this.objectImgs.Images.SetKeyName(0, "TriggerIcon.bmp");
+    // 
     // objectList
     // 
     this.objectList.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
@@ -395,11 +384,41 @@ public class SceneEditor : Form
     this.objectList.TileSize = new System.Drawing.Size(192, 36);
     this.objectList.UseCompatibleStateImageBehavior = false;
     // 
-    // objectImgs
+    // renderPanel
     // 
-    this.objectImgs.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("objectImgs.ImageStream")));
-    this.objectImgs.TransparentColor = System.Drawing.Color.Transparent;
-    this.objectImgs.Images.SetKeyName(0, "TriggerIcon.bmp");
+    this.renderPanel.AllowDrop = true;
+    this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
+                | System.Windows.Forms.AnchorStyles.Left)
+                | System.Windows.Forms.AnchorStyles.Right)));
+    this.renderPanel.BackColor = System.Drawing.Color.Black;
+    this.renderPanel.Controls.Add(menuBar);
+    this.renderPanel.Location = new System.Drawing.Point(2, 3);
+    this.renderPanel.Name = "renderPanel";
+    this.renderPanel.Size = new System.Drawing.Size(552, 518);
+    this.renderPanel.TabIndex = 0;
+    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
+    this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
+    this.renderPanel.DragEnter += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragEnter);
+    this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
+    this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
+    // 
+    // menuBar
+    // 
+    menuBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.editMenu});
+    menuBar.Location = new System.Drawing.Point(0, 0);
+    menuBar.Name = "menuBar";
+    menuBar.Size = new System.Drawing.Size(552, 24);
+    menuBar.TabIndex = 0;
+    menuBar.Visible = false;
+    // 
+    // editMenu
+    // 
+    this.editMenu.MergeAction = System.Windows.Forms.MergeAction.Insert;
+    this.editMenu.MergeIndex = 1;
+    this.editMenu.Name = "editMenu";
+    this.editMenu.Size = new System.Drawing.Size(37, 20);
+    this.editMenu.Text = "&Edit";
     // 
     // SceneEditor
     // 
@@ -412,16 +431,16 @@ public class SceneEditor : Form
     this.Name = "SceneEditor";
     this.Text = "Scene Editor";
     this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
-    menuBar.ResumeLayout(false);
-    menuBar.PerformLayout();
-    this.renderPanel.ResumeLayout(false);
-    this.renderPanel.PerformLayout();
     this.toolBar.ResumeLayout(false);
     this.toolBar.PerformLayout();
     this.rightPane.Panel1.ResumeLayout(false);
     this.rightPane.ResumeLayout(false);
     this.objToolBar.ResumeLayout(false);
     this.objToolBar.PerformLayout();
+    this.renderPanel.ResumeLayout(false);
+    this.renderPanel.PerformLayout();
+    menuBar.ResumeLayout(false);
+    menuBar.PerformLayout();
     this.ResumeLayout(false);
 
   }
@@ -465,19 +484,45 @@ public class SceneEditor : Form
       Point[] scenePoints = new Point[5];
       GLPoint[] objPoints = new GLPoint[4];
 
-      // draw boxes around selected items
-      foreach(SceneObject obj in selectedObjects)
+      if(selectedObjects.Count > 1)
       {
-        obj.GetRotatedArea().CopyTo(objPoints, 0); // copy the objects rotated bounding box into the point array
-        for(int i=0; i<4; i++)
+        // draw boxes around selected items
+        foreach(SceneObject obj in selectedObjects)
         {
-          scenePoints[i] = SceneToControl(objPoints[i]); // transform from scene space to control space
+          obj.GetRotatedArea().CopyTo(objPoints, 0); // copy the objects rotated bounding box into the point array
+          for(int i=0; i<4; i++)
+          {
+            scenePoints[i] = SceneToControl(objPoints[i]); // transform from scene space to control space
+          }
+          scenePoints[4] = scenePoints[0]; // form a loop
+          
+          e.Graphics.DrawLines(Pens.LightGray, scenePoints);
         }
-        scenePoints[4] = scenePoints[0]; // form a loop
-        
-        e.Graphics.DrawLines(Pens.White, scenePoints);
       }
+      
+      // draw the control rectangle around the selected items
+      Rectangle boundsRect = sceneView.SceneToClient(selectedObjectBounds);
+      boundsRect.Inflate(5, 5);
+      boundsRect.Width  -= 1;
+      boundsRect.Height -= 1;
+
+      e.Graphics.DrawRectangle(Pens.White, boundsRect);
+      DrawControlHandle(e.Graphics, boundsRect.Left, boundsRect.Top);
+      DrawControlHandle(e.Graphics, boundsRect.Left, boundsRect.Top+(boundsRect.Height+1)/2);
+      DrawControlHandle(e.Graphics, boundsRect.Left, boundsRect.Bottom);
+      DrawControlHandle(e.Graphics, boundsRect.Right, boundsRect.Top);
+      DrawControlHandle(e.Graphics, boundsRect.Right, boundsRect.Top+(boundsRect.Height+1)/2);
+      DrawControlHandle(e.Graphics, boundsRect.Right, boundsRect.Bottom);
+      DrawControlHandle(e.Graphics, boundsRect.Left+(boundsRect.Width+1)/2, boundsRect.Top);
+      DrawControlHandle(e.Graphics, boundsRect.Left+(boundsRect.Width+1)/2, boundsRect.Bottom);
     }
+  }
+  
+  static void DrawControlHandle(Graphics g, int x, int y)
+  {
+    Rectangle rect = new Rectangle(x-2, y-2, 5, 5);
+    g.FillRectangle(Brushes.Blue, rect);
+    g.DrawRectangle(Pens.White, rect);
   }
 }
 
