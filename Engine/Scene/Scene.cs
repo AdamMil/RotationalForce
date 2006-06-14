@@ -82,6 +82,7 @@ public class Scene : ITicker, IDisposable
     if(obj == null) throw new ArgumentNullException("obj");
     if(obj.Scene != null) throw new ArgumentException("This object is already part of a scene.");
     if(obj.Dead) throw new ArgumentException("This object cannot be added to the scene because it is dead.");
+    obj.Scene = this;
     objects.Add(obj);
   }
 
@@ -185,9 +186,9 @@ public class Scene : ITicker, IDisposable
  	        {
  	          if(parent.options.RequireContainment)
  	          {
- 	            if(parent.circle.Contains(obj.Area)) return true;
+ 	            if(obj.ContainedBy(parent.circle)) return true;
  	          }
- 	          else if(obj.Area.Intersects(parent.circle))
+ 	          else if(obj.Intersects(parent.circle))
  	          {
  	            return true;
  	          }
@@ -229,12 +230,9 @@ public class Scene : ITicker, IDisposable
  	      while(objects.MoveNext())
  	      {
  	        SceneObject obj = objects.Current;
- 	        if(CanPick(obj, parent.options))
+ 	        if(CanPick(obj, parent.options) && obj.Intersects(parent.line))
  	        {
- 	          if(parent.line.SegmentIntersects(obj.Area))
- 	          {
- 	            return true;
- 	          }
+            return true;
  	        }
  	      }
  	      return false;
@@ -273,7 +271,7 @@ public class Scene : ITicker, IDisposable
  	      while(objects.MoveNext())
  	      {
  	        SceneObject obj = objects.Current;
- 	        if(CanPick(obj, parent.options) && obj.Area.Contains(parent.point))
+ 	        if(CanPick(obj, parent.options) && obj.Contains(parent.point))
  	        {
             return true;
  	        }
@@ -318,9 +316,12 @@ public class Scene : ITicker, IDisposable
  	        {
  	          if(parent.options.RequireContainment)
  	          {
- 	            if(parent.rect.Contains(obj.Area)) return true;
+ 	            if(obj.ContainedBy(parent.rect))
+ 	            {
+ 	              return true;
+ 	            }
  	          }
- 	          else if(parent.rect.Intersects(obj.Area))
+ 	          else if(obj.Intersects(parent.rect))
  	          {
  	            return true;
  	          }
@@ -350,11 +351,11 @@ public class Scene : ITicker, IDisposable
   }
   #endregion
 
-  static bool CanPick(SceneObject obj, PickOptions opts)
+  static bool CanPick(SceneObject obj, PickOptions options)
   {
-    return obj != opts.ObjectToIgnore && !obj.Dead &&
-           (opts.AllowUnpickable || obj.PickingAllowed) && (opts.AllowInvisible || obj.Visible) &&
-           (obj.GroupMask & opts.GroupMask) != 0 && (obj.LayerMask & opts.LayerMask) != 0;
+    return obj != options.ObjectToIgnore && !obj.Dead &&
+           (options.AllowUnpickable || obj.PickingAllowed) && (options.AllowInvisible || obj.Visible) &&
+           (obj.GroupMask & options.GroupMask) != 0 && (obj.LayerMask & options.LayerMask) != 0;
   }
 
   public IEnumerable<SceneObject> PickCircle(Point worldPoint, double radius, PickOptions options)

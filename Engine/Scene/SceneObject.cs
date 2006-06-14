@@ -372,6 +372,92 @@ public abstract class SceneObject : GameObject
   }
   #endregion
 
+  #region Intersection and containment testing
+  internal bool ContainedBy(Circle circle)
+  {
+    UpdateSpatialInfo();
+
+    if(spatial.Rotation != SpatialInfo.RotationType.Arbitrary)
+    {
+      return Math2D.Contains(ref circle, ref spatial.RotatedBounds);
+    }
+    else
+    {
+      return Math2D.Contains(ref circle, spatial.RotatedArea);
+    }
+  }
+
+  internal bool ContainedBy(Rectangle rect)
+  {
+    UpdateSpatialInfo();
+
+    if(spatial.Rotation != SpatialInfo.RotationType.Arbitrary)
+    {
+      return Math2D.Contains(ref rect, ref spatial.RotatedBounds);
+    }
+    else
+    {
+      return Math2D.Contains(ref rect, spatial.RotatedArea);
+    }
+  }
+
+  internal bool Contains(Point point)
+  {
+    UpdateSpatialInfo();
+
+    if(spatial.Rotation != SpatialInfo.RotationType.Arbitrary)
+    {
+      return Math2D.Contains(ref spatial.RotatedBounds, ref point);
+    }
+    else
+    {
+      return Math2D.Contains(spatial.RotatedArea, ref point);
+    }
+  }
+
+  internal bool Intersects(Circle circle)
+  {
+    UpdateSpatialInfo();
+
+    if(spatial.Rotation != SpatialInfo.RotationType.Arbitrary)
+    {
+      return Math2D.Intersects(ref circle, ref spatial.RotatedBounds);
+    }
+    else
+    {
+      return Math2D.Intersects(ref circle, spatial.RotatedArea);
+    }
+  }
+
+  internal bool Intersects(Line segment)
+  {
+    UpdateSpatialInfo();
+
+    if(spatial.Rotation != SpatialInfo.RotationType.Arbitrary)
+    {
+      return Math2D.SegmentIntersects(ref segment, ref spatial.RotatedBounds);
+    }
+    else
+    {
+      return Math2D.SegmentIntersects(ref segment, spatial.RotatedArea);
+    }
+  }
+
+  internal bool Intersects(Rectangle rect)
+  {
+    UpdateSpatialInfo();
+
+    if(spatial.Rotation != SpatialInfo.RotationType.Arbitrary)
+    {
+      return Math2D.Intersects(ref spatial.RotatedBounds, ref rect);
+    }
+    else
+    {
+      return Math2D.Intersects(ref rect, spatial.RotatedArea);
+    }
+  }
+  #endregion
+
   #region Link points
   /// <summary>Creates a new link point.</summary>
   /// <returns>The ID of the link point, which will be used to retrieve it later.</returns>
@@ -512,7 +598,8 @@ public abstract class SceneObject : GameObject
   {
     get
     { 
-      return new Rectangle(position.X-size.X*0.5, position.Y-size.Y*0.5, size.X, size.Y);
+      UpdateSpatialInfo();
+      return spatial.Area;
     }
     set
     {
@@ -635,15 +722,14 @@ public abstract class SceneObject : GameObject
 
   public Polygon GetRotatedArea()
   {
-    Polygon poly = new Polygon(4);
-    Vector halfSize = size*0.5;
-    poly.AddPoint(-halfSize.X, -halfSize.Y);
-    poly.AddPoint( halfSize.X, -halfSize.Y);
-    poly.AddPoint( halfSize.X,  halfSize.Y);
-    poly.AddPoint(-halfSize.X,  halfSize.Y);
-    if(rotation != 0) poly.Rotate(rotation * MathConst.DegreesToRadians);
-    poly.Offset(position.X, position.Y);
-    return poly;
+    UpdateSpatialInfo();
+    return spatial.RotatedArea;
+  }
+
+  public Rectangle GetRotatedAreaBounds()
+  {
+    UpdateSpatialInfo();
+    return spatial.RotatedBounds;
   }
 
   public void SetBounds(double x, double y, double width, double height)
@@ -951,6 +1037,15 @@ public abstract class SceneObject : GameObject
     public bool ObjectOwned;
   }
 
+  struct SpatialInfo
+  {
+    public enum RotationType : byte { ZeroOr180, NinetyOr270, Arbitrary };
+
+    public Rectangle Area, RotatedBounds;
+    public Polygon RotatedArea;
+    public RotationType Rotation;
+  }
+
   /// <summary>Returns true if the given object flag is set.</summary>
   bool HasFlag(Flag flag) { return (flags & flag) != 0; }
 
@@ -967,6 +1062,28 @@ public abstract class SceneObject : GameObject
     if(!HasFlag(Flag.SpatialInfoDirty) || Scene == null) return;
 
     Vector halfSize = size*0.5;
+    spatial.Area = new Rectangle(position.X-halfSize.X, position.Y-halfSize.Y, size.X, size.Y);
+    spatial.Rotation =
+      rotation == 0  || rotation == 180 ? SpatialInfo.RotationType.ZeroOr180   :
+      rotation == 90 || rotation == 270 ? SpatialInfo.RotationType.NinetyOr270 :
+      SpatialInfo.RotationType.Arbitrary;
+
+    if(spatial.RotatedArea == null) spatial.RotatedArea = new Polygon(4);
+    spatial.RotatedArea.Clear();
+    spatial.RotatedArea.AddPoint(-halfSize.X, -halfSize.Y);
+    spatial.RotatedArea.AddPoint( halfSize.X, -halfSize.Y);
+    spatial.RotatedArea.AddPoint( halfSize.X,  halfSize.Y);
+    spatial.RotatedArea.AddPoint(-halfSize.X,  halfSize.Y);
+    if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
+    {
+      spatial.RotatedArea.Rotate(rotation * MathConst.DegreesToRadians);
+      spatial.RotatedBounds = spatial.RotatedArea.GetBounds();
+    }
+    else
+    {
+      spatial.RotatedBounds = spatial.Area;
+    }
+    spatial.RotatedArea.Offset(position.X, position.Y);
 
     // recalculate the world points associated with each link point
     for(int i=0; i<numLinkPoints; i++)
@@ -978,13 +1095,13 @@ public abstract class SceneObject : GameObject
     if(rotation != 0)
     {
       double sin, cos;
-      GLMath.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
+      Math2D.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
 
       // finish recalculating the world points associated with each link point
       for(int i=0; i<numLinkPoints; i++)
       {
         // then orient it with our rotation
-        GLMath.Rotate(ref linkPoints[i].WorldPoint, sin, cos);
+        Math2D.Rotate(ref linkPoints[i].WorldPoint, sin, cos);
       }
     }
 
@@ -1031,6 +1148,8 @@ public abstract class SceneObject : GameObject
   double rotation;
   /// <summary>The rotational velocity of the object, in degrees per second.</summary>
   double autoRotation;
+  /// <summary>Cached spatial information.</summary>
+  SpatialInfo spatial;
   /// <summary>The object's link points (or null if the object contains no link points).</summary>
   LinkPoint[] linkPoints;
   /// <summary>The number of link points contained in <see cref="linkPoints"/>.</summary>
@@ -1048,7 +1167,7 @@ public abstract class SceneObject : GameObject
   /// <summary>A custom collision detector, or null if one is not defined.</summary>
   CustomCollisionDetector collisionDetector;
   /// <summary>A collection of several object flags.</summary>
-  Flag flags = Flag.Visible;
+  Flag flags = Flag.Visible | Flag.SpatialInfoDirty;
   /// <summary>Determines how the object will react when it collides with something.</summary>
   CollisionResponse collisionResponse = CollisionResponse.Clamp;
   /// <summary>A number (0-31) that determines which layer this object is on.</summary>

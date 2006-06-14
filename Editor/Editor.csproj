@@ -59,7 +59,7 @@
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Compile Include="SceneEditor.cs">
-      <SubType>Component</SubType>
+      <SubType>Form</SubType>
     </Compile>
     <Compile Include="VectorAnimationEditor.cs">
       <SubType>Form</SubType>
