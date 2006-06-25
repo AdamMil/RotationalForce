@@ -196,8 +196,10 @@ class VectorAnimationEditor : Form
     }
   }
 
+int ixx;
   private void renderPanel_Paint(object sender, PaintEventArgs e)
   {
+Console.WriteLine("painting "+ixx++);
     VectorAnimation.Polygon poly = SelectedPolygon;
     if(poly != null)
     {
@@ -297,7 +299,7 @@ class VectorAnimationEditor : Form
     this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
     this.renderPanel.MouseDragStart += new MouseEventHandler(this.renderPanel_MouseDragStart);
     this.renderPanel.MouseDrag += new MouseDragEventHandler(this.renderPanel_MouseDrag);
-    this.renderPanel.MouseDragEnd += new MouseEventHandler(this.renderPanel_MouseDragEnd);
+    this.renderPanel.MouseDragEnd += new MouseDragEventHandler(this.renderPanel_MouseDragEnd);
     this.renderPanel.MouseClick += new MouseEventHandler(this.renderPanel_MouseClick);
     // 
     // btnUp
@@ -582,11 +584,9 @@ class VectorAnimationEditor : Form
     
     // convert the bounding area to control coordinates and offset it by the size of our decoration
     Point topLeft = LocalToControl(new GLPoint(left, top)), bottomRight = LocalToControl(new GLPoint(right, bottom));
-    topLeft.Offset(-VertexRadius-1, -VertexRadius-1);
-    bottomRight.Offset(VertexRadius+1, VertexRadius+1);
-
-    // invalidate the calculated area.
     Rectangle invalidArea = Rectangle.FromLTRB(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y);
+    invalidArea.Inflate(VertexRadius+1, VertexRadius+1);
+
     if(invalidateRender)
     {
       renderPanel.InvalidateRender(invalidArea);
@@ -650,10 +650,11 @@ class VectorAnimationEditor : Form
   
   void ReplaceSelectedVertex(VectorAnimation.Vertex vertex, bool updatePropertyGrid)
   {
-    InvalidatePolygonBounds(SelectedPolygon, false);
+Console.WriteLine("Moving " + ixx++);
+    InvalidatePolygonBounds(SelectedPolygon, true);
     SelectedPolygon.RemoveVertex(selectedVertex);
     SelectedPolygon.InsertVertex(selectedVertex, vertex);
-    InvalidatePolygonBounds(SelectedPolygon, false);
+    InvalidatePolygonBounds(SelectedPolygon, true);
     
     if(updatePropertyGrid && Mode == EditMode.Vertex) propertyGrid.SelectedObject = vertex;
   }
@@ -925,7 +926,7 @@ class VectorAnimationEditor : Form
     }
   }
 
-  void renderPanel_MouseDragEnd(object sender, MouseEventArgs e)
+  void renderPanel_MouseDragEnd(object sender, MouseDragEventArgs e)
   {
     InvalidatePolygonBounds(SelectedPolygon, true);
   }

@@ -207,16 +207,24 @@ delegate void MouseDragEventHandler(object sender, MouseDragEventArgs e);
 
 class MouseDragEventArgs : MouseEventArgs
 {
-  public MouseDragEventArgs(MouseButtons button, int x, int y, int offsetX, int offsetY) : base(button, 1, x, y, 0)
+  public MouseDragEventArgs(MouseButtons button, Point originalPoint, int x, int y, int offsetX, int offsetY)
+    : base(button, 1, x, y, 0)
   {
+    start  = originalPoint;
     offset = new Size(offsetX, offsetY);
   }
   
+  public Point Start
+  {
+    get { return start; }
+  }
+
   public Size Offset
   {
     get { return offset; }
   }
 
+  Point start;
   Size offset;
 }
 
@@ -274,7 +282,7 @@ class RenderPanel : Panel
   #region Mouse dragging
   public event MouseEventHandler MouseDragStart;
   public event MouseDragEventHandler MouseDrag;
-  public event MouseEventHandler MouseDragEnd;
+  public event MouseDragEventHandler MouseDragEnd;
 
   public void CancelMouseDrag()
   {
@@ -296,7 +304,7 @@ class RenderPanel : Panel
     if(MouseDrag != null) MouseDrag(this, e);
   }
 
-  protected virtual void OnMouseDragEnd(MouseEventArgs e)
+  protected virtual void OnMouseDragEnd(MouseDragEventArgs e)
   {
     if(MouseDragEnd != null) MouseDragEnd(this, e);
   }
@@ -327,8 +335,11 @@ class RenderPanel : Panel
 
     if(dragButton != MouseButtons.None) // if we're currently dragging, fire a drag event
     {
-      OnMouseDrag(new MouseDragEventArgs(dragButton, e.X, e.Y, e.X-lastDragPos.X, e.Y-lastDragPos.Y));
-      // update the last drag point so we can send a delta to OnDrag()
+      int xd = e.X-lastDragPos.X, yd = e.Y-lastDragPos.Y;
+      if(xd == 0 && yd == 0) return;
+
+      OnMouseDrag(new MouseDragEventArgs(dragButton, mouseDownPos[ButtonToIndex(dragButton)], e.X, e.Y, xd, yd));
+      // update the last drag point so we can send a delta to OnMouseDrag()
       lastDragPos = e.Location;
     }
     else // otherwise, see if we should start dragging.
@@ -350,7 +361,7 @@ class RenderPanel : Panel
         {
           Capture = true; // capture the mouse so we can be sure to receive the end of the drag
           // then issue a drag event because the mouse has since moved. always specify the original drag button.
-          OnMouseDrag(new MouseDragEventArgs(dragButton, e.X, e.Y, xd, yd));
+          OnMouseDrag(new MouseDragEventArgs(dragButton, mouseDownPos[ButtonToIndex(dragButton)], e.X, e.Y, xd, yd));
         }
       }
     }
@@ -365,7 +376,7 @@ class RenderPanel : Panel
 
     if(dragButton == e.Button) // if we're currently dragging, end the drag
     {
-      OnMouseDragEnd(new MouseEventArgs(dragButton, e.Clicks, e.X, e.Y, e.Delta)); // specify the original drag button
+      OnMouseDragEnd(new MouseDragEventArgs(dragButton, mouseDownPos[ButtonToIndex(dragButton)], e.X, e.Y, 0, 0)); // specify the original drag button
       dragButton = MouseButtons.None; // clear our drag button flag
       Capture = false; // stop capturing the mouse so other things can use it
     }

@@ -66,6 +66,7 @@
     <Compile Include="Scene\Trigger.cs" />
     <Compile Include="Scene\VectorObject.cs" />
     <Compile Include="Scene\Scene.cs" />
+    <Compile Include="Strings.cs" />
     <Compile Include="Video.cs" />
   </ItemGroup>
   <ItemGroup>

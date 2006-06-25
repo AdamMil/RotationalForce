@@ -112,8 +112,7 @@ public sealed class VectorAnimation : Animation
     /// blending enabled.
     /// </remarks>
     [Category("Blending")]
-    [Description("Determines whether blending is explicitly enabled for this polygon. Note that even if this value "+
-      "is set to false, blending may still be enabled if the parent object has blending enabled.")]
+    [Description(Strings.BlendingEnabled)]
     [DefaultValue(false)]
     public bool BlendingEnabled
     {
@@ -126,7 +125,7 @@ public sealed class VectorAnimation : Animation
     /// <see cref="VectorObject"/> to which the animation is attached.
     /// </remarks>
     [Category("Blending")]
-    [Description("Gets/sets the source blending mode of the polygon, if blending is enabled. A value of Default will "+
+    [Description("Determines the source blending mode of the polygon, if blending is enabled. A value of Default will "+
       "cause the polygon to use the source blend of the VectorObject to which the animation is attached.")]
     [DefaultValue(SourceBlend.Default)]
     public SourceBlend SourceBlendMode
@@ -140,7 +139,7 @@ public sealed class VectorAnimation : Animation
     /// of the <see cref="VectorObject"/> to which the animation is attached.
     /// </remarks>
     [Category("Blending")]
-    [Description("Gets/sets the destination blending mode of the polygon, if blending is enabled. A value of Default "+
+    [Description("Determines the destination blending mode of the polygon, if blending is enabled. A value of Default "+
       "will cause the polygon to use the destination blend of the VectorObject to which the animation is attached.")]
     [DefaultValue(DestinationBlend.Default)]
     public DestinationBlend DestinationBlendMode
