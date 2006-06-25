@@ -53,6 +53,11 @@ public static class EngineMath
   }
   #endregion
 
+  public static Point GetCenterPoint(Rectangle rect)
+  {
+    return new Point(rect.X + rect.Width/2, rect.Y + rect.Height/2);
+  }
+
   // TODO: these can probably be optimized by only interpolating values that aren't already equal
   #region Interpolate
   public static Rectangle Interpolate(ref Rectangle start, ref Rectangle end, double delta, InterpolationMode mode)

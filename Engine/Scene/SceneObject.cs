@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using GameLib.Input;
 using GameLib.Mathematics;
 using GameLib.Mathematics.TwoD;
@@ -128,16 +129,39 @@ public abstract class SceneObject : GameObject
   }
 
   #region Blending
+  [Category("Rendering")]
+  [Description(Strings.BlendingEnabled)]
+  [DefaultValue(false)]
   public bool BlendingEnabled
   {
     get { return HasFlag(Flag.BlendEnabled); }
     set { SetFlag(Flag.BlendEnabled, value); }
   }
 
+  [Category("Rendering")]
+  [Description("Gets/sets the blending color of the object. Some objects simply use this as their color.")]
   public Color BlendColor
   {
     get { return blendColor; }
     set { blendColor = value; }
+  }
+
+  [Category("Rendering")]
+  [Description("Gets/sets the source blending mode of the object, if blending is enabled.")]
+  [DefaultValue(SourceBlend.Default)]
+  public SourceBlend SourceBlendMode
+  {
+    get { return sourceBlend; }
+    set { sourceBlend = value; }
+  }
+  
+  [Category("Rendering")]
+  [Description("Gets/sets the destination blending mode of the object, if blending is enabled.")]
+  [DefaultValue(DestinationBlend.Default)]
+  public DestinationBlend DestinationBlendMode
+  {
+    get { return destBlend; }
+    set { destBlend = value; }
   }
 
   public double GetBlendAlpha() { return blendColor.A / 255.0; }
@@ -165,12 +189,15 @@ public abstract class SceneObject : GameObject
   /// called after all other tests have passed.
   /// </summary>
   /// <value>A <see cref="CustomCollisionDetector"/> delegate, or null if there is no custom detector set.</value>
+  [Browsable(false)]
   public CustomCollisionDetector CustomCollisionDetector
   {
     get { return collisionDetector; }
     set { collisionDetector = value; }
   }
 
+  [Category("Collisions")]
+  [Description("Indicates the type of collision area set for this object.")]
   public CollisionArea CollisionArea
   {
     get
@@ -182,36 +209,58 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  [Category("Collisions")]
+  [Description("Determines whether collision detection is enabled for this object.")]
+  [DefaultValue(false)]
   public bool CollisionEnabled
   {
     get { return HasFlag(Flag.CollisionEnabled); }
     set { SetFlag(Flag.CollisionEnabled, value); }
   }
 
+  [Category("Collisions")]
+  [Description("A bitmask that determines the object groups considered for collision detection. This object can only "+
+    "collide with objects in the given groups.")]
+  [DefaultValue((uint)0xffffffff)]
   public uint CollisionGroups
   {
     get { return collisionGroups; }
     set { collisionGroups = value; }
   }
   
+  [Category("Collisions")]
+  [Description("A bitmask that determines the layers considered for collision detection. This object can only "+
+    "collide with objects on the given layers.")]
+  [DefaultValue((uint)0xffffffff)]
   public uint CollisionLayers
   {
     get { return collisionLayers; }
     set { collisionLayers = value; }
   }
   
+  [Category("Collisions")]
+  [Description("Determines what will happen when this object collides with another.")]
+  [DefaultValue(CollisionResponse.Clamp)]
   public CollisionResponse CollisionResponse
   {
     get { return collisionResponse; }
     set { collisionResponse = value; }
   }
 
+  [Category("Collisions")]
+  [Description("Determines whether this object sends collisions to other objects. If set to false, other objects can "+
+    "hit this one, but cannot be hit by this one.")]
+  [DefaultValue(false)]
   public bool SendsCollisions
   {
     get { return HasFlag(Flag.SendsCollisions); }
     set { SetFlag(Flag.SendsCollisions, value); }
   }
   
+  [Category("Collisions")]
+  [Description("Determines whether this object receives collisions from other objects. If set to false, other "+
+    "objects cannot hit this one, although they can still be hit by it.")]
+  [DefaultValue(false)]
   public bool ReceivesCollisions
   {
     get { return HasFlag(Flag.ReceivesCollisions); }
@@ -322,6 +371,9 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Grouping
+  [Category("Behavior")]
+  [Description("A bitmask that determines the groups of which this object is a member.")]
+  [DefaultValue(1)]
   public uint GroupMask
   {
     get { return groups; }
@@ -554,6 +606,9 @@ public abstract class SceneObject : GameObject
 
   #region Rotation
   /// <summary>Gets/sets the rotational velocity of the object, in degrees per second.</summary>
+  [Category("Physics")]
+  [Description("The rotational velocity of the object, in degrees per second.")]
+  [DefaultValue(0)]
   public double AngularVelocity
   {
     get { return autoRotation; }
@@ -567,6 +622,9 @@ public abstract class SceneObject : GameObject
   /// <summary>Gets/sets the object's rotation, in degrees.</summary>
   /// <value>The object's rotation, from 0 to 360 degrees, exclusive.</value>
   /// <remarks>When the rotation is set, it will be normalized to a value between 0 and 360 degrees, exclusive.</remarks>
+  [Category("Spatial")]
+  [Description("The rotation of the object, in degrees.")]
+  [DefaultValue(0)]
   public double Rotation
   {
     get { return rotation; }
@@ -594,6 +652,7 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Size, position
+  [Browsable(false)]
   public Rectangle Area
   {
     get
@@ -619,6 +678,8 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  [Category("Spatial")]
+  [Description("The position of the object's center point, in scene coordinates.")]
   public Point Position
   {
     get { return position; }
@@ -634,6 +695,8 @@ public abstract class SceneObject : GameObject
     }
   }
   
+  [Category("Spatial")]
+  [Description("The size of the object, in scene coordinates.")]
   public Vector Size
   {
     get { return size; }
@@ -643,12 +706,17 @@ public abstract class SceneObject : GameObject
       {
         EngineMath.AssertValidFloat(value.X);
         EngineMath.AssertValidFloat(value.Y);
+        if(value.X < 0 || value.Y < 0)
+        {
+          throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
+        }
         size = value;
         SetFlag(Flag.SpatialInfoDirty, true);
       }
     }
   }
 
+  [Browsable(false)]
   public double X
   {
     get { return position.X; }
@@ -663,6 +731,7 @@ public abstract class SceneObject : GameObject
     }
   }
   
+  [Browsable(false)]
   public double Y
   {
     get { return position.Y; }
@@ -677,6 +746,7 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  [Browsable(false)]
   public double Width
   {
     get { return size.X; }
@@ -685,12 +755,14 @@ public abstract class SceneObject : GameObject
       if(value != size.X)
       {
         EngineMath.AssertValidFloat(value);
+        if(value < 0) throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
         size.X = value;
         SetFlag(Flag.SpatialInfoDirty, true);
       }
     }
   }
   
+  [Browsable(false)]
   public double Height
   {
     get { return size.Y; }
@@ -699,12 +771,16 @@ public abstract class SceneObject : GameObject
       if(value != size.Y)
       {
         EngineMath.AssertValidFloat(value);
+        if(value < 0) throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
         size.Y = value;
         SetFlag(Flag.SpatialInfoDirty, true);
       }
     }
   }
 
+  [Category("Spatial")]
+  [Description("The object's layer, from 0 to 31. 0 is the topmost layer.")]
+  [DefaultValue(0)]
   public byte Layer
   {
     get { return layer; }
@@ -715,6 +791,7 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  [Browsable(false)]
   public uint LayerMask
   {
     get { return (uint)1 << layer; }
@@ -749,6 +826,8 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Velocity, acceleration
+  [Category("Physics")]
+  [Description("The object's acceleration, in scene units per second per second.")]
   public Vector Acceleration
   {
     get { return acceleration; }
@@ -760,11 +839,14 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  [Browsable(false)]
   public bool AtRest
   {
     get { return velocity.X == 0 && velocity.Y == 0; }
   }
 
+  [Category("Physics")]
+  [Description("The object's velocity, in scene units per second.")]
   public Vector Velocity
   {
     get { return velocity; }
@@ -776,6 +858,7 @@ public abstract class SceneObject : GameObject
     }
   }
 
+  [Browsable(false)]
   public double VelocityX
   {
     get { return velocity.X; }
@@ -786,6 +869,7 @@ public abstract class SceneObject : GameObject
     } 
   }
 
+  [Browsable(false)]
   public double VelocityY
   {
     get { return velocity.Y; }
@@ -848,18 +932,29 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Lifetime, visibility, flipping, mobility, pickability
+  [Category("Behavior")]
+  [Description("Determines whether the object is flipped along the horizontal axis. This modifies not only "+
+    "rendering, but also collision detection and physics.")]
+  [DefaultValue(false)]
   public bool HorizontalFlip
   {
     get { return HasFlag(Flag.FlipHorizontal); }
     set { SetFlag(Flag.FlipHorizontal, value); }
   }
 
+  [Category("Behavior")]
+  [Description("Determines whether the object is flipped along the vertical axis. This modifies not only "+
+    "rendering, but also collision detection and physics.")]
+  [DefaultValue(false)]
   public bool VerticalFlip
   {
     get { return HasFlag(Flag.FlipVertical); }
     set { SetFlag(Flag.FlipVertical, value); }
   }
 
+  [Category("Physics")]
+  [Description("Determines whether the object is immobile. Immobile objects will not be moved by the engine.")]
+  [DefaultValue(false)]
   public bool Immobile
   {
     get { return HasFlag(Flag.Immobile); }
@@ -873,6 +968,10 @@ public abstract class SceneObject : GameObject
   /// <remarks>
   /// To delete an object immediately, don't set its lifetime to zero. Instead, use the <see cref="Delete"/> method.
   /// </remarks>
+  [Category("Behavior")]
+  [Description("Determines the object's lifetime. If set to a positive value, the object will be automatically "+
+    "deleted after that many seconds.")]
+  [DefaultValue(0)]
   public double Lifetime
   {
     get { return lifetime; }
@@ -885,6 +984,9 @@ public abstract class SceneObject : GameObject
   }
   
   /// <summary>Gets/sets whether the object will be returned by picking functions.</summary>
+  [Category("Miscellaneous")]
+  [Description("Determines whether this object will be returned by picking functions.")]
+  [DefaultValue(false)]
   public bool PickingAllowed
   {
     get { return HasFlag(Flag.PickingAllowed); }
@@ -892,6 +994,9 @@ public abstract class SceneObject : GameObject
   }
 
   /// <summary>Gets/sets whether the object and its children will be rendered in the scene.</summary>
+  [Category("Rendering")]
+  [Description("Determines whether the object and its children will be rendered in the scene.")]
+  [DefaultValue(false)]
   public bool Visible
   {
     get { return HasFlag(Flag.Visible); }
@@ -899,6 +1004,7 @@ public abstract class SceneObject : GameObject
   }
 
   /// <summary>Returns a value indicating whether the object has been marked for deletion.</summary>
+  [Browsable(false)]
   public bool Dead
   {
     get { return HasFlag(Flag.Deleted); }
@@ -930,8 +1036,9 @@ public abstract class SceneObject : GameObject
 
     GL.glPushMatrix(); // we should be in ModelView mode
     GL.glTranslated(X, Y, 0); // translate us to the origin
-    GL.glScaled(Width*0.5, Height*0.5, 1); // set up local coordinates (scale so that -1 to 1 covers our area)
     if(rotation != 0) GL.glRotated(rotation, 0, 0, 1); // rotate, if necessary
+    GL.glScaled(Width  * (HorizontalFlip ? -0.5 : 0.5),     // set up local coordinates (scale so that -1 to 1
+                Height * (VerticalFlip   ? -0.5 : 0.5), 1); // covers our area, including flipping)
 
     RenderContent(); // now allow the derived class to render the content
 
@@ -982,43 +1089,43 @@ public abstract class SceneObject : GameObject
     /// <summary>Determines whether this object will receive collisions from other objects, and whether the
     /// <see cref="HitBy"/> event will be raised.
     /// </summary>
-    ReceivesCollisions=0x03,
+    ReceivesCollisions=0x04,
     /// <summary>No collision area will be defined. Collision detection will always fail, unless combined with custom
     /// collision detection.
     /// </summary>
     NoCollision=0, 
     /// <summary>A circular collision area will be used, defined by a point and a radius.</summary>
-    CircleCollision=0x04,
+    CircleCollision=0x08,
     /// <summary>A rectangular collision area will be used.</summary>
-    RectangleCollision=0x08,
+    RectangleCollision=0x10,
     /// <summary>An arbitrary collision polygon will be used.</summary>
-    PolygonCollision=0x0c,
+    PolygonCollision=0x18,
     /// <summary>A mask that can be applied to retrieve the collision type.</summary>
-    CollisionMask=0x0c,
+    CollisionMask=0x18,
 
     /// <summary>Determines whether the object and its children will be rendered in the scene.</summary>
-    Visible=0x10,
+    Visible=0x20,
     /// <summary>Determines whether GL blending is enabled.</summary>
-    BlendEnabled=0x20,
+    BlendEnabled=0x40,
     /// <summary>Determines whether the object is rendered flipped horizontally.</summary>
-    FlipHorizontal=0x40,
+    FlipHorizontal=0x80,
     /// <summary>Determines whether the object is rendered flipped vertically.</summary>
-    FlipVertical=0x80,
+    FlipVertical=0x100,
     /// <summary>Determines whether pointer (ie, mouse pointer) events (eg, OnMouseEnter, OnMouseLeave) will be fired.
     /// </summary>
-    EnablePointerEvents=0x100,
+    EnablePointerEvents=0x200,
     /// <summary>Determines whether the engine will never move this object. The object's location can be changed
     /// manually, of course.
     /// </summary>
-    Immobile=0x200,
+    Immobile=0x400,
     /// <summary>This flag will be set when the object has been marked for deletion.</summary>
-    Deleted=0x400,
+    Deleted=0x800,
     /// <summary>Determines whether the object will be returned by picking functions.</summary>
-    PickingAllowed=0x800,
+    PickingAllowed=0x1000,
     /// <summary>Determines if the criteria used to calculate cached spatial information (like the bounding box) have
     /// been changed.
     /// </summary>
-    SpatialInfoDirty=0x1000,
+    SpatialInfoDirty=0x2000,
   }
 
   struct LinkPoint
@@ -1077,13 +1184,18 @@ public abstract class SceneObject : GameObject
     if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
     {
       spatial.RotatedArea.Rotate(rotation * MathConst.DegreesToRadians);
+    }
+
+    spatial.RotatedArea.Offset(position.X, position.Y);
+
+    if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
+    {
       spatial.RotatedBounds = spatial.RotatedArea.GetBounds();
     }
     else
     {
       spatial.RotatedBounds = spatial.Area;
     }
-    spatial.RotatedArea.Offset(position.X, position.Y);
 
     // recalculate the world points associated with each link point
     for(int i=0; i<numLinkPoints; i++)

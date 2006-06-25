@@ -332,6 +332,13 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   #endregion
 
   #region Coordinate conversion
+  /// <summary>Converts a distance in client coordinates to a distance in scene coordinates.</summary>
+  public Vector ClientToScene(Size clientSize)
+  {
+    CalculateCameraView();
+    return new Vector(clientSize.Width*UnitsPerPixel, clientSize.Height*UnitsPerPixel);
+  }
+
   /// <summary>Converts a point relative to the client area of the scene view to a point within the scene.</summary>
   /// <param name="clientPoint">A point relative to the client area of the scene view, in pixels.</param>
   /// <returns>The point within the scene, in world units.</returns>
@@ -348,6 +355,13 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   {
     return new Rectangle(ClientToScene(clientRect.Location), // ClientToScene will call CalculateCameraView
                          new Vector(clientRect.Width*UnitsPerPixel, clientRect.Height*UnitsPerPixel));
+  }
+
+  /// <summary>Converts a distance in scene coordinates to a distance in client coordinates.</summary>
+  public Size ClientToScene(Vector sceneSize)
+  {
+    CalculateCameraView();
+    return new Size((int)Math.Round(sceneSize.X/UnitsPerPixel), (int)Math.Round(sceneSize.Y/UnitsPerPixel));
   }
 
   /// <summary>Converts a point within the scene to a point relative to the client area of the scene view.</summary>
