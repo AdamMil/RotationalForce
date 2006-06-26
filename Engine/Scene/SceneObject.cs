@@ -781,13 +781,13 @@ public abstract class SceneObject : GameObject
   [Category("Spatial")]
   [Description("The object's layer, from 0 to 31. 0 is the topmost layer.")]
   [DefaultValue(0)]
-  public byte Layer
+  public int Layer
   {
     get { return layer; }
     set
     {
       if(value > 31) throw new ArgumentOutOfRangeException("Layer", "Layers can only be from 0-31.");
-      layer = value;
+      layer = (byte)value;
     }
   }
 
