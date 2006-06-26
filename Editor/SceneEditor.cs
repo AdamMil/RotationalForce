@@ -33,11 +33,18 @@ public class SceneEditor : Form
 
   public SceneEditor()
   {
+    toolbox = new Toolbox(this);
+
     InitializeComponent();
 
     ListViewItem triggerItem = new ListViewItem("Trigger", 0, objectList.Groups[3]);
     triggerItem.Tag = TriggerName;
     objectList.Items.Add(triggerItem);
+    
+    toolBar.Items[0].Tag = Tools.Object;
+    toolBar.Items[1].Tag = Tools.Layers;
+
+    CurrentTool = Tools.Object;
   }
 
   static SceneEditor()
@@ -77,6 +84,7 @@ public class SceneEditor : Form
 
   void InvalidateDecoration(Rectangle rect)
   {
+    rect.Inflate(1, 1);
     renderPanel.Invalidate(rect);
   }
 
@@ -88,6 +96,7 @@ public class SceneEditor : Form
 
   void InvalidateRender(Rectangle rect)
   {
+    rect.Inflate(1, 1);
     sceneView.Invalidate(rect);
     renderPanel.InvalidateRender(rect);
   }
@@ -98,177 +107,84 @@ public class SceneEditor : Form
     controlRect.Inflate(DecorationRadius, DecorationRadius); // include space for our decoration
     Invalidate(controlRect, invalidateRender);
   }
-  
-  void InvalidateSelectedBounds(bool invalidateRender)
-  {
-    Rectangle rect = selectedObjectBounds;
-    rect.Inflate(DecorationRadius, DecorationRadius);
-    Invalidate(rect, invalidateRender);
-  }
   #endregion
 
   #region Layers
+  int CurrentLayer
+  {
+    get { return currentLayer; }
+    set
+    {
+      if(value != currentLayer)
+      {
+        currentLayer = value;
+        if(RenderToCurrentLayer)
+        {
+          sceneView.LayerMask = VisibleLayerMask;
+          InvalidateRender();
+        }
+      }
+    }
+  }
+  
   uint CurrentLayerMask
   {
-    get { return 0xffffffff; }
+    get { return (uint)1<<CurrentLayer; }
+  }
+
+  bool RenderToCurrentLayer
+  {
+    get { return renderToCurrentLayer; }
+    
+    set
+    {
+      if(value != renderToCurrentLayer)
+      {
+        renderToCurrentLayer = value;
+        if(currentLayer != 0)
+        {
+          sceneView.LayerMask = VisibleLayerMask;
+          InvalidateRender();
+        }
+      }
+    }
   }
 
   uint VisibleLayerMask
   {
-    get { return 0xffffffff; }
-  }
-  #endregion
-
-  #region Object selection
-  [Flags]
-  new enum Handle
-  {
-    None   = 0,
-    Top    = 1,
-    Bottom = 2,
-    Left   = 4,
-    Right  = 8,
-
-    TopLeft=Top|Left, TopRight = Top|Right, BottomLeft = Bottom|Left, BottomRight = Bottom|Right,
-  }
-
-  void AddSelectedObjectBounds(SceneObject obj)
-  {
-    GLRect sceneBounds = obj.GetRotatedAreaBounds();
-    Rectangle clientBounds = sceneView.SceneToClient(sceneBounds);
-
-    if(selectedObjectBounds.Width == 0)
+    get
     {
-      selectedObjectBounds = clientBounds;
-      selectedObjectSceneBounds = sceneBounds;
+      if(!RenderToCurrentLayer)
+      {
+        return visibleLayerMask;
+      }
+      else
+      {
+        uint layerMask = 0xffffffff;
+        for(int layer=currentLayer; layer > 0; layer--)
+        {
+          layerMask <<= 1;
+        }
+        return layerMask & visibleLayerMask;
+      }
     }
-    else
+
+    set
     {
-      selectedObjectBounds = Rectangle.Union(selectedObjectBounds, clientBounds);
-      selectedObjectSceneBounds.Unite(sceneBounds);
+      uint oldValue = VisibleLayerMask;
+      visibleLayerMask = value;
+
+      if(VisibleLayerMask != oldValue)
+      {
+        sceneView.LayerMask = VisibleLayerMask;
+        InvalidateRender();
+      }
     }
   }
   
-  void ClearSelectedObjectBounds()
-  {
-    selectedObjectBounds = new Rectangle();
-    selectedObjectSceneBounds = new GLRect();
-  }
-
-  void DeselectObject(SceneObject obj)
-  {
-    if(IsSelected(obj))
-    {
-      InvalidateSelectedBounds(false);
-      ClearSelectedObjectBounds();
-      foreach(SceneObject selectedObj in selectedObjects)
-      {
-        if(selectedObj != obj)
-        {
-          AddSelectedObjectBounds(selectedObj);
-        }
-      }
-      selectedObjects.Remove(obj);
-      OnSelectedObjectsChanged();
-    }
-  }
-
-  void DeselectObjects()
-  {
-    if(selectedObjects.Count != 0)
-    {
-      InvalidateSelectedBounds(false);
-      selectedObjects.Clear();
-      ClearSelectedObjectBounds();
-      OnSelectedObjectsChanged();
-    }
-  }
-
-  bool IsSelected(SceneObject obj) { return selectedObjects.Contains(obj); }
-
-  SceneObject ObjectUnderPoint(Point pt)
-  {
-    PickOptions options = new PickOptions();
-    options.AllowInvisible  = true;
-    options.AllowUnpickable = true;
-    options.GroupMask       = 0xffffffff;
-    options.LayerMask       = CurrentLayerMask;
-    options.SortByLayer     = true;
-
-    foreach(SceneObject obj in scene.PickPoint(sceneView.ClientToScene(pt), options))
-    {
-      return obj; // return the first item
-    }
-    
-    return null;
-  }
-
-  void OnSelectedObjectsChanged()
-  {
-    if(selectedObjects.Count == 0)
-    {
-      HideRightPane();
-    }
-    else
-    {
-      propertyGrid.SelectedObjects = selectedObjects.ToArray();
-      ShowPropertyGrid();
-    }
-  }
-
-  void RecalculateSelectedBounds()
-  {
-    ClearSelectedObjectBounds();
-    foreach(SceneObject obj in selectedObjects)
-    {
-      AddSelectedObjectBounds(obj);
-    }
-  }
-
-  void SelectObject(SceneObject obj, bool deselectOthers)
-  {
-    if(deselectOthers)
-    {
-      if(selectedObjects.Count == 1 && IsSelected(obj)) return;
-      InvalidateSelectedBounds(false);
-      DeselectObjects();
-    }
-    else if(IsSelected(obj))
-    {
-      return;
-    }
-
-    selectedObjects.Add(obj);
-    AddSelectedObjectBounds(obj);
-    InvalidateSelectedBounds(false);
-    OnSelectedObjectsChanged();
-  }
-
-  void SelectObject(Point pt, bool deselectOthers)
-  {
-    SceneObject obj = ObjectUnderPoint(pt);
-    if(obj != null) SelectObject(obj, deselectOthers);
-    else if(deselectOthers) DeselectObjects();
-  }
-
-  void ToggleObjectSelection(Point pt)
-  {
-    SceneObject obj = ObjectUnderPoint(pt);
-    if(obj == null) return;
-
-    if(IsSelected(obj))
-    {
-      DeselectObject(obj);
-    }
-    else
-    {
-      SelectObject(obj, false);
-    }
-  }
-
-  Rectangle selectedObjectBounds;
-  GLRect selectedObjectSceneBounds;
-  List<SceneObject> selectedObjects = new List<SceneObject>();
+  int currentLayer = 0;
+  uint visibleLayerMask = 0xffffffff;
+  bool renderToCurrentLayer;
   #endregion
 
   DesktopControl desktop;
@@ -301,8 +217,8 @@ public class SceneEditor : Form
     this.newVectorAnim = new System.Windows.Forms.ToolStripButton();
     this.objectList = new RotationalForce.Editor.ToolboxList();
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
-    this.renderPanel = new RotationalForce.Editor.RenderPanel();
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
+    this.renderPanel = new RotationalForce.Editor.RenderPanel();
     newStaticImg = new System.Windows.Forms.ToolStripButton();
     newAnimatedImg = new System.Windows.Forms.ToolStripButton();
     deleteItem = new System.Windows.Forms.ToolStripButton();
@@ -363,6 +279,7 @@ public class SceneEditor : Form
     selectTool.Size = new System.Drawing.Size(23, 20);
     selectTool.Text = "Select";
     selectTool.ToolTipText = "Select. Use this tool to select and manipulate objects.";
+    selectTool.Click += new System.EventHandler(this.tool_Click);
     // 
     // layerTool
     // 
@@ -374,6 +291,7 @@ public class SceneEditor : Form
     layerTool.Size = new System.Drawing.Size(23, 20);
     layerTool.Text = "Layers";
     layerTool.ToolTipText = "Layers. Use this tool to show and hide layers.";
+    layerTool.Click += new System.EventHandler(this.tool_Click);
     // 
     // cameraTool
     // 
@@ -385,6 +303,7 @@ public class SceneEditor : Form
     cameraTool.Size = new System.Drawing.Size(23, 20);
     cameraTool.Text = "Camera";
     cameraTool.ToolTipText = "Camera. Use this tool to zoom and place the camera.";
+    cameraTool.Click += new System.EventHandler(this.tool_Click);
     // 
     // terrainTool
     // 
@@ -396,6 +315,7 @@ public class SceneEditor : Form
     terrainTool.Size = new System.Drawing.Size(23, 20);
     terrainTool.Text = "Terrain";
     terrainTool.ToolTipText = "Terrain. Use this tool to create vector-based terrain.";
+    terrainTool.Click += new System.EventHandler(this.tool_Click);
     // 
     // mountTool
     // 
@@ -407,6 +327,7 @@ public class SceneEditor : Form
     mountTool.Size = new System.Drawing.Size(23, 20);
     mountTool.Text = "Mount Points";
     mountTool.ToolTipText = "Mount points. Use this tool to set the mount points of the selected object.";
+    mountTool.Click += new System.EventHandler(this.tool_Click);
     // 
     // menuBar
     // 
@@ -539,6 +460,15 @@ public class SceneEditor : Form
     this.objectImgs.TransparentColor = System.Drawing.Color.Transparent;
     this.objectImgs.Images.SetKeyName(0, "TriggerIcon.bmp");
     // 
+    // propertyGrid
+    // 
+    this.propertyGrid.Dock = System.Windows.Forms.DockStyle.Fill;
+    this.propertyGrid.Location = new System.Drawing.Point(0, 0);
+    this.propertyGrid.Name = "propertyGrid";
+    this.propertyGrid.Size = new System.Drawing.Size(205, 276);
+    this.propertyGrid.TabIndex = 0;
+    this.propertyGrid.Visible = false;
+    // 
     // renderPanel
     // 
     this.renderPanel.AllowDrop = true;
@@ -562,16 +492,6 @@ public class SceneEditor : Form
     this.renderPanel.MouseEnter += new System.EventHandler(this.renderPanel_MouseEnter);
     this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
     this.renderPanel.MouseDragEnd += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDragEnd);
-    // 
-    // propertyGrid
-    // 
-    this.propertyGrid.Dock = System.Windows.Forms.DockStyle.Fill;
-    this.propertyGrid.Location = new System.Drawing.Point(0, 0);
-    this.propertyGrid.Name = "propertyGrid";
-    this.propertyGrid.Size = new System.Drawing.Size(205, 276);
-    this.propertyGrid.TabIndex = 0;
-    this.propertyGrid.Visible = false;
-    this.propertyGrid.PropertyValueChanged += new PropertyValueChangedEventHandler(propertyGrid_PropertyValueChanged);
     // 
     // SceneEditor
     // 
@@ -604,158 +524,332 @@ public class SceneEditor : Form
 
   #endregion
 
-  void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
+  #region Tools
+  #region EditTool
+  abstract class EditTool
   {
-    RecalculateSelectedBounds();
-    InvalidateRender();
-  }
-
-  void SceneEditor_KeyDown(object sender, KeyEventArgs e)
-  {
-    SceneEditor_KeyChanged(e, true);
-  }
-
-  void SceneEditor_KeyUp(object sender, KeyEventArgs e)
-  {
-    SceneEditor_KeyChanged(e, false);
-  }
-
-  void SceneEditor_KeyChanged(KeyEventArgs e, bool down)
-  {
-    if(!renderPanel.Focused) return;
-
-    if(e.KeyCode == Keys.ControlKey || e.KeyCode == Keys.LControlKey || e.KeyCode == Keys.RControlKey)
+    public EditTool(SceneEditor editor)
     {
-      SetCursor();
+      this.editor = editor;
     }
-    else if(e.KeyCode == Keys.Delete && down)
+
+    public virtual void Activate() { }
+    public virtual void Deactivate() { }
+
+    public virtual void KeyPress(KeyEventArgs e, bool down) { }
+    public virtual void MouseClick(MouseEventArgs e) { }
+    public virtual void MouseMove(MouseEventArgs e) { }
+    public virtual void MouseDragStart(MouseEventArgs e) { }
+    public virtual void MouseDrag(MouseDragEventArgs e) { }
+    public virtual void MouseDragEnd(MouseDragEventArgs e) { }
+
+    public virtual void PanelResized() { }
+    public virtual void PaintDecoration(Graphics g) { }
+    
+    protected SceneEditor Editor
     {
+      get { return editor; }
+    }
+    
+    protected RenderPanel Panel
+    {
+      get { return Editor.renderPanel; }
+    }
+    
+    protected Scene Scene
+    {
+      get { return Editor.scene; }
+    }
+
+    protected SceneViewControl SceneView
+    {
+      get { return Editor.sceneView; }
+    }
+
+    SceneEditor editor;
+  }
+  #endregion
+
+  #region ObjectTool
+  class ObjectTool : EditTool
+  {
+    public ObjectTool(SceneEditor editor) : base(editor) { }
+
+    public override void Activate()
+    {
+      Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
+    }
+
+    public override void Deactivate()
+    {
+      Editor.HideRightPane();
+      DeselectObjects();
+      Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
+    }
+
+    public override void KeyPress(KeyEventArgs e, bool down)
+    {
+      if(down && e.KeyCode == Keys.Delete)
+      {
+        foreach(SceneObject obj in selectedObjects)
+        {
+          Scene.RemoveObject(obj);
+        }
+        DeselectObjects();
+        
+        e.Handled = true;
+      }
+    }
+
+    #region Mouse click
+    public override void MouseClick(MouseEventArgs e)
+    {
+      // a plain left click selects the object beneath the cursor (if any) and deselects others
+      if(e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None)
+      {
+        SelectObject(e.Location, true);
+      }
+      // a shift-left click toggles the selection of the object beneath the cursor
+      else if(e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Shift)
+      {
+        ToggleObjectSelection(e.Location);
+      }
+    }
+    #endregion
+
+    #region Mouse drag
+    public override void MouseDragStart(MouseEventArgs e)
+    {
+      // we only care about left-drags
+      if(e.Button != MouseButtons.Left)
+      {
+        Panel.CancelMouseDrag();
+        return;
+      }
+      
+      // if zero or one objects are selected, select the object under the pointer
+      if(selectedObjects.Count < 2)
+      {
+        SceneObject obj = ObjectUnderPoint(e.Location);
+        if(obj != null) SelectObject(obj, true);
+      }
+      
+      dragHandle = GetHandleUnderPoint(e.Location);
+
+      // if the user drags outside the selection rectangle, do a box-selection
+      if(dragHandle == Handle.None && !GetHandleBorder().Contains(e.Location))
+      {
+        StartBoxSelection();
+      }
+      else
+      {
+        draggedObjs.Clear();
+        foreach(SceneObject obj in selectedObjects)
+        {
+          draggedObjs.Add(new DraggedObject(obj));
+        }
+
+         // plain drag does movement or resizing. shift-drag does aspect-locked resizing or axis-locked moving.
+        if(Control.ModifierKeys == Keys.None || Control.ModifierKeys == Keys.Shift)
+        {
+          StartResize();
+        }
+        else if(Control.ModifierKeys == Keys.Control) // rotation drag
+        {
+          StartRotation(e);
+        }
+      }
+    }
+
+    public override void MouseDrag(MouseDragEventArgs e)
+    {
+      InvalidateSelectedBounds(true);
+
+      if(dragMode == DragMode.Select)
+      {
+        DragSelection(e);
+      }
+      else if(dragMode == DragMode.Rotate)
+      {
+        DragRotation(e);
+      }
+      else if(dragMode == DragMode.Move)
+      {
+        DragMove(e);
+      }
+      else if(dragMode == DragMode.Resize)
+      {
+        DragResize(e);
+      }
+
+      RecalculateSelectedBounds();
+      InvalidateSelectedBounds(true);
+    }
+
+    void DragMove(MouseDragEventArgs e)
+    {
+      Size  clientDist = new Size(e.X - e.Start.X, e.Y - e.Start.Y);
+      Vector sceneDist = SceneView.ClientToScene(clientDist);
+      for(int i=0; i<selectedObjects.Count; i++)
+      {
+        selectedObjects[i].Position = draggedObjs[i].Position + sceneDist;
+      }
+    }
+
+    void DragResize(MouseDragEventArgs e)
+    {
+      Size  clientDist = new Size(e.X - e.Start.X, e.Y - e.Start.Y); // the X and Y mouse distance in pixels
+      Vector sceneDist = SceneView.ClientToScene(clientDist);    // the X and Y mouse distance in scene units
+      Vector sizeDelta = new Vector(); // the amount the box's size is changing, in scene units
+
+      if((dragHandle & Handle.Left) != 0) // if the left edge is being dragged
+      {
+        sizeDelta.X = -sceneDist.X; // then the resize amount gets bigger as the mouse moves left
+      }
+      else if((dragHandle & Handle.Right) != 0) // if the right edge is being dragged
+      {
+        sizeDelta.X = sceneDist.X; // then the resize amount gets bigger as the mouse moves right
+      }
+      else // neither left/right edge is being dragged
+      {
+        sceneDist.X = 0; // lock the mouse X movement to zero because we later use it to calculate object movement
+      }
+
+      if((dragHandle & Handle.Top) != 0) // top edge is being dragged
+      {
+        sizeDelta.Y = -sceneDist.Y; // resize amount gets bigger as mouse moves up
+      }
+      else if((dragHandle & Handle.Bottom) != 0) // bottom edge is being dragged
+      {
+        sizeDelta.Y = sceneDist.Y; // resize amount gets bigger as mouse moves down
+      }
+      else // neither top/bottom edge is being dragged
+      {
+        sceneDist.Y = 0; // lock the mouse Y movement to zero because we later use it to calculate object movement
+      }
+
+      // we use aspect lock if the shift key is depressed, or any object is rotated arbitrarily
+      bool aspectLock = Control.ModifierKeys == Keys.Shift;
       foreach(SceneObject obj in selectedObjects)
       {
-        scene.RemoveObject(obj);
+        if(obj.Rotation != 0 && obj.Rotation != 180 && obj.Rotation != 90 && obj.Rotation != 270)
+        {
+          aspectLock = true;
+          break;
+        }
       }
-      DeselectObjects();
-    }
-  }
 
-  void renderPanel_MouseEnter(object sender, EventArgs e)
-  {
-    renderPanel.Focus();
-  }
-
-  #region Mouse handling within the render pane
-  Handle GetHandleUnderPoint(Point pt)
-  {
-    foreach(Handle handle in GetHandles())
-    {
-      if(GetHandleRect(handle).Contains(pt)) return handle;
-    }
-    return Handle.None;
-  }
-
-  Rectangle GetHandleBorder()
-  {
-    Rectangle rect = selectedObjectBounds;
-    if(rect.Width != 0)
-    {
-      rect.Inflate(5, 5);
-      rect.Width  -= 1;
-      rect.Height -= 1;
-    }
-    return rect;
-  }
-  
-  static IEnumerable<Handle> GetHandles()
-  {
-    yield return Handle.TopLeft;
-    yield return Handle.Top;
-    yield return Handle.TopRight;
-    yield return Handle.Right;
-    yield return Handle.BottomRight;
-    yield return Handle.Bottom;
-    yield return Handle.BottomLeft;
-    yield return Handle.Left;
-  }
-
-  Rectangle GetHandleRect(Handle handle)
-  {
-    Rectangle rect = GetHandleBorder();
-    int x, y;
-    
-    if((handle & Handle.Left) != 0) x = rect.X;
-    else if((handle & Handle.Right) != 0) x = rect.Right;
-    else x = rect.X + rect.Width/2;
-
-    if((handle & Handle.Top) != 0) y = rect.Y;
-    else if((handle & Handle.Bottom) != 0) y = rect.Bottom;
-    else y = rect.Y + rect.Height/2;
-
-    return new Rectangle(x-2, y-2, 5, 5);
-  }
-
-  void renderPanel_MouseMove(object sender, MouseEventArgs e)
-  {
-    SetCursor(e.Location);
-  }
-
-  void renderPanel_MouseClick(object sender, MouseEventArgs e)
-  {
-    // a plain left click selects the object beneath the cursor (if any) and deselects others
-    if(e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None)
-    {
-      SelectObject(e.Location, true);
-    }
-    // a shift-left click toggles the selection of the object beneath the cursor
-    else if(e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Shift)
-    {
-      ToggleObjectSelection(e.Location);
-    }
-  }
-
-  void renderPanel_MouseDragStart(object sender, MouseEventArgs e)
-  {
-    // we only care about left-drags
-    if(e.Button != MouseButtons.Left)
-    {
-      renderPanel.CancelMouseDrag();
-      return;
-    }
-    
-    // if zero or one objects are selected, select the object under the pointer
-    if(selectedObjects.Count < 2)
-    {
-      SceneObject obj = ObjectUnderPoint(e.Location);
-      if(obj != null) SelectObject(obj, true);
-    }
-    
-    dragHandle = GetHandleUnderPoint(e.Location);
-
-    // ignore drags that take place outside the selection rectangle
-    if(dragHandle == Handle.None && !GetHandleBorder().Contains(e.Location))
-    {
-      renderPanel.CancelMouseDrag();
-      return;
-    }
-
-    draggedObjs.Clear();
-    foreach(SceneObject obj in selectedObjects)
-    {
-      draggedObjs.Add(new DraggedObject(obj));
-    }
-
-     // plain drag does movement or resizing. shift-drag does aspect-locked resizing or axis-locked moving.
-    if(Control.ModifierKeys == Keys.None || Control.ModifierKeys == Keys.Shift)
-    {
-      rotating = false;
-      
-      if(dragHandle != Handle.None) // resizing
+      if(aspectLock)
       {
-        dragBounds = selectedObjectSceneBounds;
+        Vector oldDelta  = sizeDelta;
+        Vector newSize   = dragBounds.Size + sizeDelta;
+        double oldAspect = dragBounds.Width / dragBounds.Height;
+        double newAspect = newSize.X / newSize.Y;
+
+        if(newAspect < oldAspect)
+        {
+          if(newSize.X < dragBounds.Width && (dragHandle & (Handle.Top | Handle.Bottom)) == 0)
+          {
+            newSize.Y *= newAspect / oldAspect;
+          }
+          else
+          {
+            newSize.X *= oldAspect / newAspect;
+          }
+        }
+        else
+        {
+          if(newSize.Y < dragBounds.Height && (dragHandle & (Handle.Left | Handle.Right)) == 0)
+          {
+            newSize.X *= oldAspect / newAspect;
+          }
+          else
+          {
+            newSize.Y *= newAspect / oldAspect;
+          }
+        }
+
+        sizeDelta = newSize - dragBounds.Size;
+
+        // fix up sceneDist to match the new magnitudes
+        sceneDist.X = Math.Sign(sceneDist.X) * Math.Abs(sizeDelta.X);
+        sceneDist.Y = Math.Sign(sceneDist.Y) * Math.Abs(sizeDelta.Y);
+
+        // if the sign changed in either direction, swap the corresponding sign of sceneDist as well
+        if(Math.Sign(oldDelta.X) != Math.Sign(sizeDelta.X)) sceneDist.X = -sceneDist.X;
+        if(Math.Sign(oldDelta.Y) != Math.Sign(sizeDelta.Y)) sceneDist.Y = -sceneDist.Y;
+      }
+
+      // if the rectangle would be inverted in either direction, set the flip flag
+      bool hFlip = dragBounds.Width + sizeDelta.X < 0, vFlip = dragBounds.Height + sizeDelta.Y < 0;
+
+      for(int i=0; i<selectedObjects.Count; i++)
+      {
+        SceneObject obj = selectedObjects[i];
+        Vector delta = sizeDelta, objSize = draggedObjs[i].Size; // create copies because we'll change them
+
+        if(obj.Rotation == 90 || obj.Rotation == 270) // if the object is rotated on it's side, swap the axes
+        {
+          EngineMath.Swap(ref delta.X, ref delta.Y);
+          EngineMath.Swap(ref objSize.X, ref objSize.Y);
+        }
+
+        // the size increase is proportional to how much space the object occupied in the original bounding rectangle
+        Vector sizeIncrease = new Vector(delta.X * objSize.X / dragBounds.Width,
+                                         delta.Y * objSize.Y / dragBounds.Height);
+        // the movement is proportional to how far offset the object was from the edge in the original rectangle
+        Vector movement = new Vector((draggedObjs[i].Position.X - dragBounds.X) / dragBounds.Width * sceneDist.X,
+                                     (draggedObjs[i].Position.Y - dragBounds.Y) / dragBounds.Height * sceneDist.Y);
+        Vector newSize = draggedObjs[i].Size + sizeIncrease;
+
+        if(hFlip) newSize.X = -newSize.X;
+        if(vFlip) newSize.Y = -newSize.Y;
+
+        obj.HorizontalFlip = hFlip ? !draggedObjs[i].HorizontalFlip : draggedObjs[i].HorizontalFlip;
+        obj.VerticalFlip = vFlip ? !draggedObjs[i].VerticalFlip : draggedObjs[i].VerticalFlip;
+        obj.Size = newSize;
+        obj.Position = draggedObjs[i].Position + movement;
       }
     }
-    else if(Control.ModifierKeys == Keys.Control) // rotation drag
+
+    void DragRotation(MouseDragEventArgs e)
     {
-      rotating = true;
+      double rotation = GLMath.AngleBetween(dragCenter, SceneView.ClientToScene(e.Location)) - dragRotation;
+
+      for(int i=0; i<selectedObjects.Count; i++)
+      {
+        Vector movement = (draggedObjs[i].Position - dragCenter).Rotated(rotation);
+        selectedObjects[i].Rotation = draggedObjs[i].Rotation + rotation * MathConst.RadiansToDegrees;
+        selectedObjects[i].Position = dragCenter + movement;
+      }
+    }
+
+    void DragSelection(MouseDragEventArgs e)
+    {
+      int x1 = e.Start.X, x2 = e.X, y1 = e.Start.Y, y2 = e.Y;
+      if(x2 < x1) EngineMath.Swap(ref x1, ref x2);
+      if(y2 < y1) EngineMath.Swap(ref y1, ref y2);
+
+      Editor.InvalidateDecoration(dragBox);
+      InvalidateSelectedBounds(false);
+
+      dragBox = Rectangle.FromLTRB(x1, y1, x2, y2);
+      Editor.InvalidateDecoration(dragBox);
+      SelectObjects(dragBox, true);
+    }
+
+    public override void MouseDragEnd(MouseDragEventArgs e)
+    {
+      if(dragMode == DragMode.Select)
+      {
+        Editor.InvalidateDecoration(dragBox);
+      }
+      dragMode = DragMode.None;
+    }
+
+    void StartRotation(MouseEventArgs e)
+    {
+      dragMode = DragMode.Rotate;
 
       // store the centerpoint of the rotation
       if(selectedObjects.Count == 1)
@@ -768,171 +862,631 @@ public class SceneEditor : Form
       }
 
       // and the initial rotation value
-      dragRotation = GLMath.AngleBetween(dragCenter, sceneView.ClientToScene(e.Location));
+      dragRotation = GLMath.AngleBetween(dragCenter, SceneView.ClientToScene(e.Location));
     }
+
+    void StartResize()
+    {
+      if(dragHandle != Handle.None) // resizing
+      {
+        dragBounds = selectedObjectSceneBounds;
+        dragMode = DragMode.Resize;
+      }
+      else
+      {
+        dragMode = DragMode.Move;
+      }
+    }
+
+    void StartBoxSelection()
+    {
+      dragMode = DragMode.Select;
+      dragBox = new Rectangle();
+      DeselectObjects();
+    }
+    #endregion
+
+    public override void MouseMove(MouseEventArgs e)
+    {
+      SetCursor(e.Location);
+    }
+
+    public override void PaintDecoration(Graphics g)
+    {
+      if(selectedObjects.Count != 0)
+      {
+        Point[] scenePoints = new Point[5];
+        GLPoint[] objPoints = new GLPoint[4];
+
+        if(selectedObjects.Count > 1 || dragMode == DragMode.Select)
+        {
+          // draw boxes around selected items
+          foreach(SceneObject obj in selectedObjects)
+          {
+            obj.GetRotatedArea().CopyTo(objPoints, 0); // copy the objects rotated bounding box into the point array
+            for(int i=0; i<4; i++)
+            {
+              scenePoints[i] = SceneView.SceneToClient(objPoints[i]); // transform from scene space to control space
+            }
+            scenePoints[4] = scenePoints[0]; // form a loop
+            
+            g.DrawLines(Pens.LightGray, scenePoints);
+          }
+        }
+
+        if(dragMode != DragMode.Select)
+        {
+          // draw the control rectangle around the selected items
+          g.DrawRectangle(Pens.White, GetHandleBorder());
+          foreach(Handle handle in GetHandles())
+          {
+            DrawControlHandle(g, handle);
+          }
+        }
+      }
+
+      if(dragMode == DragMode.Select)
+      {
+        g.DrawRectangle(Pens.White, dragBox);
+      }
+    }
+  
+    public override void PanelResized()
+    {
+      RecalculateSelectedBounds();
+    }
+
+    [Flags]
+    enum Handle
+    {
+      None   = 0,
+      Top    = 1,
+      Bottom = 2,
+      Left   = 4,
+      Right  = 8,
+
+      TopLeft=Top|Left, TopRight = Top|Right, BottomLeft = Bottom|Left, BottomRight = Bottom|Right,
+    }
+
+    void AddSelectedObjectBounds(SceneObject obj)
+    {
+      GLRect sceneBounds = obj.GetRotatedAreaBounds();
+      Rectangle clientBounds = SceneView.SceneToClient(sceneBounds);
+
+      if(selectedObjectBounds.Width == 0)
+      {
+        selectedObjectBounds = clientBounds;
+        selectedObjectSceneBounds = sceneBounds;
+      }
+      else
+      {
+        selectedObjectBounds = Rectangle.Union(selectedObjectBounds, clientBounds);
+        selectedObjectSceneBounds.Unite(sceneBounds);
+      }
+    }
+    
+    void ClearSelectedObjectBounds()
+    {
+      selectedObjectBounds = new Rectangle();
+      selectedObjectSceneBounds = new GLRect();
+    }
+
+    void DeselectObject(SceneObject obj)
+    {
+      if(IsSelected(obj))
+      {
+        InvalidateSelectedBounds(false);
+        ClearSelectedObjectBounds();
+        foreach(SceneObject selectedObj in selectedObjects)
+        {
+          if(selectedObj != obj)
+          {
+            AddSelectedObjectBounds(selectedObj);
+          }
+        }
+        selectedObjects.Remove(obj);
+        OnSelectedObjectsChanged();
+      }
+    }
+
+    void DeselectObjects()
+    {
+      if(selectedObjects.Count != 0)
+      {
+        InvalidateSelectedBounds(false);
+        selectedObjects.Clear();
+        ClearSelectedObjectBounds();
+        OnSelectedObjectsChanged();
+      }
+    }
+
+    void DrawControlHandle(Graphics g, Handle handle)
+    {
+      Rectangle rect = GetHandleRect(handle);
+      g.FillRectangle(Brushes.Blue, rect);
+      g.DrawRectangle(Pens.White, rect);
+    }
+
+    void InvalidateSelectedBounds(bool invalidateRender)
+    {
+      Rectangle rect = selectedObjectBounds;
+      rect.Inflate(DecorationRadius, DecorationRadius);
+      Editor.Invalidate(rect, invalidateRender);
+    }
+
+    bool IsSelected(SceneObject obj) { return selectedObjects.Contains(obj); }
+
+    Handle GetHandleUnderPoint(Point pt)
+    {
+      foreach(Handle handle in GetHandles())
+      {
+        if(GetHandleRect(handle).Contains(pt)) return handle;
+      }
+      return Handle.None;
+    }
+
+    Rectangle GetHandleBorder()
+    {
+      Rectangle rect = selectedObjectBounds;
+      if(rect.Width != 0)
+      {
+        rect.Inflate(5, 5);
+        rect.Width  -= 1;
+        rect.Height -= 1;
+      }
+      return rect;
+    }
+    
+    static IEnumerable<Handle> GetHandles()
+    {
+      yield return Handle.TopLeft;
+      yield return Handle.Top;
+      yield return Handle.TopRight;
+      yield return Handle.Right;
+      yield return Handle.BottomRight;
+      yield return Handle.Bottom;
+      yield return Handle.BottomLeft;
+      yield return Handle.Left;
+    }
+
+    Rectangle GetHandleRect(Handle handle)
+    {
+      Rectangle rect = GetHandleBorder();
+      int x, y;
+      
+      if((handle & Handle.Left) != 0) x = rect.X;
+      else if((handle & Handle.Right) != 0) x = rect.Right;
+      else x = rect.X + rect.Width/2;
+
+      if((handle & Handle.Top) != 0) y = rect.Y;
+      else if((handle & Handle.Bottom) != 0) y = rect.Bottom;
+      else y = rect.Y + rect.Height/2;
+
+      return new Rectangle(x-2, y-2, 5, 5);
+    }
+
+    PickOptions GetPickerOptions()
+    {
+      PickOptions options = new PickOptions();
+      options.AllowInvisible  = true;
+      options.AllowUnpickable = true;
+      options.GroupMask       = 0xffffffff;
+      options.LayerMask       = Editor.CurrentLayerMask;
+      options.SortByLayer     = true;
+      return options;
+    }
+    
+    SceneObject ObjectUnderPoint(Point pt)
+    {
+      foreach(SceneObject obj in Scene.PickPoint(SceneView.ClientToScene(pt), GetPickerOptions()))
+      {
+        return obj; // return the first item, if there are any
+      }
+
+      return null;
+    }
+    
+    List<SceneObject> ObjectsInRect(Rectangle rect)
+    {
+      IEnumerator<SceneObject> e = Scene.PickRectangle(SceneView.ClientToScene(rect), GetPickerOptions()).GetEnumerator();
+      if(!e.MoveNext()) return null;
+      List<SceneObject> list = new List<SceneObject>();
+      do
+      {
+        list.Add(e.Current);
+      } while(e.MoveNext());
+      return list;
+    }
+
+    void OnSelectedObjectsChanged()
+    {
+      if(selectedObjects.Count == 0)
+      {
+        Editor.HideRightPane();
+      }
+      else
+      {
+        Editor.propertyGrid.SelectedObjects = selectedObjects.ToArray();
+        Editor.ShowPropertyGrid();
+      }
+    }
+
+    void RecalculateSelectedBounds()
+    {
+      ClearSelectedObjectBounds();
+      foreach(SceneObject obj in selectedObjects)
+      {
+        AddSelectedObjectBounds(obj);
+      }
+    }
+
+    public void SelectObject(SceneObject obj, bool deselectOthers)
+    {
+      if(deselectOthers)
+      {
+        if(selectedObjects.Count == 1 && IsSelected(obj)) return;
+        InvalidateSelectedBounds(false);
+        DeselectObjects();
+      }
+      else if(IsSelected(obj))
+      {
+        return;
+      }
+
+      selectedObjects.Add(obj);
+      AddSelectedObjectBounds(obj);
+      InvalidateSelectedBounds(false);
+      OnSelectedObjectsChanged();
+    }
+
+    void SelectObjects(IList<SceneObject> objs, bool deselectOthers)
+    {
+      if(deselectOthers)
+      {
+        if(selectedObjects.Count == objs.Count)
+        {
+          bool different = false;
+          foreach(SceneObject obj in selectedObjects)
+          {
+            if(!objs.Contains(obj))
+            {
+              different = true;
+              break;
+            }
+          }
+          if(!different) return;
+        }
+
+        InvalidateSelectedBounds(false);
+        DeselectObjects();
+      }
+
+      foreach(SceneObject obj in objs)
+      {
+        if(!IsSelected(obj))
+        {
+          selectedObjects.Add(obj);
+          AddSelectedObjectBounds(obj);
+        }
+      }
+
+      InvalidateSelectedBounds(false);
+      OnSelectedObjectsChanged();
+    }
+
+    void SelectObject(Point pt, bool deselectOthers)
+    {
+      SceneObject obj = ObjectUnderPoint(pt);
+      if(obj != null) SelectObject(obj, deselectOthers);
+      else if(deselectOthers) DeselectObjects();
+    }
+
+    void SelectObjects(Rectangle rect, bool deselectOthers)
+    {
+      List<SceneObject> objs = ObjectsInRect(rect);
+      if(objs != null) SelectObjects(objs, deselectOthers);
+      else if(deselectOthers) DeselectObjects();
+    }
+
+    void SetCursor()
+    {
+      SetCursor(Panel.PointToClient(Control.MousePosition));
+    }
+
+    void SetCursor(Point pt)
+    {
+      if(!Panel.ClientRectangle.Contains(pt)) return;
+
+      if(selectedObjects.Count != 0)
+      {
+        Handle handle = GetHandleUnderPoint(pt);
+        if(handle != Handle.None)
+        {
+          if(Control.ModifierKeys == Keys.Control)
+          {
+            Panel.Cursor = Cursors.Hand; // cursor for rotation
+          }
+          else
+          {
+            switch(handle)
+            {
+              case Handle.Top: case Handle.Bottom:
+                Panel.Cursor = Cursors.SizeNS;
+                return;
+              case Handle.Left: case Handle.Right:
+                Panel.Cursor = Cursors.SizeWE;
+                return;
+              case Handle.TopLeft: case Handle.BottomRight:
+                Panel.Cursor = Cursors.SizeNWSE;
+                return;
+              case Handle.TopRight: case Handle.BottomLeft:
+                Panel.Cursor = Cursors.SizeNESW;
+                return;
+            }
+          }
+        }
+        
+        // check if the cursor is over the selected rectangle
+        if(GetHandleBorder().Contains(pt))
+        {
+          if(Control.ModifierKeys == Keys.Control)
+          {
+            Panel.Cursor = Cursors.Hand; // cursor for rotation
+          }
+          else
+          {
+            Panel.Cursor = Cursors.SizeAll;
+          }
+          return;
+        }
+      }
+
+      Panel.Cursor = Cursors.Default;
+    }
+
+    void ToggleObjectSelection(Point pt)
+    {
+      SceneObject obj = ObjectUnderPoint(pt);
+      if(obj == null) return;
+
+      if(IsSelected(obj))
+      {
+        DeselectObject(obj);
+      }
+      else
+      {
+        SelectObject(obj, false);
+      }
+    }
+
+    void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
+    {
+      RecalculateSelectedBounds();
+      Editor.InvalidateRender();
+    }
+
+    sealed class DraggedObject
+    {
+      public DraggedObject(SceneObject obj)
+      {
+        Position = obj.Position;
+        Size     = obj.Size;
+        Rotation = obj.Rotation;
+        HorizontalFlip = obj.HorizontalFlip;
+        VerticalFlip   = obj.VerticalFlip;
+      }
+
+      public GLPoint Position;
+      public Vector  Size;
+      public double  Rotation;
+      public bool HorizontalFlip, VerticalFlip;
+    }
+
+    enum DragMode { None, Select, Resize, Move, Rotate }
+
+    List<DraggedObject> draggedObjs = new List<DraggedObject>();
+    GLPoint   dragCenter; // center of drag rotation
+    GLRect    dragBounds; // original bounding rectangle during resize
+    Rectangle dragBox;  // box size during selection
+    double    dragRotation;
+    Handle    dragHandle;
+    DragMode  dragMode;
+
+    Rectangle selectedObjectBounds;
+    GLRect selectedObjectSceneBounds;
+    List<SceneObject> selectedObjects = new List<SceneObject>();
+  }
+  #endregion
+
+  #region LayerTool
+  class LayerTool : EditTool
+  {
+    public LayerTool(SceneEditor editor) : base(editor) { }
+
+    public override void Activate()
+    {
+      if(layerPanel == null)
+      {
+        layerPanel = new Panel();
+        layerPanel.Size = new Size(Editor.rightPane.Width, Editor.rightPane.Height - Editor.rightPane.SplitterDistance);
+        layerPanel.Dock = DockStyle.Fill;
+
+        renderToCurrent = new CheckBox();
+        renderToCurrent.Location = new Point(4, 3);
+        renderToCurrent.Size = new Size(layerPanel.Width - 8, 24);
+        renderToCurrent.TabIndex = 0;
+        renderToCurrent.Text = "Render to current layer";
+        renderToCurrent.CheckedChanged += new EventHandler(renderToCurrent_CheckedChanged);
+        renderToCurrent.Checked = Editor.RenderToCurrentLayer;
+
+        layerBox = new CheckedListBox();
+        layerBox.Location = new Point(4, 26);
+        layerBox.Size = new Size(renderToCurrent.Width, layerPanel.Height - renderToCurrent.Height);
+        layerBox.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
+        layerBox.IntegralHeight = false;
+        layerBox.TabIndex = 1;
+        layerBox.CheckOnClick = true;
+        layerBox.ItemCheck += new ItemCheckEventHandler(layerBox_ItemCheck);
+        layerBox.SelectedIndexChanged += new EventHandler(layerBox_SelectedIndexChanged);
+
+        for(int i=0; i<32; i++)
+        {
+          layerBox.Items.Add("Layer "+i);
+        }
+
+        layerPanel.Controls.Add(renderToCurrent);
+        layerPanel.Controls.Add(layerBox);
+        layerPanel.Visible = false;
+        Editor.rightPane.Panel2.Controls.Add(layerPanel);
+      }
+
+      for(int i=0; i<32; i++)
+      {
+        // don't use the accessor because we want to bypass RenderToCurrentLayer
+        layerBox.SetItemChecked(i, (Editor.visibleLayerMask & (1<<i)) != 0);
+      }
+      layerBox.SelectedIndex = Editor.CurrentLayer;
+
+      layerPanel.Visible = true;
+      Editor.ShowRightPane(layerPanel);
+    }
+
+    public override void Deactivate()
+    {
+      Editor.HideRightPane();
+    }
+
+    void renderToCurrent_CheckedChanged(object sender, EventArgs e)
+    {
+      Editor.RenderToCurrentLayer = renderToCurrent.Checked;
+    }
+
+    void layerBox_ItemCheck(object sender, ItemCheckEventArgs e)
+    {
+      uint bit = (uint)1<<e.Index;
+      if(e.NewValue == CheckState.Checked)
+      {
+        Editor.VisibleLayerMask |= bit;
+      }
+      else
+      {
+        Editor.VisibleLayerMask &= ~bit;
+      }
+    }
+
+    void layerBox_SelectedIndexChanged(object sender, EventArgs e)
+    {
+      Editor.CurrentLayer = layerBox.SelectedIndex;
+    }
+
+    CheckedListBox layerBox;
+    CheckBox renderToCurrent;
+    Panel layerPanel;
+  }
+  #endregion
+
+  class Toolbox
+  {
+    public Toolbox(SceneEditor editor) { this.editor = editor; }
+
+    public LayerTool Layers
+    {
+      get
+      {
+        if(layerTool == null) layerTool = new LayerTool(editor);
+        return layerTool;
+      }
+    }
+
+    public ObjectTool Object
+    {
+      get
+      {
+        if(objectTool == null) objectTool = new ObjectTool(editor);
+        return objectTool;
+      }
+    }
+
+    SceneEditor editor;
+    ObjectTool objectTool;
+    LayerTool layerTool;
+  }
+
+  EditTool CurrentTool
+  {
+    get { return currentTool; }
+    set
+    {
+      if(value != currentTool)
+      {
+        if(currentTool != null) currentTool.Deactivate();
+        currentTool = value;
+        currentTool.Activate();
+        
+        foreach(ToolStripButton item in toolBar.Items)
+        {
+          item.Checked = item.Tag == value;
+        }
+      }
+    }
+  }
+
+  Toolbox Tools
+  {
+    get { return toolbox; }
+  }
+
+  void tool_Click(object sender, EventArgs e)
+  {
+    CurrentTool = (EditTool)((ToolStripButton)sender).Tag;
+  }
+
+  EditTool currentTool;
+  Toolbox toolbox;
+  #endregion
+
+  void renderPanel_MouseEnter(object sender, EventArgs e)
+  {
+    renderPanel.Focus();
+  }
+
+  #region Delegation to tool
+  void SceneEditor_KeyDown(object sender, KeyEventArgs e)
+  {
+    if(!renderPanel.Focused) return;
+    currentTool.KeyPress(e, true);
+  }
+
+  void SceneEditor_KeyUp(object sender, KeyEventArgs e)
+  {
+    if(!renderPanel.Focused) return;
+    currentTool.KeyPress(e, false);
+  }
+
+  void renderPanel_MouseMove(object sender, MouseEventArgs e)
+  {
+    currentTool.MouseMove(e);
+  }
+
+  void renderPanel_MouseClick(object sender, MouseEventArgs e)
+  {
+    currentTool.MouseClick(e);
+  }
+
+  void renderPanel_MouseDragStart(object sender, MouseEventArgs e)
+  {
+    currentTool.MouseDragStart(e);
   }
 
   void renderPanel_MouseDrag(object sender, MouseDragEventArgs e)
   {
-    InvalidateSelectedBounds(true);
-
-    if(rotating) // rotating selected objects
-    {
-      double rotation = GLMath.AngleBetween(dragCenter, sceneView.ClientToScene(e.Location)) - dragRotation;
-
-      for(int i=0; i<selectedObjects.Count; i++)
-      {
-        Vector movement = (draggedObjs[i].Position - dragCenter).Rotated(rotation);
-        selectedObjects[i].Rotation = draggedObjs[i].Rotation + rotation * MathConst.RadiansToDegrees;
-        selectedObjects[i].Position = dragCenter + movement;
-      }
-    }
-    else if(dragHandle == Handle.None) // moving selected objects
-    {
-      Size clientDist = new Size(e.X-e.Start.X, e.Y-e.Start.Y);
-      Vector sceneDist = sceneView.ClientToScene(clientDist);
-      for(int i=0; i<selectedObjects.Count; i++)
-      {
-        selectedObjects[i].Position = draggedObjs[i].Position + sceneDist;
-      }
-    }
-    else // resizing selected objects
-    {
-      Size clientDist   = new Size(e.X-e.Start.X, e.Y-e.Start.Y);
-      Vector sceneDist  = sceneView.ClientToScene(clientDist);
-      Vector sizeDelta = new Vector();
-
-      if((dragHandle & Handle.Left) != 0)
-      {
-        sizeDelta.X = -sceneDist.X;
-      }
-      else if((dragHandle & Handle.Right) != 0)
-      {
-        sizeDelta.X = sceneDist.X;
-      }
-      else
-      {
-        sceneDist.X = 0;
-      }
-
-      if((dragHandle & Handle.Top) != 0)
-      {
-        sizeDelta.Y = -sceneDist.Y;
-      }
-      else if((dragHandle & Handle.Bottom) != 0)
-      {
-        sizeDelta.Y = sceneDist.Y;
-      }
-      else
-      {
-        sceneDist.Y = 0;
-      }
-
-      bool aspectLock = Control.ModifierKeys == Keys.Shift;
-      foreach(SceneObject obj in selectedObjects)
-      {
-        if(obj.Rotation != 0 && obj.Rotation != 180 && obj.Rotation != 90 && obj.Rotation != 270)
-        {
-          aspectLock = true;
-          break;
-        }
-      }
-      
-      GLRect handleRect = sceneView.ClientToScene(GetHandleBorder());
-      GLRect boundsRect = selectedObjectSceneBounds;
-
-      if(aspectLock)
-      {
-        Vector oldSize = sizeDelta;
-
-        if(dragHandle == Handle.Top || dragHandle == Handle.Bottom)
-        {
-          sizeDelta.X = sizeDelta.Y * boundsRect.Width / boundsRect.Height;
-        }
-        else if(dragHandle == Handle.Left || dragHandle == Handle.Right || sizeDelta.Y < sizeDelta.X)
-        {
-          sizeDelta.Y = sizeDelta.X * boundsRect.Height / boundsRect.Width;
-        }
-        else if(sizeDelta.X < sizeDelta.Y)
-        {
-          sizeDelta.X = sizeDelta.Y * boundsRect.Width / boundsRect.Height;
-        }
-
-        sceneDist.X = Math.Sign(sceneDist.X) * Math.Abs(sizeDelta.X);
-        sceneDist.Y = Math.Sign(sceneDist.Y) * Math.Abs(sizeDelta.Y);
-
-        if(Math.Sign(oldSize.X) != Math.Sign(sizeDelta.X)) sceneDist.X = -sceneDist.X;
-        if(Math.Sign(oldSize.Y) != Math.Sign(sizeDelta.Y)) sceneDist.Y = -sceneDist.Y;
-      }
-
-      for(int i=0; i<selectedObjects.Count; i++)
-      {
-        SceneObject obj = selectedObjects[i];
-
-        Vector delta = sizeDelta, objSize = draggedObjs[i].Size;
-
-        if(obj.Rotation == 90 || obj.Rotation == 270)
-        {
-          EngineMath.Swap(ref objSize.X, ref objSize.Y);
-          EngineMath.Swap(ref delta.X, ref delta.Y);
-        }
-
-        Vector sizeIncrease = new Vector(delta.X * objSize.X / dragBounds.Width,
-                                         delta.Y * objSize.Y / dragBounds.Height);
-        Vector movement = new Vector((draggedObjs[i].Position.X-dragBounds.X) / dragBounds.Width  * sceneDist.X,
-                                     (draggedObjs[i].Position.Y-dragBounds.Y) / dragBounds.Height * sceneDist.Y);
-        Vector newSize = draggedObjs[i].Size + sizeIncrease;
-
-        bool hflip=false, vflip=false;
-        if(newSize.X < 0)
-        {
-          hflip = true;
-          newSize.X = -newSize.X;
-        }
-        if(newSize.Y < 0)
-        {
-          vflip = true;
-          newSize.Y = -newSize.Y;
-        }
-
-        obj.HorizontalFlip = hflip ? !draggedObjs[i].HorizontalFlip : draggedObjs[i].HorizontalFlip;
-        obj.VerticalFlip   = vflip ? !draggedObjs[i].VerticalFlip   : draggedObjs[i].VerticalFlip;
-        obj.Size           = newSize;
-        obj.Position       = draggedObjs[i].Position + movement;
-      }
-    }
-
-    RecalculateSelectedBounds();
-    InvalidateSelectedBounds(true);
+    currentTool.MouseDrag(e);
   }
 
   void renderPanel_MouseDragEnd(object sender, MouseDragEventArgs e)
   {
+    currentTool.MouseDragEnd(e);
   }
-
-  sealed class DraggedObject
-  {
-    public DraggedObject(SceneObject obj)
-    {
-      Position = obj.Position;
-      Size     = obj.Size;
-      Rotation = obj.Rotation;
-      HorizontalFlip = obj.HorizontalFlip;
-      VerticalFlip   = obj.VerticalFlip;
-    }
-
-    public GLPoint Position;
-    public Vector  Size;
-    public double  Rotation;
-    public bool HorizontalFlip, VerticalFlip;
-  }
-
-  List<DraggedObject> draggedObjs = new List<DraggedObject>();
-  GLPoint dragCenter; // center of drag rotation
-  GLRect  dragBounds; // original bounding rectangle during resize
-  double  dragRotation;
-  Handle dragHandle;
-  bool rotating;
   #endregion
 
   #region Dragging items from the toolpane
@@ -949,9 +1503,11 @@ public class SceneEditor : Form
     {
       SceneObject obj = item.CreateSceneObject();
       obj.Position = sceneView.ClientToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
+      obj.Layer    = CurrentLayer;
       scene.AddObject(obj);
-      SelectObject(obj, true);
-      InvalidateObjectBounds(obj, true);
+
+      CurrentTool = Tools.Object;
+      Tools.Object.SelectObject(obj, true);
     }
   }
   #endregion
@@ -959,10 +1515,10 @@ public class SceneEditor : Form
   private void renderPanel_Resize(object sender, EventArgs e)
   {
     sceneView.Bounds = desktop.Bounds = renderPanel.ClientRectangle;
-    RecalculateSelectedBounds();
+    currentTool.PanelResized();
   }
 
-  #region Painting and rendering
+  #region Painting, rendering, and layout
   private void renderPanel_RenderBackground(object sender, EventArgs e)
   {
     Engine.Engine.ResetOpenGL(renderPanel.Width, renderPanel.Height, renderPanel.ClientRectangle);
@@ -972,41 +1528,7 @@ public class SceneEditor : Form
 
   private void renderPanel_Paint(object sender, PaintEventArgs e)
   {
-    if(selectedObjects.Count != 0)
-    {
-      Point[] scenePoints = new Point[5];
-      GLPoint[] objPoints = new GLPoint[4];
-
-      if(selectedObjects.Count > 1)
-      {
-        // draw boxes around selected items
-        foreach(SceneObject obj in selectedObjects)
-        {
-          obj.GetRotatedArea().CopyTo(objPoints, 0); // copy the objects rotated bounding box into the point array
-          for(int i=0; i<4; i++)
-          {
-            scenePoints[i] = sceneView.SceneToClient(objPoints[i]); // transform from scene space to control space
-          }
-          scenePoints[4] = scenePoints[0]; // form a loop
-          
-          e.Graphics.DrawLines(Pens.LightGray, scenePoints);
-        }
-      }
-
-      // draw the control rectangle around the selected items
-      e.Graphics.DrawRectangle(Pens.White, GetHandleBorder());
-      foreach(Handle handle in GetHandles())
-      {
-        DrawControlHandle(e.Graphics, handle);
-      }
-    }
-  }
-  
-  void DrawControlHandle(Graphics g, Handle handle)
-  {
-    Rectangle rect = GetHandleRect(handle);
-    g.FillRectangle(Brushes.Blue, rect);
-    g.DrawRectangle(Pens.White, rect);
+    currentTool.PaintDecoration(e.Graphics);
   }
   
   void HideRightPane()
@@ -1025,60 +1547,10 @@ public class SceneEditor : Form
     if(propertyGrid != controlToIgnore) propertyGrid.SelectedObjects = null;
   }
 
-  void SetCursor()
+  void ShowRightPane(Control controlToIgnore)
   {
-    SetCursor(renderPanel.PointToClient(Control.MousePosition));
-  }
-
-  void SetCursor(Point pt)
-  {
-    if(!renderPanel.ClientRectangle.Contains(pt)) return;
-
-    if(selectedObjects.Count != 0)
-    {
-      Handle handle = GetHandleUnderPoint(pt);
-      if(handle != Handle.None)
-      {
-        if(Control.ModifierKeys == Keys.Control)
-        {
-          renderPanel.Cursor = Cursors.Hand; // cursor for rotation
-        }
-        else
-        {
-          switch(handle)
-          {
-            case Handle.Top: case Handle.Bottom:
-              renderPanel.Cursor = Cursors.SizeNS;
-              return;
-            case Handle.Left: case Handle.Right:
-              renderPanel.Cursor = Cursors.SizeWE;
-              return;
-            case Handle.TopLeft: case Handle.BottomRight:
-              renderPanel.Cursor = Cursors.SizeNWSE;
-              return;
-            case Handle.TopRight: case Handle.BottomLeft:
-              renderPanel.Cursor = Cursors.SizeNESW;
-              return;
-          }
-        }
-      }
-      
-      // check if the cursor is over the selected rectangle
-      if(GetHandleBorder().Contains(pt))
-      {
-        if(Control.ModifierKeys == Keys.Control)
-        {
-          renderPanel.Cursor = Cursors.Hand; // cursor for rotation
-        }
-        else
-        {
-          renderPanel.Cursor = Cursors.SizeAll;
-        }
-        return;
-      }
-    }
-
-    renderPanel.Cursor = Cursors.Default;
+    HideRightPaneControls(controlToIgnore);
+    rightPane.Panel2Collapsed = false;
   }
 
   void ShowPropertyGrid()
@@ -1088,6 +1560,7 @@ public class SceneEditor : Form
     rightPane.Panel2Collapsed = false;
   }
   #endregion
+
 }
 
 #region ToolboxList
