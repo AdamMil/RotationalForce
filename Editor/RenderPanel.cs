@@ -229,8 +229,16 @@ class MouseDragEventArgs : MouseEventArgs
 }
 
 #region RenderPanel
-class RenderPanel : Panel
+class RenderPanel : Control
 {
+  public RenderPanel()
+  {
+    SetStyle(ControlStyles.Selectable | ControlStyles.AllPaintingInWmPaint, true);
+    SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.ContainerControl |
+             ControlStyles.StandardClick | ControlStyles.StandardDoubleClick, false);
+    DoubleBuffered = true;
+  }
+
   public event EventHandler RenderBackground;
 
   public void InvalidateRender() { InvalidateRender(ClientRectangle); }
@@ -277,6 +285,18 @@ class RenderPanel : Panel
     DisposeBuffer();
     InvalidateRender();
     Invalidate();
+  }
+
+  protected override bool ProcessDialogKey(Keys keyData)
+  {
+    switch(keyData & Keys.KeyCode)
+    {
+      case Keys.Up: case Keys.Down: case Keys.Left: case Keys.Right: // we want to handle arrow keys ourself
+        return false;
+
+      default:
+        return base.ProcessDialogKey(keyData);
+    }
   }
 
   #region Mouse dragging

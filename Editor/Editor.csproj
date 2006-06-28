@@ -98,8 +98,11 @@
     <None Include="Resources\LinkTool.bmp" />
     <None Include="Resources\LayerTool.bmp" />
     <None Include="Resources\CollisionTool.bmp" />
+    <Content Include="Resources\Rotate.cur" />
     <Content Include="Resources\SelectTool.bmp" />
     <Content Include="Resources\TriggerIcon.bmp" />
+    <Content Include="Resources\ZoomIn.cur" />
+    <Content Include="Resources\ZoomOut.cur" />
     <None Include="Resources\TerrainTool.bmp" />
     <None Include="Resources\ZoomTool.bmp" />
   </ItemGroup>
