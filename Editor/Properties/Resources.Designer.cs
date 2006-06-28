@@ -81,6 +81,13 @@ namespace RotationalForce.Editor.Properties {
             }
         }
         
+        internal static byte[] Rotate {
+            get {
+                object obj = ResourceManager.GetObject("Rotate", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
         internal static System.Drawing.Bitmap SelectTool {
             get {
                 object obj = ResourceManager.GetObject("SelectTool", resourceCulture);
@@ -92,6 +99,20 @@ namespace RotationalForce.Editor.Properties {
             get {
                 object obj = ResourceManager.GetObject("TerrainTool", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        internal static byte[] ZoomIn {
+            get {
+                object obj = ResourceManager.GetObject("ZoomIn", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        internal static byte[] ZoomOut {
+            get {
+                object obj = ResourceManager.GetObject("ZoomOut", resourceCulture);
+                return ((byte[])(obj));
             }
         }
         

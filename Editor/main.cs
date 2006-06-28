@@ -6,12 +6,19 @@ namespace RotationalForce.Editor
 
 static class EditorApp
 {
+  public static MainForm MainForm
+  {
+    get { return mainForm; }
+  }
+  
   [STAThread]
   static void Main()
   {
     Application.EnableVisualStyles();
-    Application.Run(new MainForm());
+    Application.Run(MainForm);
   }
+  
+  static readonly MainForm mainForm = new MainForm();
 }
 
 } // namespace RotationalForce.Editor

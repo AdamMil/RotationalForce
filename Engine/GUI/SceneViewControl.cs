@@ -71,6 +71,20 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     }
   }
 
+  /// <summary>Gets/sets the X coordinate of the center point of the current camera view within the scene, in world units.</summary>
+  public double CameraX
+  {
+    get { return CameraPosition.X; }
+    set { CameraPosition = new Point(value, CameraPosition.Y); }
+  }
+
+  /// <summary>Gets/sets the Y coordinate of the center point of the current camera view within the scene, in world units.</summary>
+  public double CameraY
+  {
+    get { return CameraPosition.Y; }
+    set { CameraPosition = new Point(CameraPosition.X, value); }
+  }
+
   /// <summary>Gets/sets the size of the current camera view within the scene, in world units.</summary>
   /// <remarks>The camera size is the number of world units visible on the major axis of the scene view control.
   /// This property can be set even while the camera is mounted.

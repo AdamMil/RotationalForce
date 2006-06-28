@@ -17,11 +17,19 @@ sealed class MainForm : Form
   private ToolStripMenuItem cascadeMenuItem;
   private ToolStripMenuItem newVectorAnimationMenuItem;
   private ToolStripMenuItem openVectorAnimationMenuItem;
+  private ToolStripStatusLabel statusLabel;
+  private StatusStrip statusBar;
   private ToolStripMenuItem saveAllMenuItem;
 
   public MainForm()
   {
     InitializeComponent();
+  }
+
+  public string StatusText
+  {
+    get { return statusLabel.Text; }
+    set { statusLabel.Text = value; }
   }
 
   private void NewLevel()
@@ -45,6 +53,19 @@ sealed class MainForm : Form
     Close();
   }
 
+  protected override void OnMdiChildActivate(EventArgs e)
+  {
+    base.OnMdiChildActivate(e);
+
+    ToolStripManager.RevertMerge(statusBar);
+
+    SceneEditor sceneEditor = ActiveMdiChild as SceneEditor;
+    if(sceneEditor != null)
+    {
+      ToolStripManager.Merge(sceneEditor.StatusBar, statusBar);
+    }
+  }
+
   #region InitializeComponent
   private void InitializeComponent()
   {
@@ -59,7 +80,6 @@ sealed class MainForm : Form
     System.Windows.Forms.ToolStripMenuItem fileMenu;
     System.Windows.Forms.ToolStripMenuItem windowMenu;
     System.Windows.Forms.ToolStripSeparator windowsSep;
-    System.Windows.Forms.StatusStrip statusBar;
     this.newVectorAnimationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.openVectorAnimationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.saveMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -68,6 +88,8 @@ sealed class MainForm : Form
     this.tileHorzMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.tileVertMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.cascadeMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+    this.statusBar = new System.Windows.Forms.StatusStrip();
+    this.statusLabel = new System.Windows.Forms.ToolStripStatusLabel();
     newMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     newLevelMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     openMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -79,8 +101,8 @@ sealed class MainForm : Form
     fileMenu = new System.Windows.Forms.ToolStripMenuItem();
     windowMenu = new System.Windows.Forms.ToolStripMenuItem();
     windowsSep = new System.Windows.Forms.ToolStripSeparator();
-    statusBar = new System.Windows.Forms.StatusStrip();
     mainMenuBar.SuspendLayout();
+    this.statusBar.SuspendLayout();
     this.SuspendLayout();
     // 
     // newMenuItem
@@ -232,15 +254,25 @@ sealed class MainForm : Form
     // 
     // statusBar
     // 
-    statusBar.Location = new System.Drawing.Point(0, 526);
-    statusBar.Name = "statusBar";
-    statusBar.Size = new System.Drawing.Size(772, 22);
-    statusBar.TabIndex = 1;
+    this.statusBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.statusLabel});
+    this.statusBar.Location = new System.Drawing.Point(0, 526);
+    this.statusBar.Name = "statusBar";
+    this.statusBar.Size = new System.Drawing.Size(772, 22);
+    this.statusBar.TabIndex = 1;
+    // 
+    // statusLabel
+    // 
+    this.statusLabel.AutoSize = false;
+    this.statusLabel.Name = "statusLabel";
+    this.statusLabel.Size = new System.Drawing.Size(726, 17);
+    this.statusLabel.Spring = true;
+    this.statusLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
     // 
     // MainForm
     // 
     this.ClientSize = new System.Drawing.Size(772, 548);
-    this.Controls.Add(statusBar);
+    this.Controls.Add(this.statusBar);
     this.Controls.Add(mainMenuBar);
     this.IsMdiContainer = true;
     this.MainMenuStrip = mainMenuBar;
@@ -249,6 +281,8 @@ sealed class MainForm : Form
     this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
     mainMenuBar.ResumeLayout(false);
     mainMenuBar.PerformLayout();
+    this.statusBar.ResumeLayout(false);
+    this.statusBar.PerformLayout();
     this.ResumeLayout(false);
     this.PerformLayout();
 

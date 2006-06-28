@@ -18,6 +18,7 @@ public class SceneEditor : Form
 {
   const string TriggerName = "__trigger__";
   const int DecorationRadius = 8;
+  const double DefaultViewSize = 100;
   
   private ToolStrip toolBar;
   private ToolStripMenuItem editMenu;
@@ -29,6 +30,9 @@ public class SceneEditor : Form
   private System.ComponentModel.IContainer components;
   private ToolStripButton collisionTool;
   private PropertyGrid propertyGrid;
+  private StatusStrip statusBar;
+  private ToolStripStatusLabel mousePosLabel;
+  private ToolStripStatusLabel layerLabel;
   private RenderPanel renderPanel;
 
   public SceneEditor()
@@ -43,6 +47,7 @@ public class SceneEditor : Form
     
     toolBar.Items[0].Tag = Tools.Object;
     toolBar.Items[1].Tag = Tools.Layers;
+    toolBar.Items[2].Tag = Tools.Zoom;
 
     CurrentTool = Tools.Object;
   }
@@ -101,11 +106,10 @@ public class SceneEditor : Form
     renderPanel.InvalidateRender(rect);
   }
 
-  void InvalidateObjectBounds(SceneObject obj, bool invalidateRender)
+  void InvalidateView()
   {
-    Rectangle controlRect = sceneView.SceneToClient(obj.GetRotatedAreaBounds()); // get the client rectangle
-    controlRect.Inflate(DecorationRadius, DecorationRadius); // include space for our decoration
-    Invalidate(controlRect, invalidateRender);
+    currentTool.ViewChanged();
+    InvalidateRender();
   }
   #endregion
 
@@ -187,6 +191,11 @@ public class SceneEditor : Form
   bool renderToCurrentLayer;
   #endregion
 
+  internal StatusStrip StatusBar
+  {
+    get { return statusBar; }
+  }
+
   DesktopControl desktop;
   SceneViewControl sceneView;
   Scene scene;
@@ -219,6 +228,9 @@ public class SceneEditor : Form
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
     this.renderPanel = new RotationalForce.Editor.RenderPanel();
+    this.statusBar = new System.Windows.Forms.StatusStrip();
+    this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
+    this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     newStaticImg = new System.Windows.Forms.ToolStripButton();
     newAnimatedImg = new System.Windows.Forms.ToolStripButton();
     deleteItem = new System.Windows.Forms.ToolStripButton();
@@ -235,6 +247,7 @@ public class SceneEditor : Form
     this.rightPane.SuspendLayout();
     this.objToolBar.SuspendLayout();
     this.renderPanel.SuspendLayout();
+    this.statusBar.SuspendLayout();
     this.SuspendLayout();
     // 
     // newStaticImg
@@ -465,7 +478,7 @@ public class SceneEditor : Form
     this.propertyGrid.Dock = System.Windows.Forms.DockStyle.Fill;
     this.propertyGrid.Location = new System.Drawing.Point(0, 0);
     this.propertyGrid.Name = "propertyGrid";
-    this.propertyGrid.Size = new System.Drawing.Size(205, 276);
+    this.propertyGrid.Size = new System.Drawing.Size(148, 44);
     this.propertyGrid.TabIndex = 0;
     this.propertyGrid.Visible = false;
     // 
@@ -481,32 +494,55 @@ public class SceneEditor : Form
     this.renderPanel.Name = "renderPanel";
     this.renderPanel.Size = new System.Drawing.Size(552, 518);
     this.renderPanel.TabIndex = 0;
-    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
+    this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
     this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
+    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
     this.renderPanel.MouseClick += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseClick);
     this.renderPanel.MouseDrag += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDrag);
     this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
     this.renderPanel.DragEnter += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragEnter);
     this.renderPanel.MouseDragStart += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseDragStart);
     this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
-    this.renderPanel.MouseEnter += new System.EventHandler(this.renderPanel_MouseEnter);
+    this.renderPanel.KeyUp += new System.Windows.Forms.KeyEventHandler(this.renderPanel_KeyUp);
     this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
     this.renderPanel.MouseDragEnd += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDragEnd);
+    this.renderPanel.KeyDown += new System.Windows.Forms.KeyEventHandler(this.renderPanel_KeyDown);
+    // 
+    // statusBar
+    // 
+    this.statusBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.mousePosLabel,
+            this.layerLabel});
+    this.statusBar.Location = new System.Drawing.Point(0, 501);
+    this.statusBar.Name = "statusBar";
+    this.statusBar.Size = new System.Drawing.Size(772, 22);
+    this.statusBar.TabIndex = 4;
+    this.statusBar.Visible = false;
+    // 
+    // layerLabel
+    // 
+    this.layerLabel.Name = "layerLabel";
+    this.layerLabel.Size = new System.Drawing.Size(38, 17);
+    this.layerLabel.Text = "Layer:";
+    // 
+    // mousePosLabel
+    // 
+    this.mousePosLabel.Name = "mousePosLabel";
+    this.mousePosLabel.Size = new System.Drawing.Size(58, 17);
+    this.mousePosLabel.Text = "0.00, 0.00";
     // 
     // SceneEditor
     // 
     this.ClientSize = new System.Drawing.Size(772, 523);
+    this.Controls.Add(this.statusBar);
     this.Controls.Add(this.rightPane);
     this.Controls.Add(this.toolBar);
     this.Controls.Add(this.renderPanel);
-    this.KeyPreview = true;
     this.MainMenuStrip = menuBar;
     this.MinimumSize = new System.Drawing.Size(430, 250);
     this.Name = "SceneEditor";
     this.Text = "Scene Editor";
     this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
-    this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.SceneEditor_KeyUp);
-    this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.SceneEditor_KeyDown);
     menuBar.ResumeLayout(false);
     menuBar.PerformLayout();
     this.toolBar.ResumeLayout(false);
@@ -518,7 +554,10 @@ public class SceneEditor : Form
     this.objToolBar.PerformLayout();
     this.renderPanel.ResumeLayout(false);
     this.renderPanel.PerformLayout();
+    this.statusBar.ResumeLayout(false);
+    this.statusBar.PerformLayout();
     this.ResumeLayout(false);
+    this.PerformLayout();
 
   }
 
@@ -537,14 +576,17 @@ public class SceneEditor : Form
     public virtual void Deactivate() { }
 
     public virtual void KeyPress(KeyEventArgs e, bool down) { }
-    public virtual void MouseClick(MouseEventArgs e) { }
+    public virtual bool MouseClick(MouseEventArgs e) { return false; }
     public virtual void MouseMove(MouseEventArgs e) { }
-    public virtual void MouseDragStart(MouseEventArgs e) { }
+    public virtual bool MouseDragStart(MouseEventArgs e) { return false; }
     public virtual void MouseDrag(MouseDragEventArgs e) { }
     public virtual void MouseDragEnd(MouseDragEventArgs e) { }
+    public virtual bool MouseWheel(MouseEventArgs e) { return false; }
 
     public virtual void PanelResized() { }
     public virtual void PaintDecoration(Graphics g) { }
+    
+    public virtual void ViewChanged() { }
     
     protected SceneEditor Editor
     {
@@ -599,32 +641,39 @@ public class SceneEditor : Form
         
         e.Handled = true;
       }
+      else if(e.KeyCode == Keys.ControlKey) // control key toggles rotation mode
+      {
+        SetCursor();
+      }
     }
 
     #region Mouse click
-    public override void MouseClick(MouseEventArgs e)
+    public override bool MouseClick(MouseEventArgs e)
     {
       // a plain left click selects the object beneath the cursor (if any) and deselects others
       if(e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None)
       {
         SelectObject(e.Location, true);
+        return true;
       }
       // a shift-left click toggles the selection of the object beneath the cursor
       else if(e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Shift)
       {
         ToggleObjectSelection(e.Location);
+        return true;
       }
+      return false;
     }
     #endregion
 
     #region Mouse drag
-    public override void MouseDragStart(MouseEventArgs e)
+    public override bool MouseDragStart(MouseEventArgs e)
     {
       // we only care about left-drags
       if(e.Button != MouseButtons.Left)
       {
         Panel.CancelMouseDrag();
-        return;
+        return false;
       }
       
       // if zero or one objects are selected, select the object under the pointer
@@ -659,6 +708,8 @@ public class SceneEditor : Form
           StartRotation(e);
         }
       }
+      
+      return true;
     }
 
     public override void MouseDrag(MouseDragEventArgs e)
@@ -810,6 +861,12 @@ public class SceneEditor : Form
         obj.Size = newSize;
         obj.Position = draggedObjs[i].Position + movement;
       }
+      
+      Vector finalSize = dragBounds.Size + sizeDelta;
+      EditorApp.MainForm.StatusText =
+        string.Format("W:{0:f2}% H:{1:f2}%",
+                      Math.Abs(finalSize.X) / dragBounds.Width  * 100,
+                      Math.Abs(finalSize.Y) / dragBounds.Height * 100);
     }
 
     void DragRotation(MouseDragEventArgs e)
@@ -821,6 +878,18 @@ public class SceneEditor : Form
         Vector movement = (draggedObjs[i].Position - dragCenter).Rotated(rotation);
         selectedObjects[i].Rotation = draggedObjs[i].Rotation + rotation * MathConst.RadiansToDegrees;
         selectedObjects[i].Position = dragCenter + movement;
+      }
+      
+      if(selectedObjects.Count == 1)
+      {
+        EditorApp.MainForm.StatusText = "Rotated to " + selectedObjects[0].Rotation.ToString("f2") + "°";
+      }
+      else
+      {
+        rotation *= MathConst.RadiansToDegrees;
+        while(rotation<0) rotation += 360;
+        while(rotation>360) rotation -= 360;
+        EditorApp.MainForm.StatusText = "Rotated by " + rotation.ToString("f2") + "°";
       }
     }
 
@@ -845,6 +914,8 @@ public class SceneEditor : Form
         Editor.InvalidateDecoration(dragBox);
       }
       dragMode = DragMode.None;
+      
+      Editor.propertyGrid.SelectedObjects = Editor.propertyGrid.SelectedObjects;
     }
 
     void StartRotation(MouseEventArgs e)
@@ -932,6 +1003,11 @@ public class SceneEditor : Form
     }
   
     public override void PanelResized()
+    {
+      RecalculateSelectedBounds();
+    }
+
+    public override void ViewChanged()
     {
       RecalculateSelectedBounds();
     }
@@ -1195,6 +1271,28 @@ public class SceneEditor : Form
 
     void SetCursor(Point pt)
     {
+      if(dragMode != DragMode.None) // if we have a drag mode, keep the correct cursor regardless
+      {
+        if(dragMode == DragMode.Move)
+        {
+          Panel.Cursor = Cursors.SizeAll;
+        }
+        else if(dragMode == DragMode.Resize)
+        {
+          SetResizeCursor(dragHandle);
+        }
+        else if(dragMode == DragMode.Rotate)
+        {
+          Panel.Cursor = rotateCursor;
+        }
+        else if(dragMode == DragMode.Select)
+        {
+          Panel.Cursor = Cursors.Default;
+        }
+        
+        return;
+      }
+      
       if(!Panel.ClientRectangle.Contains(pt)) return;
 
       if(selectedObjects.Count != 0)
@@ -1204,25 +1302,11 @@ public class SceneEditor : Form
         {
           if(Control.ModifierKeys == Keys.Control)
           {
-            Panel.Cursor = Cursors.Hand; // cursor for rotation
+            Panel.Cursor = rotateCursor;
           }
-          else
+          else if(handle != Handle.None)
           {
-            switch(handle)
-            {
-              case Handle.Top: case Handle.Bottom:
-                Panel.Cursor = Cursors.SizeNS;
-                return;
-              case Handle.Left: case Handle.Right:
-                Panel.Cursor = Cursors.SizeWE;
-                return;
-              case Handle.TopLeft: case Handle.BottomRight:
-                Panel.Cursor = Cursors.SizeNWSE;
-                return;
-              case Handle.TopRight: case Handle.BottomLeft:
-                Panel.Cursor = Cursors.SizeNESW;
-                return;
-            }
+            SetResizeCursor(handle);
           }
         }
         
@@ -1231,7 +1315,7 @@ public class SceneEditor : Form
         {
           if(Control.ModifierKeys == Keys.Control)
           {
-            Panel.Cursor = Cursors.Hand; // cursor for rotation
+            Panel.Cursor = rotateCursor;
           }
           else
           {
@@ -1242,6 +1326,25 @@ public class SceneEditor : Form
       }
 
       Panel.Cursor = Cursors.Default;
+    }
+
+    void SetResizeCursor(Handle handle)
+    {
+      switch(handle)
+      {
+        case Handle.Top: case Handle.Bottom:
+          Panel.Cursor = Cursors.SizeNS;
+          break;
+        case Handle.Left: case Handle.Right:
+          Panel.Cursor = Cursors.SizeWE;
+          break;
+        case Handle.TopLeft: case Handle.BottomRight:
+          Panel.Cursor = Cursors.SizeNWSE;
+          break;
+        case Handle.TopRight: case Handle.BottomLeft:
+          Panel.Cursor = Cursors.SizeNESW;
+          break;
+      }
     }
 
     void ToggleObjectSelection(Point pt)
@@ -1295,6 +1398,8 @@ public class SceneEditor : Form
     Rectangle selectedObjectBounds;
     GLRect selectedObjectSceneBounds;
     List<SceneObject> selectedObjects = new List<SceneObject>();
+    
+    static readonly Cursor rotateCursor = new Cursor(new System.IO.MemoryStream(Properties.Resources.Rotate));
   }
   #endregion
 
@@ -1384,6 +1489,79 @@ public class SceneEditor : Form
     Panel layerPanel;
   }
   #endregion
+  
+  #region ZoomTool
+  class ZoomTool : EditTool
+  {
+    public ZoomTool(SceneEditor editor) : base(editor) { }
+
+    public override void Activate()
+    {
+      Panel.Cursor = zoomIn;
+    }
+
+    public override void KeyPress(KeyEventArgs e, bool down)
+    {
+      if(e.KeyCode == Keys.ControlKey)
+      {
+        Panel.Cursor = down ? zoomOut : zoomIn;
+        e.Handled = true;
+      }
+      else if(e.KeyCode == Keys.R && down) // pressing R resets the camera view
+      {
+        SceneView.CameraSize     = DefaultViewSize;
+        SceneView.CameraPosition = new GLPoint();
+        Editor.InvalidateView();
+      }
+    }
+
+    public override bool MouseClick(MouseEventArgs e)
+    {
+      const double zoomFactor = 2;
+      if((Control.ModifierKeys & Keys.Control) == 0) // zooming in
+      {
+        SceneView.CameraPosition = SceneView.ClientToScene(e.Location);
+        SceneView.CameraSize    *= 1/zoomFactor;
+      }
+      else // zooming out
+      {
+        SceneView.CameraSize *= zoomFactor;
+      }
+
+      Editor.InvalidateView();
+      return true;
+    }
+
+    public override bool MouseWheel(MouseEventArgs e)
+    {
+      if(Control.ModifierKeys == Keys.None) // plain mouse wheeling zooms in and out
+      {
+        const double zoomFactor = 1.25;
+        const double DetentsPerClick = 120; // 120 is the standard delta for a single wheel click
+        double wheelMovement = e.Delta / DetentsPerClick;
+
+        if(wheelMovement < 0) // zooming out
+        {
+          SceneView.CameraSize *= Math.Pow(zoomFactor, -wheelMovement);
+        }
+        else // zooming in
+        {
+          SceneView.CameraSize *= 1/Math.Pow(zoomFactor, wheelMovement);
+        }
+
+        Editor.InvalidateView();
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    static readonly Cursor zoomIn  = new Cursor(new System.IO.MemoryStream(Properties.Resources.ZoomIn));
+    static readonly Cursor zoomOut = new Cursor(new System.IO.MemoryStream(Properties.Resources.ZoomOut));
+  }
+  #endregion
 
   class Toolbox
   {
@@ -1407,9 +1585,19 @@ public class SceneEditor : Form
       }
     }
 
+    public ZoomTool Zoom
+    {
+      get
+      {
+        if(zoomTool == null) zoomTool = new ZoomTool(editor);
+        return zoomTool;
+      }
+    }
+
     SceneEditor editor;
     ObjectTool objectTool;
     LayerTool layerTool;
+    ZoomTool zoomTool;
   }
 
   EditTool CurrentTool
@@ -1420,6 +1608,7 @@ public class SceneEditor : Form
       if(value != currentTool)
       {
         if(currentTool != null) currentTool.Deactivate();
+        renderPanel.Cursor = Cursors.Default;
         currentTool = value;
         currentTool.Activate();
         
@@ -1445,19 +1634,27 @@ public class SceneEditor : Form
   Toolbox toolbox;
   #endregion
 
-  void renderPanel_MouseEnter(object sender, EventArgs e)
-  {
-    renderPanel.Focus();
-  }
-
   #region Delegation to tool
-  void SceneEditor_KeyDown(object sender, KeyEventArgs e)
+  void renderPanel_KeyDown(object sender, KeyEventArgs e)
   {
     if(!renderPanel.Focused) return;
     currentTool.KeyPress(e, true);
+    
+    if(!e.Handled)
+    {
+      if(e.KeyCode == Keys.Up || e.KeyCode == Keys.Down || e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
+      {
+        double amount = sceneView.CameraSize / 8;
+        double xd = e.KeyCode == Keys.Left ? -amount : e.KeyCode == Keys.Right ? amount : 0;
+        double yd = e.KeyCode == Keys.Up   ? -amount : e.KeyCode == Keys.Down  ? amount : 0;
+        sceneView.CameraPosition = new GLPoint(sceneView.CameraX + xd, sceneView.CameraY + yd);
+        InvalidateView();
+        e.Handled = true;
+      }
+    }
   }
 
-  void SceneEditor_KeyUp(object sender, KeyEventArgs e)
+  void renderPanel_KeyUp(object sender, KeyEventArgs e)
   {
     if(!renderPanel.Focused) return;
     currentTool.KeyPress(e, false);
@@ -1465,17 +1662,21 @@ public class SceneEditor : Form
 
   void renderPanel_MouseMove(object sender, MouseEventArgs e)
   {
+    renderPanel.Focus();
     currentTool.MouseMove(e);
+
+    GLPoint worldPoint = sceneView.ClientToScene(e.Location);
+    mousePosLabel.Text = worldPoint.X.ToString("f2") + ", " + worldPoint.Y.ToString("f2");
   }
 
   void renderPanel_MouseClick(object sender, MouseEventArgs e)
   {
-    currentTool.MouseClick(e);
+    if(currentTool.MouseClick(e)) return;
   }
 
   void renderPanel_MouseDragStart(object sender, MouseEventArgs e)
   {
-    currentTool.MouseDragStart(e);
+    if(currentTool.MouseDragStart(e)) return;
   }
 
   void renderPanel_MouseDrag(object sender, MouseDragEventArgs e)
@@ -1486,6 +1687,11 @@ public class SceneEditor : Form
   void renderPanel_MouseDragEnd(object sender, MouseDragEventArgs e)
   {
     currentTool.MouseDragEnd(e);
+  }
+
+  void renderPanel_MouseWheel(object sender, MouseEventArgs e)
+  {
+    if(currentTool.MouseWheel(e)) return;
   }
   #endregion
 
