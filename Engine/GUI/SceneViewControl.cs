@@ -13,6 +13,22 @@ namespace RotationalForce.Engine
 
 public delegate void SceneViewEventHandler(SceneViewControl view);
 
+/// <summary>Determines the axis to which the camera size will apply.</summary>
+/// <remarks>The camera area is defined by rectangle with a width or height given by the camera's size. Whether the
+/// width or the height is equal to the camera size is determined by the camera axis.
+/// </remarks>
+public enum CameraAxis : byte
+{
+  /// <summary>Use the major (longer) axis. This is the default.</summary>
+  Major=0, // these values correspond to SceneViewControl.Flag values
+  /// <summary>Use the minor (shorter) axis.</summary>
+  Minor=0x10,
+  /// <summary>Use the X axis.</summary>
+  X=0x20,
+  /// <summary>Use the Y axis.</summary>
+  Y=0x30
+}
+
 public class SceneViewControl : GuiControl, ITicker, IDisposable
 {
   public SceneViewControl()
@@ -48,13 +64,26 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return HasFlag(Flag.CameraMoving); }
   }
 
+  /// <summary>Gets/sets the camera axis used to calculate the camera area from the camera size.</summary>
+  public CameraAxis CameraAxis
+  {
+    get { return (CameraAxis)(flags & Flag.AxisMask); }
+    set
+    {
+      if(value != CameraAxis)
+      {
+        flags = flags & ~Flag.AxisMask | (Flag)value | Flag.CameraDirty;
+      }
+    }
+  }
+
   /// <summary>Gets the area of the scene covered by the current camera view, in world units.</summary>
   public Rectangle CameraArea
   {
     get
     {
-      double cameraScale = currentCamera.Size / Math.Max(Width, Height); // number of units per pixel on the major axis
-      Vector size = new Vector(cameraScale*Width, cameraScale*Height);
+      CalculateCameraView();
+      Vector size = new Vector(UnitsPerPixel*Width, UnitsPerPixel*Height);
       return new Rectangle(currentCamera.Center.X-size.X/2, currentCamera.Center.Y-size.Y/2, size.X, size.Y);
     }
   }
@@ -86,8 +115,9 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the size of the current camera view within the scene, in world units.</summary>
-  /// <remarks>The camera size is the number of world units visible on the major axis of the scene view control.
-  /// This property can be set even while the camera is mounted.
+  /// <remarks>The camera size is the number of world units visible on the selected axis of the scene view control.
+  /// This property can be set even while the camera is mounted. The selected axis can be set using the
+  /// <see cref="CameraAxis"/> property.
   /// </remarks>
   public double CameraSize
   {
@@ -126,7 +156,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the size of the target camera view within the scene, in world units.</summary>
-  /// <remarks>The camera size is the number of world units visible along the major axis of the scene view control.</remarks>
+  /// <remarks>The camera size is the number of world units visible along the selected axis of the scene view control.</remarks>
   public double TargetCameraSize
   {
     get { return targetCamera.Size; }
@@ -222,7 +252,18 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     InternalStartCameraMove(false);
     return true;
   }
- 
+
+  int AxisLength
+  {
+    get
+    {
+      CameraAxis axis = CameraAxis;
+      return axis == CameraAxis.Major ? Math.Max(Width, Height) :
+             axis == CameraAxis.Minor ? Math.Min(Width, Height) :
+             axis == CameraAxis.X     ? Width : Height;
+    }
+  }
+
   /// <summary>Throws an <see cref="InvalidOperationException"/> if the camera is mounted.</summary>
   void AssertNotMounted()
   {
@@ -235,9 +276,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   {
     if(HasFlag(Flag.CameraDirty))
     {
-      double zoomedSize = currentCamera.Size / currentCamera.CameraZoom;
-      UnitsPerPixel = zoomedSize / Math.Max(Width, Height); // number of units per pixel on the major axis
-
+      UnitsPerPixel = currentCamera.Size / AxisLength * currentCamera.CameraZoom;
       Vector size = new Vector(UnitsPerPixel*Width, UnitsPerPixel*Height);
       ZoomedArea = new Rectangle(currentCamera.Center.X-size.X/2, currentCamera.Center.Y-size.Y/2, size.X, size.Y);
     }
@@ -567,6 +606,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     CameraDirty = 0x04,
     /// <summary>Indicates whether invisible objects should be rendered.</summary>
     RenderInvisible = 0x08,
+    /// <summary>The mask applied to retrieve the camera axis.</summary>
+    AxisMask = 0x30,
   }
 
   struct CameraView

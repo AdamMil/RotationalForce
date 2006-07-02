@@ -7,7 +7,8 @@ using GameLib.Mathematics.TwoD;
 using GameLib.Interop.OpenGL;
 using Color = System.Drawing.Color;
 
-// TODO: optimize by hand-inlining some of GameLib's intersection/contains algorithms into SceneObject.
+// TODO: replace some rotatation code with code that has no floating point error due to degree -> radian conversion
+// (for some uses of rotation [eg, coordinate conversion], define special code that checks for 90/180/270 degrees)
 
 namespace RotationalForce.Engine
 {
@@ -119,6 +120,22 @@ public delegate bool CustomCollisionDetector(SceneObject a, SceneObject b);
 
 public delegate void ClickEventHandler(SceneObject obj, MouseButton button, Point worldPosition);
 public delegate void MouseMoveEventHandler(SceneObject obj, Point worldPosition);
+
+public struct LinkPoint
+{
+  /// <summary>The offset of the link point from the center of the object, in local coordinates.</summary>
+  /// <remarks>This value does not take into account the rotation of the object.</remarks>
+  public Vector Offset;
+  /// <summary>The position of the link point within the world, in world coordinates.</summary>
+  /// <remarks>This value takes into account the rotation of the object.</remarks>
+  public Point ScenePoint;
+  /// <summary>The link point's ID.</summary>
+  public int ID;
+  /// <summary>The object that is mounted to this link point. This can be null.</summary>
+  public SceneObject Object;
+  /// <summary>True if the mounted object will be destroyed when the parent is destroyed.</summary>
+  public bool ObjectOwned;
+}
 
 /// <summary>The base class of all renderable game objects.</summary>
 public abstract class SceneObject : GameObject
@@ -339,9 +356,21 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Coordinate conversion
-  public Point WorldToLocal(Point worldPoint) { return WorldToLocal(worldPoint.X, worldPoint.Y); }
+  public Point LocalToScene(Point localPoint) { return LocalToScene(localPoint.X, localPoint.Y); }
 
-  public Point WorldToLocal(double worldX, double worldY)
+  public Point LocalToScene(double localX, double localY)
+  {
+    // orient the point with our rotation
+    Vector offset = new Vector(localX, localY);
+    if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
+
+    // then scale it by half our size and offset it by our world position
+    return new Point(position.X + offset.X*(size.X*0.5), position.Y + offset.Y*(size.Y*0.5));
+  }
+
+  public Point SceneToLocal(Point worldPoint) { return SceneToLocal(worldPoint.X, worldPoint.Y); }
+
+  public Point SceneToLocal(double worldX, double worldY)
   {
     // center the point around our origin, and scale it down by half our size
     worldX = (worldX - position.X)*2/size.X;
@@ -355,18 +384,6 @@ public abstract class SceneObject : GameObject
     {
       return new Vector(worldX, worldY).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
     }
-  }
-
-  public Point LocalToWorld(Point localPoint) { return LocalToWorld(localPoint.X, localPoint.Y); }
-
-  public Point LocalToWorld(double localX, double localY)
-  {
-    // orient the point with our rotation
-    Vector offset = new Vector(localX, localY);
-    if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
-
-    // then scale it by half our world size and offset it by our world position
-    return new Point(position.X + offset.X*0.5*size.X, position.Y + offset.Y*0.5*size.Y);
   }
   #endregion
 
@@ -511,24 +528,28 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Link points
-  /// <summary>Creates a new link point.</summary>
+  /// <summary>Creates a new link point given an offset in the object in local coordinates.</summary>
   /// <returns>The ID of the link point, which will be used to retrieve it later.</returns>
-  public int AddLinkPoint(double x, double y)
+  public int AddLinkPoint(double localX, double localY)
   {
     int linkID = 0;
-    for(int i=0; i<numLinkPoints; i++)
+    for(int i=0; i<numLinkPoints; i++) // find the next link ID
     {
-      if(linkPoints[i].ID > linkID)
-        linkID = linkPoints[i].ID + 1;
+      if(linkPoints[i].ID >= linkID) linkID = linkPoints[i].ID + 1;
     }
 
     if(linkPoints == null || numLinkPoints == linkPoints.Length)
     {
-      linkPoints = new LinkPoint[numLinkPoints == 0 ? 4 : numLinkPoints*2];
+      LinkPoint[] newLinks = new LinkPoint[numLinkPoints == 0 ? 4 : numLinkPoints*2];
+      if(numLinkPoints != 0) Array.Copy(linkPoints, newLinks, numLinkPoints);
+      linkPoints = newLinks;
     }
 
-    linkPoints[numLinkPoints].Offset = new Vector(x, y);
+    linkPoints[numLinkPoints].Offset = new Vector(localX, localY);
     linkPoints[numLinkPoints].ID = linkID;
+    numLinkPoints++;
+    
+    SetFlag(Flag.LinkPointsDirty, true);
 
     return linkID;
   }
@@ -538,9 +559,15 @@ public abstract class SceneObject : GameObject
   {
     for(int i=0; i<numLinkPoints; )
     {
-      // if the link point has a mounted object, remove it by overwriting it with the last point in the list
-      if(linkPoints[i].Object == null) linkPoints[i] = linkPoints[--numLinkPoints];
-      else i++;
+      // if it's a plain link point (not a mount point), remove it by overwriting it with the last link point
+      if(linkPoints[i].Object == null)
+      {
+        linkPoints[i] = linkPoints[--numLinkPoints];
+      }
+      else // otherwise, it's a mount point, so skip over it
+      {
+        i++;
+      }
     }
   }
 
@@ -552,7 +579,22 @@ public abstract class SceneObject : GameObject
     int index = FindLinkPoint(linkID);
     if(index == -1) throw new ArgumentException("The link with linkID "+linkID+" could not be found.");
     UpdateSpatialInfo();
-    return linkPoints[index].WorldPoint;
+    return linkPoints[index].ScenePoint;
+  }
+
+  /// <summary>Gets an array of <see cref="LinkPoint"/> containing the object's link points.</summary>
+  /// <remarks>The link points are copied upon return, so modifying them or the array will not produce any change in
+  /// the object.
+  /// </remarks>
+  public LinkPoint[] GetLinkPoints()
+  {
+    LinkPoint[] links = new LinkPoint[numLinkPoints];
+    if(numLinkPoints != 0)
+    {
+      UpdateSpatialInfo();
+      Array.Copy(linkPoints, links, numLinkPoints);
+    }
+    return links;
   }
 
   /// <summary>Removes a link point, given its ID.</summary>
@@ -566,12 +608,12 @@ public abstract class SceneObject : GameObject
     }
   }
 
-  public void UpdateLinkPoint(int linkID, double x, double y)
+  public void UpdateLinkPoint(int linkID, double localX, double localY)
   {
     int index = FindLinkPoint(linkID);
     if(index == -1) throw new ArgumentException("The link with linkID "+linkID+" could not be found.");
-    linkPoints[index].Offset = new Vector(x, y);
-    linkPoints[index].WorldPoint = LocalToWorld(x, y);
+    linkPoints[index].Offset     = new Vector(localX, localY);
+    linkPoints[index].ScenePoint = LocalToScene(localX, localY);
   }
 
   int FindLinkPoint(int linkID)
@@ -585,6 +627,11 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Mounting
+  public bool Mounted
+  {
+    get { return mountParent != null; }
+  }
+
   public int Mount(SceneObject mountTo, double x, double y, bool owned)
   {
     throw new NotImplementedException();
@@ -1031,8 +1078,9 @@ public abstract class SceneObject : GameObject
       GL.glEnable(GL.GL_BLEND);
       GL.glBlendFunc((uint)(sourceBlend == SourceBlend.Default ? SourceBlend.One : sourceBlend),
                      (uint)(destBlend == DestinationBlend.Default ? DestinationBlend.Zero : destBlend));
-      GL.glColor(blendColor);
     }
+
+    GL.glColor(blendColor); // we'll always set the blendColor, because some objects just use it as their color
 
     GL.glPushMatrix(); // we should be in ModelView mode
     GL.glTranslated(X, Y, 0); // translate us to the origin
@@ -1126,22 +1174,8 @@ public abstract class SceneObject : GameObject
     /// been changed.
     /// </summary>
     SpatialInfoDirty=0x2000,
-  }
-
-  struct LinkPoint
-  {
-    /// <summary>The offset of the link point from the center of the object, in local coordinates.</summary>
-    /// <remarks>This value does not take into account the rotation of the object.</remarks>
-    public Vector Offset;
-    /// <summary>The position of the link point within the world, in world coordinates.</summary>
-    /// <remarks>This value takes into account the rotation of the object.</remarks>
-    public Point WorldPoint;
-    /// <summary>The link point's ID.</summary>
-    public int ID;
-    /// <summary>The object that is mounted to this link point. This can be null.</summary>
-    public SceneObject Object;
-    /// <summary>True if the mounted object will be destroyed when the parent is destroyed.</summary>
-    public bool ObjectOwned;
+    /// <summary>Determines if the criteria used to calculate link point position have changed.</summary>
+    LinkPointsDirty=0x4000,
   }
 
   struct SpatialInfo
@@ -1165,61 +1199,78 @@ public abstract class SceneObject : GameObject
 
   void UpdateSpatialInfo()
   {
-    // if the underlying info hasn't changed, or we're not part of a scene, return immediately.
-    if(!HasFlag(Flag.SpatialInfoDirty) || Scene == null) return;
+    // if we're not part of a scene, return immediately.
+    if(Scene == null) return;
 
-    Vector halfSize = size*0.5;
-    spatial.Area = new Rectangle(position.X-halfSize.X, position.Y-halfSize.Y, size.X, size.Y);
-    spatial.Rotation =
-      rotation == 0  || rotation == 180 ? SpatialInfo.RotationType.ZeroOr180   :
-      rotation == 90 || rotation == 270 ? SpatialInfo.RotationType.NinetyOr270 :
-      SpatialInfo.RotationType.Arbitrary;
-
-    if(spatial.RotatedArea == null) spatial.RotatedArea = new Polygon(4);
-    spatial.RotatedArea.Clear();
-    spatial.RotatedArea.AddPoint(-halfSize.X, -halfSize.Y);
-    spatial.RotatedArea.AddPoint( halfSize.X, -halfSize.Y);
-    spatial.RotatedArea.AddPoint( halfSize.X,  halfSize.Y);
-    spatial.RotatedArea.AddPoint(-halfSize.X,  halfSize.Y);
-    if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
+    if(HasFlag(Flag.SpatialInfoDirty))
     {
-      spatial.RotatedArea.Rotate(rotation * MathConst.DegreesToRadians);
+      Vector halfSize = size*0.5;
+      spatial.Area = new Rectangle(position.X-halfSize.X, position.Y-halfSize.Y, size.X, size.Y);
+      spatial.Rotation =
+        rotation == 0  || rotation == 180 ? SpatialInfo.RotationType.ZeroOr180   :
+        rotation == 90 || rotation == 270 ? SpatialInfo.RotationType.NinetyOr270 :
+        SpatialInfo.RotationType.Arbitrary;
+
+      if(spatial.RotatedArea == null) spatial.RotatedArea = new Polygon(4);
+      spatial.RotatedArea.Clear();
+      spatial.RotatedArea.AddPoint(-halfSize.X, -halfSize.Y);
+      spatial.RotatedArea.AddPoint( halfSize.X, -halfSize.Y);
+      spatial.RotatedArea.AddPoint( halfSize.X,  halfSize.Y);
+      spatial.RotatedArea.AddPoint(-halfSize.X,  halfSize.Y);
+      if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
+      {
+        spatial.RotatedArea.Rotate(rotation * MathConst.DegreesToRadians);
+      }
+
+      spatial.RotatedArea.Offset(position.X, position.Y);
+
+      if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
+      {
+        spatial.RotatedBounds = spatial.RotatedArea.GetBounds();
+      }
+      else
+      {
+        spatial.RotatedBounds = spatial.Area;
+      }
+
+      /* precalculate some things to speed collision detection, etc */
+
+      SetFlag(Flag.SpatialInfoDirty, false);
+      SetFlag(Flag.LinkPointsDirty, true);
     }
 
-    spatial.RotatedArea.Offset(position.X, position.Y);
-
-    if(spatial.Rotation != SpatialInfo.RotationType.ZeroOr180)
+    if(HasFlag(Flag.LinkPointsDirty))
     {
-      spatial.RotatedBounds = spatial.RotatedArea.GetBounds();
-    }
-    else
-    {
-      spatial.RotatedBounds = spatial.Area;
-    }
+      /* recalculate the world points associated with each link point. */
+      Vector halfSize = size*0.5;
 
-    // recalculate the world points associated with each link point
-    for(int i=0; i<numLinkPoints; i++)
-    {
-      // simply scale the offset by our size (we'll reorient later if necessary)
-      linkPoints[i].WorldPoint = new Point(linkPoints[i].Offset.X*halfSize.X, linkPoints[i].Offset.Y*halfSize.Y);
-    }
-
-    if(rotation != 0)
-    {
-      double sin, cos;
-      Math2D.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
-
-      // finish recalculating the world points associated with each link point
+      // start out by setting all the world points to the local-space offsets
       for(int i=0; i<numLinkPoints; i++)
       {
-        // then orient it with our rotation
-        Math2D.Rotate(ref linkPoints[i].WorldPoint, sin, cos);
+        linkPoints[i].ScenePoint = linkPoints[i].Offset.ToPoint();
+      }
+
+      // then, orient rotate the localspace offsets to match our orientation
+      if(rotation != 0)
+      {
+        double sin, cos;
+        Math2D.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
+
+        // finish recalculating the world points associated with each link point
+        for(int i=0; i<numLinkPoints; i++)
+        {
+          // then orient it with our rotation
+          Math2D.Rotate(ref linkPoints[i].ScenePoint, sin, cos);
+        }
+      }
+
+      for(int i=0; i<numLinkPoints; i++)
+      {
+        // finally, scale by our size and offset by our position
+        linkPoints[i].ScenePoint = new Point(linkPoints[i].ScenePoint.X*halfSize.X + position.X,
+                                             linkPoints[i].ScenePoint.Y*halfSize.Y + position.Y);
       }
     }
-
-    /* precalculate some things to speed collision detection, etc */
-
-    SetFlag(Flag.SpatialInfoDirty, false);
   }
 
   /// <summary>The position of the circle's center if the type is Circle. The top-left corner of the collision
