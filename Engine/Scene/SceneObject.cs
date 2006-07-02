@@ -7,8 +7,8 @@ using GameLib.Mathematics.TwoD;
 using GameLib.Interop.OpenGL;
 using Color = System.Drawing.Color;
 
-// TODO: replace some rotatation code with code that has no floating point error due to degree -> radian conversion
-// (for some uses of rotation [eg, coordinate conversion], define special code that checks for 90/180/270 degrees)
+// TODO: replace some rotatation code with code that checks for 90/180/270 degrees and does perfect rotations [with no
+// floating point error due to conversion to radians])
 
 namespace RotationalForce.Engine
 {
@@ -680,18 +680,7 @@ public abstract class SceneObject : GameObject
       EngineMath.AssertValidFloat(value);
       if(value != rotation)
       {
-        rotation = value;
-
-        // normalize value to 0-360 (exclusive)
-        if(value < 0.0)
-        {
-          do rotation += 360.0; while(rotation < 0.0);
-        }
-        else if(value >= 360.0)
-        {
-          do rotation -= 360.0; while(rotation >= 360.0);
-        }
-        
+        rotation = EngineMath.NormalizeAngle(value);
         SetFlag(Flag.SpatialInfoDirty, true);
       }
     }

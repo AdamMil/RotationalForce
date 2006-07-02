@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 
 namespace RotationalForce.Engine
@@ -11,6 +12,7 @@ public abstract class GuiControl
   /// <summary>
   /// The control's background color. If set to Color.Empty, it will attempt to retrieve the parent's background color.
   /// </summary>
+  [Browsable(false)]
   public Color BackColor
   {
     get { return backColor.IsEmpty && parent != null ? parent.BackColor : backColor; }
@@ -20,7 +22,10 @@ public abstract class GuiControl
       backColor = value;
     }
   }
-  
+
+  [Category("Appearance")]
+  [Description("The control's background color. If set to Color.Empty, the control will use the parent's background "+
+    "color.")]
   public Color RawBackColor
   {
     get { return backColor; }
@@ -37,6 +42,7 @@ public abstract class GuiControl
   /// <summary>
   /// The control's foreground color. If set to Color.Empty, it will attempt to retrieve the parent's background color.
   /// </summary>
+  [Browsable(false)]
   public Color ForeColor
   {
     get { return color.IsEmpty && parent != null ? parent.ForeColor : color; }
@@ -46,7 +52,10 @@ public abstract class GuiControl
       color = value;
     }
   }
-  
+
+  [Category("Appearance")]
+  [Description("The control's foreground color. If set to Color.Empty, the control will use the parent's foreground "+
+    "color.")]
   public Color RawForeColor
   {
     get { return color; }
@@ -62,6 +71,7 @@ public abstract class GuiControl
   #endregion
 
   #region Position and size
+  [Browsable(false)]
   public Rectangle Bounds
   {
     get { return bounds; }
@@ -86,53 +96,64 @@ public abstract class GuiControl
     }
   }
 
+  [Category("Layout")]
+  [Description("The control's position, in pixels, relative to the top-left corner of its parent control.")]
   public Point Position
   {
     get { return bounds.Location; }
     set { Bounds = new Rectangle(value, bounds.Size); }
   }
 
+  [Browsable(false)]
   public int X
   {
     get { return bounds.X; }
     set { Position = new Point(value, bounds.Y); }
   }
 
+  [Browsable(false)]
   public int Y
   {
     get { return bounds.Y; }
     set { Position = new Point(bounds.X, value); }
   }
 
+  [Category("Layout")]
+  [Description("The control's size, in pixels.")]
   public Size Size
   {
     get { return bounds.Size; }
     set { Bounds = new Rectangle(bounds.Location, value); }
   }
 
+  [Browsable(false)]
   public int Width
   {
     get { return bounds.Width; }
     set { Size = new Size(value, bounds.Height); }
   }
 
+  [Browsable(false)]
   public int Height
   {
     get { return bounds.Height; }
     set { Size = new Size(bounds.Width, value); }
   }
 
+  [Browsable(false)]
   public Rectangle ClientRect
   {
     get { return new Rectangle(0, 0, bounds.Width, bounds.Height); }
   }
 
+  [Browsable(false)]
   public Rectangle ScreenRect
   {
     get { return ClientToScreen(bounds); }
   }
   #endregion
 
+  [Browsable(false)]
   public DesktopControl Desktop
   {
     get
@@ -143,6 +164,7 @@ public abstract class GuiControl
     }
   }
 
+  [Browsable(false)]
   public GuiControl Parent
   {
     get { return parent; }
@@ -156,16 +178,27 @@ public abstract class GuiControl
     }
   }
 
+  [Category("Behavior")]
+  [Description("Determines whether the control will respond to user input.")]
   public bool Enabled
   {
     get { return HasFlag(Flag.Enabled); }
     set { SetFlag(Flag.Enabled, value); }
   }
 
+  [Category("Behavior")]
+  [Description("Determines whether the control will render itself or its children.")]
   public bool Visible
   {
     get { return HasFlag(Flag.Visible); }
-    set { SetFlag(Flag.Visible, value); }
+    set
+    {
+      if(value != Visible)
+      {
+        SetFlag(Flag.Visible, value);
+        Invalidate();
+      }
+    }
   }
 
   public Point ClientToScreen(Point clientPoint)
@@ -229,7 +262,7 @@ public abstract class GuiControl
   public void Invalidate(Rectangle dirtyRect)
   {
     // if this requires the parent to paint something, then invalidate that portion of the parent instead
-    if(BackColor.A == 0 && parent != null)
+    if((BackColor.A == 0 || !Visible) && parent != null)
     {
       dirtyRect.Offset(bounds.Location); // calculate the area of the parent that contains this control
       parent.Invalidate(dirtyRect); // and invalidate that area

@@ -21,7 +21,7 @@ public class DesktopControl : GuiControl
       for(int i=0; i<controlsToRepaint.Count; i++)
       {
         GuiControl control = controlsToRepaint[i];
-        if(control.InvalidRect.Width > 0)
+        if(control.Visible && control.InvalidRect.Width > 0)
         {
           control.Render(control.ClientToScreen(control.InvalidRect));
         }

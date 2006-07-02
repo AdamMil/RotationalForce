@@ -1224,7 +1224,7 @@ public class SceneEditor : Form
         // convert to a value from 0-360. we use degrees so that with the shift-mode, we can get exact 45/90/180/etc
         // degree angles (because the engine uses degrees internally), and we normalize it so that the shift-mode will
         // work and the status text will look nice
-        rotation = GLMath.NormalizeAngle(rotation) * MathConst.RadiansToDegrees;
+        rotation = EngineMath.NormalizeAngle(rotation * MathConst.RadiansToDegrees);
 
         if((Control.ModifierKeys & Keys.Shift) != 0)
         {
@@ -1987,8 +1987,18 @@ public class SceneEditor : Form
 
     public override void Activate()
     {
-      Editor.HideRightPane();
+      Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
+      Editor.propertyGrid.SelectedObject = SceneView;
+      Editor.ShowPropertyGrid();
+
       Panel.Cursor = zoomIn;
+    }
+
+    public override void Deactivate()
+    {
+      Editor.HideRightPane();
+      Editor.propertyGrid.SelectedObject = null;
+      Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
     }
 
     public override void KeyPress(KeyEventArgs e, bool down)
@@ -2008,11 +2018,20 @@ public class SceneEditor : Form
 
     public override bool MouseClick(MouseEventArgs e)
     {
+      if(e.Button != MouseButtons.Left && e.Button != MouseButtons.Right)
+      {
+        return false;
+      }
+
       const double zoomFactor = 2;
-      if((Control.ModifierKeys & Keys.Control) == 0) // zooming in
+      
+      bool zoomIn = (Control.ModifierKeys & Keys.Control) == 0;
+      if(e.Button == MouseButtons.Right) zoomIn = !zoomIn; // zoom the other way if the right mouse button is pressed
+
+      if(zoomIn) // zooming in
       {
         SceneView.CameraPosition = SceneView.ClientToScene(e.Location);
-        SceneView.CameraSize    *= 1/zoomFactor;
+        SceneView.CameraSize    /= zoomFactor;
       }
       else // zooming out
       {
@@ -2023,30 +2042,9 @@ public class SceneEditor : Form
       return true;
     }
 
-    public override bool MouseWheel(MouseEventArgs e)
+    void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
     {
-      if(Control.ModifierKeys == Keys.None) // plain mouse wheeling zooms in and out
-      {
-        const double zoomFactor = 1.25;
-        const double DetentsPerClick = 120; // 120 is the standard delta for a single wheel click
-        double wheelMovement = e.Delta / DetentsPerClick;
-
-        if(wheelMovement < 0) // zooming out
-        {
-          SceneView.CameraSize *= Math.Pow(zoomFactor, -wheelMovement);
-        }
-        else // zooming in
-        {
-          SceneView.CameraSize *= 1/Math.Pow(zoomFactor, wheelMovement);
-        }
-
-        Editor.InvalidateView();
-        return true;
-      }
-      else
-      {
-        return false;
-      }
+      Editor.InvalidateView();
     }
 
     static readonly Cursor zoomIn  = new Cursor(new System.IO.MemoryStream(Properties.Resources.ZoomIn));
@@ -2137,7 +2135,7 @@ public class SceneEditor : Form
   Toolbox toolbox;
   #endregion
 
-  #region Delegation to tool
+  #region RenderPanel UI events
   void renderPanel_KeyDown(object sender, KeyEventArgs e)
   {
     if(!renderPanel.Focused) return;
@@ -2145,6 +2143,7 @@ public class SceneEditor : Form
     
     if(!e.Handled)
     {
+      // do keyboard scrolling if the arrow keys are pressed
       if(e.KeyCode == Keys.Up || e.KeyCode == Keys.Down || e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
       {
         double amount = sceneView.CameraSize / 8;
@@ -2179,7 +2178,14 @@ public class SceneEditor : Form
 
   void renderPanel_MouseDragStart(object sender, MouseEventArgs e)
   {
-    if(!currentTool.MouseDragStart(e))
+    if(currentTool.MouseDragStart(e)) return;
+    
+    if(e.Button == MouseButtons.Right) // right drag scrolls the view
+    {
+      dragScrolling = true;
+      dragStart     = sceneView.CameraPosition;
+    }
+    else // nothing handled the drag, so cancel it
     {
       renderPanel.CancelMouseDrag();
     }
@@ -2187,18 +2193,58 @@ public class SceneEditor : Form
 
   void renderPanel_MouseDrag(object sender, MouseDragEventArgs e)
   {
-    currentTool.MouseDrag(e);
+    if(dragScrolling)
+    {
+      sceneView.CameraPosition = dragStart; // reset the camera so that the correct mouse movement can be calculated
+
+      Vector sceneOffset = sceneView.ClientToScene(new Size(e.X-e.Start.X, e.Y-e.Start.Y));
+      sceneView.CameraPosition -= sceneOffset; // scroll in the opposite direction of the mouse movement
+
+      InvalidateView();
+    }
+    else
+    {
+      currentTool.MouseDrag(e);
+    }
   }
 
   void renderPanel_MouseDragEnd(object sender, MouseDragEventArgs e)
   {
-    currentTool.MouseDragEnd(e);
+    if(dragScrolling)
+    {
+      dragScrolling = false;
+    }
+    else
+    {
+      currentTool.MouseDragEnd(e);
+    }
   }
 
   void renderPanel_MouseWheel(object sender, MouseEventArgs e)
   {
     if(currentTool.MouseWheel(e)) return;
+
+    if(Control.ModifierKeys == Keys.None) // plain mouse wheeling zooms in and out
+    {
+      const double zoomFactor = 1.25;
+      const double DetentsPerClick = 120; // 120 is the standard delta for a single wheel click
+      double wheelMovement = e.Delta / DetentsPerClick;
+
+      if(wheelMovement < 0) // zooming out
+      {
+        sceneView.CameraSize *= Math.Pow(zoomFactor, -wheelMovement);
+      }
+      else // zooming in
+      {
+        sceneView.CameraSize /= Math.Pow(zoomFactor, wheelMovement);
+      }
+
+      InvalidateView();
+    }
   }
+  
+  GLPoint dragStart;
+  bool dragScrolling;
   #endregion
 
   #region Dragging items from the toolpane

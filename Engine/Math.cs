@@ -115,6 +115,19 @@ public static class EngineMath
   }
   #endregion
 
+  public static double NormalizeAngle(double angle)
+  {
+    if(angle < 0)
+    {
+      do angle += 360; while(angle < 0);
+    }
+    else if(angle >= 360)
+    {
+      do angle -= 360; while(angle >= 360);
+    }
+    return angle;
+  }
+
   public static void Swap<T>(ref T a, ref T b)
   {
     T tmp = a;
