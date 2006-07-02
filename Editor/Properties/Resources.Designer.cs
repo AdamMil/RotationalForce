@@ -60,23 +60,9 @@ namespace RotationalForce.Editor.Properties {
             }
         }
         
-        internal static System.Drawing.Bitmap CollisionTool {
-            get {
-                object obj = ResourceManager.GetObject("CollisionTool", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
         internal static System.Drawing.Bitmap LayerTool {
             get {
                 object obj = ResourceManager.GetObject("LayerTool", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        internal static System.Drawing.Bitmap LinkTool {
-            get {
-                object obj = ResourceManager.GetObject("LinkTool", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
