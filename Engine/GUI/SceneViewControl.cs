@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using GameLib.Interop.OpenGL;
 using GameLib.Mathematics.TwoD;
 using SPoint = System.Drawing.Point;
@@ -59,12 +60,16 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
 
   #region Camera positioning
   /// <summary>Returns true if the camera is moving towards the target view, and false if not.</summary>
+  [Browsable(false)]
   public bool CameraMoving
   {
     get { return HasFlag(Flag.CameraMoving); }
   }
 
   /// <summary>Gets/sets the camera axis used to calculate the camera area from the camera size.</summary>
+  [Category("Camera")]
+  [Description("The axis used to calculate the camera view. With a zoom factor of 1.0, the camera will show a number "+
+    "of scene units equal to the CameraSize property along the given axis.")]
   public CameraAxis CameraAxis
   {
     get { return (CameraAxis)(flags & Flag.AxisMask); }
@@ -77,7 +82,10 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     }
   }
 
-  /// <summary>Gets the area of the scene covered by the current camera view, in world units.</summary>
+  /// <summary>Gets the area of the scene covered by the current camera view, in world units, not considering
+  /// camera rotation.
+  /// </summary>
+  [Browsable(false)]
   public Rectangle CameraArea
   {
     get
@@ -89,6 +97,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the center point of the current camera view within the scene, in world units.</summary>
+  [Category("Camera")]
+  [Description("The center point of the camera view, in scene units.")]
   public Point CameraPosition
   {
     get { return currentCamera.Center; }
@@ -101,6 +111,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the X coordinate of the center point of the current camera view within the scene, in world units.</summary>
+  [Browsable(false)]
   public double CameraX
   {
     get { return CameraPosition.X; }
@@ -108,17 +119,36 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Gets/sets the Y coordinate of the center point of the current camera view within the scene, in world units.</summary>
+  [Browsable(false)]
   public double CameraY
   {
     get { return CameraPosition.Y; }
     set { CameraPosition = new Point(CameraPosition.X, value); }
   }
 
+  /// <summary>Gets/sets the rotation of the current camera view, in degrees.</summary>
+  /// <remarks>This property can be set even while the camera is mounted.</remarks>
+  [Category("Camera")]
+  [Description("The rotation of the camera, in degrees.")]
+  public double CameraRotation
+  {
+    get { return currentCamera.Rotation; }
+    set
+    {
+      currentCamera.Rotation = EngineMath.NormalizeAngle(value);
+      SetFlag(Flag.CameraMoving, false); // can't use StopCameraMove() because we want this to work with mounting, too.
+      OnCameraChanged();
+    }
+  }
+
   /// <summary>Gets/sets the size of the current camera view within the scene, in world units.</summary>
-  /// <remarks>The camera size is the number of world units visible on the selected axis of the scene view control.
+  /// <remarks>The camera size is the number of world units visible on the selected axis of the scene view control, not
+  /// considering rotation.
   /// This property can be set even while the camera is mounted. The selected axis can be set using the
   /// <see cref="CameraAxis"/> property.
   /// </remarks>
+  [Category("Camera")]
+  [Description("The number of world units displayed along the camera axis, assuming a zoom factor of 1.0")]
   public double CameraSize
   {
     get { return currentCamera.Size; }
@@ -136,6 +166,9 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// values. The zoom factor cannot be negative.
   /// </value>
   /// <remarks>This property can be set even while the camera is mounted.</remarks>
+  [Category("Camera")]
+  [Description("The camera zoom factor. A factor of 2.0 will show objects zoomed to 200% of their normal size. A "+
+    "factor of 0.5 will show objects zoomed to 50% of their normal size.")]
   public double CameraZoom
   {
     get { return currentCamera.CameraZoom; }
@@ -149,6 +182,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
   
   /// <summary>Gets/sets the center point of the target camera view within the scene, in world units.</summary>
+  [Browsable(false)]
   public Point TargetCameraPosition
   {
     get { return targetCamera.Center; }
@@ -157,10 +191,19 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
 
   /// <summary>Gets/sets the size of the target camera view within the scene, in world units.</summary>
   /// <remarks>The camera size is the number of world units visible along the selected axis of the scene view control.</remarks>
+  [Browsable(false)]
   public double TargetCameraSize
   {
     get { return targetCamera.Size; }
     set { targetCamera.Size = value; }
+  }
+
+  /// <summary>Gets/sets the rotation of the target camera view, in degrees.</summary>
+  [Browsable(false)]
+  public double TargetCameraRotation
+  {
+    get { return targetCamera.Rotation; }
+    set { targetCamera.Rotation = EngineMath.NormalizeAngle(value); }
   }
 
   /// <summary>Gets/sets the target camera zoom factor.</summary>
@@ -168,6 +211,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// half the size that they would normally be. If the zoom is 0.5, the width and height will be double their normal
   /// values. The zoom factor cannot be negative.
   /// </value>
+  [Browsable(false)]
   public double TargetCameraZoom
   {
     get { return targetCamera.CameraZoom; }
@@ -179,6 +223,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
   
   /// <summary>Gets/sets the camera interpolation mode.</summary>
+  [Category("Camera")]
+  [Description("The type of interpolation that the camera will use when transitioning from one view to another.")]
   public InterpolationMode CameraInterpolation
   {
     get { return interpolationMode; }
@@ -288,7 +334,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   {
     // if we're already there, don't do anything.
     if(currentCamera.Center == targetCamera.Center && currentCamera.CameraZoom == targetCamera.CameraZoom &&
-       currentCamera.Size == targetCamera.Size)
+       currentCamera.Size == targetCamera.Size && currentCamera.Rotation == targetCamera.Rotation)
     {
       SetFlag(Flag.CameraMoving, false);
       if(pushCurrentView) PushCurrentCamera();
@@ -516,6 +562,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     GL.glMatrixMode(GL.GL_MODELVIEW);
     GL.glPushMatrix(); // save the old ModelView matrix
     GL.glLoadIdentity();
+    if(currentCamera.Rotation != 0) GL.glRotated(currentCamera.Rotation, 0, 0, 1); // rotate, if necessary
 
     Rectangle viewArea = ClientToScene(ScreenToClient(drawArea));
     Scene.Render(ref viewArea, LayerMask, GroupMask, RenderInvisible);
@@ -555,6 +602,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
                                                     interpolationPosition, interpolationMode);
         currentCamera.CameraZoom = EngineMath.Interpolate(sourceCamera.CameraZoom, targetCamera.CameraZoom,
                                                           interpolationPosition, interpolationMode);
+        currentCamera.Rotation = EngineMath.Interpolate(sourceCamera.Rotation, targetCamera.Rotation,
+                                                        interpolationPosition, interpolationMode);
         OnCameraChanged();
       }
     }
@@ -618,6 +667,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     public double Size;
     /// <summary>The zoom factor of the camera, which should be a positive number.</summary>
     public double CameraZoom;
+    /// <summary>The camera rotation, in degrees.</summary>
+    public double Rotation;
   }
 
   bool HasFlag(Flag flag)
