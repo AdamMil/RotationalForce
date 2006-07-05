@@ -373,17 +373,13 @@ public abstract class SceneObject : GameObject
   public Point SceneToLocal(double worldX, double worldY)
   {
     // center the point around our origin, and scale it down by half our size
-    worldX = (worldX - position.X)*2/size.X;
-    worldY = (worldY - position.Y)*2/size.Y;
-    
-    if(rotation == 0)
+    Point localPoint = new Point((worldX - position.X)*2/size.X, (worldY - position.Y)*2/size.Y);
+    // then rotate it if necessary
+    if(rotation != 0)
     {
-      return new Point(worldX, worldY);
+      localPoint = new Vector(localPoint).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
     }
-    else
-    {
-      return new Vector(worldX, worldY).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
-    }
+    return localPoint;
   }
   #endregion
 
