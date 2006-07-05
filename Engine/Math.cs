@@ -103,7 +103,7 @@ public static class EngineMath
       {
         linearDelta = Math.Pow(Math.E, linearDelta * -30);
       }
-      else // "normal" Sigmoid
+      else // normal "Sigmoid"
       {
         linearDelta = Math.Pow(2, linearDelta * -20);
       }
@@ -114,6 +114,21 @@ public static class EngineMath
     return linearDelta;
   }
   #endregion
+
+  public static double InterpolateNormalizedAngle(double start, double end, double delta, InterpolationMode mode)
+  {
+    delta = CalculateDelta(delta, mode);
+
+    if(Math.Abs(start - end) <= 180)
+    {
+      return Interpolate(start, end, delta);
+    }
+    else
+    {
+      double angle = start < end ? Interpolate(start, end-360, delta) : Interpolate(start-360, end, delta);
+      return angle < 0 ? angle+360 : angle;
+    }
+  }
 
   public static double NormalizeAngle(double angle)
   {

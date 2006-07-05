@@ -180,6 +180,7 @@ public abstract class GuiControl
 
   [Category("Behavior")]
   [Description("Determines whether the control will respond to user input.")]
+  [DefaultValue(true)]
   public bool Enabled
   {
     get { return HasFlag(Flag.Enabled); }
@@ -188,6 +189,7 @@ public abstract class GuiControl
 
   [Category("Behavior")]
   [Description("Determines whether the control will render itself or its children.")]
+  [DefaultValue(true)]
   public bool Visible
   {
     get { return HasFlag(Flag.Visible); }

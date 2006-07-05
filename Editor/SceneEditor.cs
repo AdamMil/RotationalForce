@@ -596,19 +596,19 @@ public class SceneEditor : Form
   {
     public ObjectTool(SceneEditor editor) : base(editor)
     {
-      spatialTool = new SpatialSubTool(editor, this);
       linksTool   = new LinksSubTool(editor, this);
+      mountTool   = new MountSubTool(editor, this);
+      spatialTool = new SpatialSubTool(editor, this);
     }
 
     public override void Activate()
     {
       SubTool = SpatialTool;
-      SubTool.Activate();
     }
 
     public override void Deactivate()
     {
-      SubTool.Deactivate();
+      SubTool = null;
       Editor.HideRightPane();
       DeselectObjects();
     }
@@ -622,6 +622,11 @@ public class SceneEditor : Form
     public LinksSubTool LinksTool
     {
       get { return linksTool; }
+    }
+    
+    public MountSubTool MountTool
+    {
+      get { return mountTool; }
     }
 
     public ObjectSubTool SubTool
@@ -905,6 +910,190 @@ public class SceneEditor : Form
     }
     #endregion
 
+    #region MountSubTool
+    public sealed class MountSubTool : ObjectSubTool
+    {
+      public MountSubTool(SceneEditor editor, ObjectTool parent) : base(editor, parent) { }
+
+      public override void Activate()
+      {
+        child = SelectedObjects[0];
+        state = State.SelectingObject;
+        EditorApp.MainForm.StatusText = "Click on the parent object...";
+      }
+
+      public override void Deactivate()
+      {
+        child = parent = null;
+        links = null;
+        
+        if(state == State.SelectingMount)
+        {
+          SceneView.CameraSize = previousViewSize;
+          Editor.InvalidateView();
+        }
+        
+        EditorApp.MainForm.StatusText = "";
+      }
+
+      public override void KeyPress(KeyEventArgs e, bool down)
+      {
+        // if the user toggles snap-to-grid, redraw the decoration 
+        if(state == State.SelectingMount && e.KeyCode == Keys.ShiftKey)
+        {
+          RecalculateSelectedLink();
+        }
+      }
+
+      public override bool MouseClick(MouseEventArgs e)
+      {
+        if(e.Button != MouseButtons.Left) return false;
+        
+        if(state == State.SelectingObject)
+        {
+          parent = ObjectTool.ObjectUnderPoint(e.Location);
+          if(parent == null) return false;
+
+          if(parent == child)
+          {
+            MessageBox.Show("You can't mount an object to itself.", "Hmm...", MessageBoxButtons.OK,
+                            MessageBoxIcon.Exclamation);
+            return true;
+          }
+          
+          links = parent.GetLinkPoints();
+
+          previousViewSize = SceneView.CameraSize;
+
+          Vector objSize = parent.GetRotatedAreaBounds().Size;
+          SceneView.CameraPosition = parent.Position;
+          SceneView.CameraSize     = Math.Max(objSize.X, objSize.Y) * 1.50;
+          Editor.InvalidateView();
+
+          EditorApp.MainForm.StatusText = "Select mount point...";
+          state = State.SelectingMount;
+          return true;
+        }
+        else if(state == State.SelectingMount)
+        {
+          MountDialog dialog = new MountDialog();
+
+          if(dialog.ShowDialog() == DialogResult.OK)
+          {
+            // calculate the mount point
+            GLPoint point;
+            if(selectedLink == -1)
+            {
+              point = parent.SceneToLocal(SceneView.ClientToScene(e.Location));
+            }
+            else
+            {
+              point = links[selectedLink].Offset.ToPoint();
+            }
+            
+            child.Mount(parent, point.X, point.Y, dialog.OwnedByParent);
+          }
+
+          return true;
+        }
+        else
+        {
+          return false;
+        }
+      }
+
+      public override void MouseMove(MouseEventArgs e)
+      {
+        if(state == State.SelectingMount)
+        {
+          RecalculateSelectedLink();
+        }
+      }
+
+      public override void PaintDecoration(Graphics g)
+      {
+        if(state == State.SelectingMount)
+        {
+          for(int i=0; i<links.Length; i++)
+          {
+            if(links[i].Object == null)
+            {
+              DrawLinkPoint(g, i);
+            }
+          }
+
+          Point mousePoint;
+          if(selectedLink != -1)
+          {
+            mousePoint = SceneView.SceneToClient(links[selectedLink].ScenePoint);
+          }
+          else
+          {
+            mousePoint = Panel.PointToClient(Control.MousePosition);
+          }
+
+          Rectangle rect = new Rectangle(mousePoint.X-4, mousePoint.Y-4, 9, 9);
+          g.FillRectangle(Brushes.Green, rect);
+          g.DrawRectangle(Pens.White, rect);
+        }
+      }
+
+      enum State
+      {
+        SelectingObject,
+        SelectingMount,
+      }
+
+      void RecalculateSelectedLink()
+      {
+        selectedLink = -1;
+        
+        bool snapToPoints = (Control.ModifierKeys & Keys.Shift) == 0;
+        if(snapToPoints)
+        {
+          Point mousePoint = Panel.PointToClient(Control.MousePosition);
+          int  closestDist = int.MaxValue;
+
+          for(int i=0; i<links.Length; i++)
+          {
+            if(snapToPoints)
+            {
+              const int threshold = 12 * 12; // it will snap at 12 pixels distance
+              Point linkPoint = SceneView.SceneToClient(links[i].ScenePoint);
+              int xd = linkPoint.X-mousePoint.X, yd = linkPoint.Y-mousePoint.Y, dist = xd*xd + yd*yd;
+              if(dist <= threshold && dist < closestDist)
+              {
+                closestDist  = dist;
+                selectedLink = i;
+              }
+            }
+          }
+        }
+
+        Editor.InvalidateDecoration();
+      }
+
+      void DrawLinkPoint(Graphics g, int linkPoint)
+      {
+        Rectangle rect = GetLinkRect(linkPoint);
+        g.FillRectangle(Brushes.Blue, rect);
+        g.DrawRectangle(Pens.White, rect);
+      }
+
+      Rectangle GetLinkRect(int linkPoint)
+      {
+        Point pt = SceneView.SceneToClient(links[linkPoint].ScenePoint);
+        return new Rectangle(pt.X-2, pt.Y-2, 5, 5);
+      }
+      
+      double previousViewSize;
+      SceneObject child, parent;
+      LinkPoint[] links;
+      int selectedLink = -1;
+      State state;
+    }
+    #endregion
+
     #region SpatialSubTool
     public sealed class SpatialSubTool : ObjectSubTool
     {
@@ -1010,7 +1199,7 @@ public class SceneEditor : Form
         // if zero or one objects are selected, select the object under the pointer
         if(SelectedObjects.Count < 2)
         {
-          SceneObject obj = ObjectUnderPoint(e.Location);
+          SceneObject obj = ObjectTool.ObjectUnderPoint(e.Location);
           if(obj != null) ObjectTool.SelectObject(obj, true);
         }
         
@@ -1443,30 +1632,10 @@ public class SceneEditor : Form
         return new Rectangle(x-2, y-2, 5, 5);
       }
 
-      PickOptions GetPickerOptions()
-      {
-        PickOptions options = new PickOptions();
-        options.AllowInvisible  = true;
-        options.AllowUnpickable = true;
-        options.GroupMask       = 0xffffffff;
-        options.LayerMask       = Editor.CurrentLayerMask;
-        options.SortByLayer     = true;
-        return options;
-      }
-
-      SceneObject ObjectUnderPoint(Point pt)
-      {
-        foreach(SceneObject obj in Scene.PickPoint(SceneView.ClientToScene(pt), GetPickerOptions()))
-        {
-          return obj; // return the first item, if there are any
-        }
-
-        return null;
-      }
-
       List<SceneObject> ObjectsInRect(Rectangle rect)
       {
-        IEnumerator<SceneObject> e = Scene.PickRectangle(SceneView.ClientToScene(rect), GetPickerOptions()).GetEnumerator();
+        IEnumerator<SceneObject> e = Scene.PickRectangle(SceneView.ClientToScene(rect), ObjectTool.GetPickerOptions())
+                                          .GetEnumerator();
         if(!e.MoveNext()) return null;
         List<SceneObject> list = new List<SceneObject>();
         do
@@ -1491,7 +1660,7 @@ public class SceneEditor : Form
 
       void SelectObject(Point pt, bool deselectOthers)
       {
-        SceneObject obj = ObjectUnderPoint(pt);
+        SceneObject obj = ObjectTool.ObjectUnderPoint(pt);
         if(obj != null) ObjectTool.SelectObject(obj, deselectOthers);
         else if(deselectOthers) ObjectTool.DeselectObjects();
       }
@@ -1594,7 +1763,7 @@ public class SceneEditor : Form
 
       void ToggleObjectSelection(Point pt)
       {
-        SceneObject obj = ObjectUnderPoint(pt);
+        SceneObject obj = ObjectTool.ObjectUnderPoint(pt);
         if(obj == null) return;
 
         if(ObjectTool.IsSelected(obj))
@@ -1634,12 +1803,12 @@ public class SceneEditor : Form
 
       void menu_Mount(object sender, EventArgs e)
       {
-        throw new NotImplementedException();
+        ObjectTool.SubTool = ObjectTool.MountTool;
       }
 
       void menu_Dismount(object sender, EventArgs e)
       {
-        throw new NotImplementedException();
+        SelectedObjects[0].Dismount();
       }
 
       void menu_Export(object sender, EventArgs e)
@@ -1683,6 +1852,7 @@ public class SceneEditor : Form
     #endregion
 
     LinksSubTool linksTool;
+    MountSubTool mountTool;
     SpatialSubTool spatialTool;
     #endregion
 
@@ -1792,6 +1962,17 @@ public class SceneEditor : Form
       }
     }
 
+    PickOptions GetPickerOptions()
+    {
+      PickOptions options = new PickOptions();
+      options.AllowInvisible  = true;
+      options.AllowUnpickable = true;
+      options.GroupMask       = 0xffffffff;
+      options.LayerMask       = Editor.CurrentLayerMask;
+      options.SortByLayer     = true;
+      return options;
+    }
+
     bool IsSelected(SceneObject obj) { return selectedObjects.Contains(obj); }
 
     void InvalidateSelectedBounds(bool invalidateRender)
@@ -1801,9 +1982,19 @@ public class SceneEditor : Form
       Editor.Invalidate(rect, invalidateRender);
     }
 
+    SceneObject ObjectUnderPoint(Point pt)
+    {
+      foreach(SceneObject obj in Scene.PickPoint(SceneView.ClientToScene(pt), GetPickerOptions()))
+      {
+        return obj; // return the first item, if there are any
+      }
+
+      return null;
+    }
+
     void OnSelectedObjectsChanged()
     {
-      SubTool.OnSelectedObjectsChanged();
+      if(SubTool != null) SubTool.OnSelectedObjectsChanged();
     }
     
     void RecalculateSelectedBounds()
