@@ -155,7 +155,42 @@ public class Scene : ITicker, IDisposable
     protected PickOptions options;
   }
   #endregion
-  
+
+  #region AllEnumerable
+  sealed class AllEnumerable : PickEnumerable
+  {
+    public AllEnumerable(List<SceneObject> objects, PickOptions options)
+      : base(objects, options) { }
+
+    public override IEnumerator<SceneObject> GetEnumerator()
+    {
+      return new AllEnumerator(this);
+    }
+
+    sealed class AllEnumerator : PickEnumerator
+    {
+      public AllEnumerator(AllEnumerable parent) : base(parent.objects)
+      {
+        this.parent = parent;
+      }
+
+      public override bool MoveNext()
+      {
+        while(objects.MoveNext())
+        {
+          if(CanPick(objects.Current, parent.options))
+          {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      AllEnumerable parent;
+    }
+  }
+  #endregion
+
   #region CircleEnumerable
   sealed class CircleEnumerable : PickEnumerable
   {
@@ -354,8 +389,19 @@ public class Scene : ITicker, IDisposable
   static bool CanPick(SceneObject obj, PickOptions options)
   {
     return obj != options.ObjectToIgnore && !obj.Dead &&
-           (options.AllowUnpickable || obj.PickingAllowed) && (options.AllowInvisible || obj.Visible) &&
-           (obj.GroupMask & options.GroupMask) != 0 && (obj.LayerMask & options.LayerMask) != 0;
+           (options.AllowUnpickable || obj.PickingAllowed) &&
+           (obj.GroupMask & options.GroupMask) != 0 && (obj.LayerMask & options.LayerMask) != 0 &&
+           (options.AllowInvisible || obj.EffectiveVisibility);
+  }
+
+  public IEnumerable<SceneObject> PickAll(PickOptions options)
+  {
+    return Pick(new AllEnumerable(objects, options), options.SortByLayer);
+  }
+
+  public uint PickAll(PickOptions options, ObjectFinderCallback callback, object context)
+  {
+    return Pick(PickAll(options), callback, context);
   }
 
   public IEnumerable<SceneObject> PickCircle(Point worldPoint, double radius, PickOptions options)

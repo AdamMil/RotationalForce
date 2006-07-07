@@ -77,6 +77,7 @@ namespace RotationalForce.Editor
       // 
       // chkRotation
       // 
+      this.chkRotation.Checked = true;
       this.chkRotation.Location = new System.Drawing.Point(9, 35);
       this.chkRotation.Margin = new System.Windows.Forms.Padding(1);
       this.chkRotation.Name = "chkRotation";
