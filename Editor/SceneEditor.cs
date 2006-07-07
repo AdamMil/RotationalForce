@@ -991,7 +991,10 @@ public class SceneEditor : Form
               point = links[selectedLink].Offset.ToPoint();
             }
             
-            child.Mount(parent, point.X, point.Y, dialog.OwnedByParent);
+            child.Mount(parent, point.X, point.Y, dialog.OwnedByParent, dialog.TrackRotation, dialog.InheritProperties);
+            
+            EditorApp.MainForm.StatusText = "Object mounted.";
+            ObjectTool.SubTool = ObjectTool.SpatialTool;
           }
 
           return true;

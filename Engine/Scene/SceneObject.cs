@@ -361,7 +361,8 @@ public abstract class SceneObject : GameObject
   public Point LocalToScene(double localX, double localY)
   {
     // orient the point with our rotation
-    Vector offset = new Vector(localX, localY);
+    Vector offset   = new Vector(localX, localY);
+    double rotation = EffectiveRotation;
     if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
 
     // then scale it by half our size and offset it by our world position
@@ -375,6 +376,7 @@ public abstract class SceneObject : GameObject
     // center the point around our origin, and scale it down by half our size
     Point localPoint = new Point((worldX - position.X)*2/size.X, (worldY - position.Y)*2/size.Y);
     // then rotate it if necessary
+    double rotation = EffectiveRotation;
     if(rotation != 0)
     {
       localPoint = new Vector(localPoint).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
@@ -528,26 +530,7 @@ public abstract class SceneObject : GameObject
   /// <returns>The ID of the link point, which will be used to retrieve it later.</returns>
   public int AddLinkPoint(double localX, double localY)
   {
-    int linkID = 0;
-    for(int i=0; i<numLinkPoints; i++) // find the next link ID
-    {
-      if(linkPoints[i].ID >= linkID) linkID = linkPoints[i].ID + 1;
-    }
-
-    if(linkPoints == null || numLinkPoints == linkPoints.Length)
-    {
-      LinkPoint[] newLinks = new LinkPoint[numLinkPoints == 0 ? 4 : numLinkPoints*2];
-      if(numLinkPoints != 0) Array.Copy(linkPoints, newLinks, numLinkPoints);
-      linkPoints = newLinks;
-    }
-
-    linkPoints[numLinkPoints].Offset = new Vector(localX, localY);
-    linkPoints[numLinkPoints].ID = linkID;
-    numLinkPoints++;
-    
-    SetFlag(Flag.LinkPointsDirty, true);
-
-    return linkID;
+    return AddLinkPoint(localX, localY, null, false);
   }
 
   /// <summary>Removes all link points (but not mount points).</summary>
@@ -569,7 +552,6 @@ public abstract class SceneObject : GameObject
 
   /// <summary>Gets the position of a link point (or mount point), in world coordinates.</summary>
   /// <param name="linkID">The ID of the link point to find.</param>
-  /// <returns></returns>
   public Point GetLinkPoint(int linkID)
   {
     int index = FindLinkPoint(linkID);
@@ -612,6 +594,31 @@ public abstract class SceneObject : GameObject
     linkPoints[index].ScenePoint = LocalToScene(localX, localY);
   }
 
+  int AddLinkPoint(double localX, double localY, SceneObject child, bool owned)
+  {
+    int linkID = 0;
+    for(int i=0; i<numLinkPoints; i++) // find the next link ID
+    {
+      if(linkPoints[i].ID >= linkID) linkID = linkPoints[i].ID + 1;
+    }
+
+    if(linkPoints == null || numLinkPoints == linkPoints.Length)
+    {
+      LinkPoint[] newLinks = new LinkPoint[numLinkPoints == 0 ? 4 : numLinkPoints*2];
+      if(numLinkPoints != 0) Array.Copy(linkPoints, newLinks, numLinkPoints);
+      linkPoints = newLinks;
+    }
+
+    linkPoints[numLinkPoints].ID          = linkID;
+    linkPoints[numLinkPoints].Object      = child;
+    linkPoints[numLinkPoints].ObjectOwned = owned;
+    linkPoints[numLinkPoints].Offset      = new Vector(localX, localY);
+    linkPoints[numLinkPoints].ScenePoint  = LocalToScene(localX, localY);
+    numLinkPoints++;
+
+    return linkID;
+  }
+
   int FindLinkPoint(int linkID)
   {
     for(int i=0; i<numLinkPoints; i++)
@@ -623,19 +630,71 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Mounting
+  /// <summary>Gets a value that indicates whether this object is mounted to another object.</summary>
+  [Browsable(false)]
   public bool Mounted
   {
     get { return mountParent != null; }
   }
-
-  public int Mount(SceneObject mountTo, double x, double y, bool owned)
+  
+  /// <summary>Gets the object to which this object is mounted, or null if this object is not mounted.</summary>
+  [Browsable(false)]
+  public SceneObject MountParent
   {
-    throw new NotImplementedException();
+    get { return mountParent; }
+  }
+
+  /// <summary>Mounts this object to another object.</summary>
+  /// <param name="mountTo">The <see cref="SceneObject"/> to which this object will be mounted.</param>
+  /// <param name="localX">The local X coordinate within <paramref name="mountTo"/> where this object will be mounted.</param>
+  /// <param name="localY">The local Y coordinate within <paramref name="mountTo"/> where this object will be mounted.</param>
+  /// <param name="owned">Whether this object will be owned by its parent. If true, this object will be deleted when
+  /// <paramref name="mountTo"/> is deleted.
+  /// </param>
+  /// <param name="trackRotation">Whether this object will rotate when <paramref name="mountTo"/> rotates.</param>
+  /// <param name="inheritProperties">Whether this object will inherit certain properties from
+  /// <paramref name="mountTo"/>. Currently, the properties inherited are <see cref="HorizontalFlip"/>,
+  /// <see cref="VerticalFlip"/>, and <see cref="Visible"/>.
+  /// </param>
+  /// <returns>Returns the ID of the link point within <see cref="mountTo"/> where this object will be mounted.</returns>
+  public int Mount(SceneObject mountTo, double localX, double localY,
+                   bool owned, bool trackRotation, bool inheritProperties)
+  {
+    if(mountTo == null) throw new ArgumentNullException("Parent object is null.");
+
+    if(Scene != null && Scene != mountTo.Scene)
+    {
+      throw new ArgumentException("Parent object belongs to a different scene.");
+    }
+
+    if(Mounted) Dismount();
+
+    SetFlag(Flag.TrackRotation, trackRotation);
+    SetFlag(Flag.InheritProperties, inheritProperties);
+    Scene = mountTo.Scene;
+    mountParent = mountTo; // this must be set after Scene because of the sanity checks Scene does
+    InvalidateSpatialInfo();
+
+    return mountTo.AddLinkPoint(localX, localY, this, owned);
   }
   
+  /// <summary>Dismounts this object from its parent object.</summary>
+  /// <remarks>This method has no effect if the object is not mounted.</remarks>
   public void Dismount()
   {
-    throw new NotImplementedException();
+    if(Mounted)
+    {
+      mountParent.RemoveMount(this);
+
+      SetFlag(Flag.InheritProperties|Flag.TrackRotation, false);
+      InvalidateSpatialInfo(); // invalidate spatial info because our effective rotation, etc, may have changed
+      mountParent = null;
+    }
+  }
+
+  protected bool InheritProperties
+  {
+    get { return HasFlag(Flag.InheritProperties); }
   }
   #endregion
 
@@ -664,9 +723,13 @@ public abstract class SceneObject : GameObject
 
   /// <summary>Gets/sets the object's rotation, in degrees.</summary>
   /// <value>The object's rotation, from 0 to 360 degrees, exclusive.</value>
-  /// <remarks>When the rotation is set, it will be normalized to a value between 0 and 360 degrees, exclusive.</remarks>
+  /// <remarks>When the rotation is set, it will be normalized to a value between 0 and 360 degrees, exclusive.
+  /// If the object is mounted and set to track its parent's rotation, this value is the rotation in addition to the
+  /// mount parent's rotation.
+  /// </remarks>
   [Category("Spatial")]
-  [Description("The rotation of the object, in degrees.")]
+  [Description("The rotation of the object, in degrees. If the object is mounted, this is the rotation in addition "+
+    "to the parent's rotation.")]
   [DefaultValue(0)]
   public double Rotation
   {
@@ -677,9 +740,15 @@ public abstract class SceneObject : GameObject
       if(value != rotation)
       {
         rotation = EngineMath.NormalizeAngle(value);
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
+  }
+  
+  /// <summary>Gets the object's rotation after taking into account additional rotation from object mounting.</summary>
+  double EffectiveRotation
+  {
+    get { return HasFlag(Flag.TrackRotation) ? mountParent.EffectiveRotation + rotation : rotation; }
   }
   #endregion
 
@@ -691,22 +760,6 @@ public abstract class SceneObject : GameObject
     { 
       UpdateSpatialInfo();
       return spatial.Area;
-    }
-    set
-    {
-      EngineMath.AssertValidFloat(value.X);
-      EngineMath.AssertValidFloat(value.Y);
-      EngineMath.AssertValidFloat(value.Width);
-      EngineMath.AssertValidFloat(value.Height);
-
-      Vector halfSize = new Vector(value.Width*0.5, value.Height*0.5);
-      Point  center   = new Point(value.X+halfSize.X, value.Y+halfSize.Y);
-      if(size.X != value.Width || size.Y != value.Height || center != position)
-      {
-        position = center;
-        size     = new Vector(value.Width, value.Height);
-        SetFlag(Flag.SpatialInfoDirty, true);
-      }
     }
   }
 
@@ -722,7 +775,7 @@ public abstract class SceneObject : GameObject
         EngineMath.AssertValidFloat(value.X);
         EngineMath.AssertValidFloat(value.Y);
         position = value;
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
   }
@@ -743,7 +796,7 @@ public abstract class SceneObject : GameObject
           throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
         }
         size = value;
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
   }
@@ -758,7 +811,7 @@ public abstract class SceneObject : GameObject
       {
         EngineMath.AssertValidFloat(value);
         position.X = value;
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
   }
@@ -773,7 +826,7 @@ public abstract class SceneObject : GameObject
       {
         EngineMath.AssertValidFloat(value);
         position.Y = value;
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
   }
@@ -789,7 +842,7 @@ public abstract class SceneObject : GameObject
         EngineMath.AssertValidFloat(value);
         if(value < 0) throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
         size.X = value;
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
   }
@@ -805,7 +858,7 @@ public abstract class SceneObject : GameObject
         EngineMath.AssertValidFloat(value);
         if(value < 0) throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
         size.Y = value;
-        SetFlag(Flag.SpatialInfoDirty, true);
+        InvalidateSpatialInfo();
       }
     }
   }
@@ -843,7 +896,8 @@ public abstract class SceneObject : GameObject
 
   public void SetBounds(double x, double y, double width, double height)
   {
-    Area = new Rectangle(x, y, width, height);
+    Position = new Point(x, y);
+    Size     = new Vector(width, height);
   }
 
   public void SetPosition(double x, double y)
@@ -964,6 +1018,11 @@ public abstract class SceneObject : GameObject
   #endregion
 
   #region Lifetime, visibility, flipping, mobility, pickability
+  /// <summary>Gets/sets whether the object will be flipped horizontally.</summary>
+  /// <remarks>Flipping affects both the physics and the rendering of an object. If the object is mounted and set to
+  /// inherit properties from the parent, the value of this property will mean that the object is flipped relative to
+  /// the parent's own flip value.
+  /// </remarks>
   [Category("Behavior")]
   [Description("Determines whether the object is flipped along the horizontal axis. This modifies not only "+
     "rendering, but also collision detection and physics.")]
@@ -974,6 +1033,10 @@ public abstract class SceneObject : GameObject
     set { SetFlag(Flag.FlipHorizontal, value); }
   }
 
+  /// <summary>Gets/sets whether the object will be flipped vertically.</summary>
+  /// <remarks>Flipping affects both the physics and the rendering of an object. If the object is mounted and set to
+  /// inherit properties from the parent, the value of this property will mean that the object is flipped relative to
+  /// the parent's own flip value.
   [Category("Behavior")]
   [Description("Determines whether the object is flipped along the vertical axis. This modifies not only "+
     "rendering, but also collision detection and physics.")]
@@ -1025,7 +1088,8 @@ public abstract class SceneObject : GameObject
     set { SetFlag(Flag.PickingAllowed, value); }
   }
 
-  /// <summary>Gets/sets whether the object and its children will be rendered in the scene.</summary>
+  /// <summary>Gets/sets whether the object will be rendered in the scene.</summary>
+  /// <remarks>This property can inherited from a mount parent.</remarks>
   [Category("Rendering")]
   [Description("Determines whether the object and its children will be rendered in the scene.")]
   [DefaultValue(false)]
@@ -1044,15 +1108,111 @@ public abstract class SceneObject : GameObject
 
   public override void Delete()
   {
-    SetFlag(Flag.Deleted, true);
+    base.Delete();
+
+    if(Mounted) Dismount();
+    
+    // dismount/delete child objects. we'll store the objects in a separate array because deleting the objects will
+    // dismount them, and dismounting the objects will alter the link point array.
+    List<SceneObject> children = null;
+    
+    // first add the owned objects
+    for(int i=0; i<numLinkPoints; i++)
+    {
+      if(linkPoints[i].ObjectOwned)
+      {
+        if(children == null) children = new List<SceneObject>();
+        children.Add(linkPoints[i].Object);
+      }
+    }
+    
+    // then mark how many owned objects there are
+    int numOwned = children == null ? 0 : children.Count;
+    
+    // add the non-owned objects
+    for(int i=0; i<numLinkPoints; i++)
+    {
+      if(linkPoints[i].Object != null && !linkPoints[i].ObjectOwned)
+      {
+        if(children == null) children = new List<SceneObject>();
+        children.Add(linkPoints[i].Object);
+      }
+    }
+
+    if(children != null) // if there were any child objects to be deleted/unmounted
+    {
+      for(int i=0; i<numOwned; i++) // delete the owned objects
+      {
+        children[i].Delete();
+      }
+
+      for(int i=numOwned; i<children.Count; i++) // and dismount the non-owned objects
+      {
+        children[i].Dismount();
+      }
+    }
+
+    SetFlag(Flag.Deleted, true); // mark that we're dead
+  }
+
+  /// <summary>Gets the effective visibility, which takes into account the mount parent's visiblity.</summary>
+  internal bool EffectiveVisibility
+  {
+    get { return Visible && (!InheritProperties || mountParent.EffectiveVisibility); }
+  }
+  
+  /// <summary>Gets the effective horizontal flipping, which takes into account the mount parent's flip value.</summary>
+  bool EffectiveHFlip
+  {
+    get
+    {
+      bool flip = HorizontalFlip;
+      if(InheritProperties && mountParent.EffectiveHFlip) flip = !flip;
+      return flip;
+    }
+  }
+
+  /// <summary>Gets the effective vertical flipping, which takes into account the mount parent's flip value.</summary>
+  bool EffectiveVFlip
+  {
+    get
+    {
+      bool flip = VerticalFlip;
+      if(InheritProperties && mountParent.EffectiveVFlip) flip = !flip;
+      return flip;
+    }
   }
   #endregion
 
   #region Internal stuff
+  /// <summary>Gets/sets the scene of this object and all its mounted objects.</summary>
   internal Scene Scene
   {
     get { return scene; }
-    set { scene = value; }
+    set
+    {
+      if(value != scene)
+      {
+        if(Mounted && value != MountParent.Scene)
+        {
+          throw new InvalidOperationException("Can't put a mounted object in a different scene than its parent. "+
+                                              "Either dismount the object first, or change the parent's scene.");
+        }
+
+        Scene oldScene = scene;
+        scene = value; // we set this here so that the above check will succeed in child objects
+
+        // change the scene of all mounted objects as well
+        for(int i=0; i<numLinkPoints; i++)
+        {
+          if(linkPoints[i].Object != null)
+          {
+            if(oldScene != null) oldScene.RemoveObject(linkPoints[i].Object);
+            if(value != null) value.AddObject(linkPoints[i].Object);
+          }
+        }
+      }
+    }
   }
   #endregion
 
@@ -1069,9 +1229,10 @@ public abstract class SceneObject : GameObject
 
     GL.glPushMatrix(); // we should be in ModelView mode
     GL.glTranslated(X, Y, 0); // translate us to the origin
+    double rotation = EffectiveRotation;
     if(rotation != 0) GL.glRotated(rotation, 0, 0, 1); // rotate, if necessary
-    GL.glScaled(Width  * (HorizontalFlip ? -0.5 : 0.5),     // set up local coordinates (scale so that -1 to 1
-                Height * (VerticalFlip   ? -0.5 : 0.5), 1); // covers our area, including flipping)
+    GL.glScaled(Width  * (EffectiveHFlip ? -0.5 : 0.5),     // set up local coordinates (scale so that -1 to 1
+                Height * (EffectiveVFlip ? -0.5 : 0.5), 1); // covers our area, including flipping)
 
     RenderContent(); // now allow the derived class to render the content
 
@@ -1103,7 +1264,8 @@ public abstract class SceneObject : GameObject
       velocity += acceleration * timeDelta; // calculate our new velocity by applying acceleration
       Point newPos = Position + velocity * timeDelta; // find what our new position would be if there were no collisions
 
-      /* collision detection */
+      /* TODO: do collision detection here */
+
       Position = newPos;
     }
   }
@@ -1111,7 +1273,7 @@ public abstract class SceneObject : GameObject
   protected internal virtual void PostSimulate() { }
 
   [Flags]
-  enum Flag : ushort
+  enum Flag : uint
   {
     /// <summary>Determines whether collision detection is enabled.</summary>
     CollisionEnabled=0x01,
@@ -1161,6 +1323,10 @@ public abstract class SceneObject : GameObject
     SpatialInfoDirty=0x2000,
     /// <summary>Determines if the criteria used to calculate link point position have changed.</summary>
     LinkPointsDirty=0x4000,
+    /// <summary>Determines whether various properties will be inherited from the object's mount parent.</summary>
+    InheritProperties=0x8000,
+    /// <summary>Determines whether the object will track its mount parent's rotation.</summary>
+    TrackRotation=0x10000,
   }
 
   struct SpatialInfo
@@ -1182,6 +1348,42 @@ public abstract class SceneObject : GameObject
     else flags &= ~flag;
   }
 
+  void InvalidateSpatialInfo() { InvalidateSpatialInfo(false); }
+  void InvalidateSpatialInfo(bool onlyInvalidateLinks)
+  {
+    if(!onlyInvalidateLinks)
+    {
+      SetFlag(Flag.SpatialInfoDirty, true);
+    }
+
+    SetFlag(Flag.LinkPointsDirty, true);
+
+    // recursively invalidate mounted objects' spatial info
+    for(int i=0; i<numLinkPoints; i++)
+    {
+      if(linkPoints[i].Object != null)
+      {
+        // this is false because even if only this object's links moved, that still affects the total spatial
+        // information of the mounted objects.
+        linkPoints[i].Object.InvalidateSpatialInfo();
+      }
+    }
+  }
+
+  void RemoveMount(SceneObject child)
+  {
+    for(int i=0; i<numLinkPoints; i++)
+    {
+      if(linkPoints[i].Object == child)
+      {
+        linkPoints[i] = linkPoints[--numLinkPoints]; // remove it by overwriting it with the last link in the list
+        return;
+      }
+    }
+
+    throw new ArgumentException("Child is not mounted to this object.");
+  }
+
   void UpdateSpatialInfo()
   {
     // if we're not part of a scene, return immediately.
@@ -1190,6 +1392,7 @@ public abstract class SceneObject : GameObject
     if(HasFlag(Flag.SpatialInfoDirty))
     {
       Vector halfSize = size*0.5;
+      double rotation = EffectiveRotation;
       spatial.Area = new Rectangle(position.X-halfSize.X, position.Y-halfSize.Y, size.X, size.Y);
       spatial.Rotation =
         rotation == 0  || rotation == 180 ? SpatialInfo.RotationType.ZeroOr180   :
@@ -1221,7 +1424,6 @@ public abstract class SceneObject : GameObject
       /* precalculate some things to speed collision detection, etc */
 
       SetFlag(Flag.SpatialInfoDirty, false);
-      SetFlag(Flag.LinkPointsDirty, true);
     }
 
     if(HasFlag(Flag.LinkPointsDirty))
@@ -1236,6 +1438,7 @@ public abstract class SceneObject : GameObject
       }
 
       // then, orient rotate the localspace offsets to match our orientation
+      double rotation = EffectiveRotation;
       if(rotation != 0)
       {
         double sin, cos;
