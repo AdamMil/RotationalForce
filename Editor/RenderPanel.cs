@@ -259,6 +259,8 @@ class RenderPanel : Control
   {
     if(needRender && RenderBackground != null && !DesignMode)
     {
+      needRender = false;
+
       GLBuffer.SetCurrent(GetBuffer());
       RenderBackground(this, EventArgs.Empty);
       GL.glFlush();

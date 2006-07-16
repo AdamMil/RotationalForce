@@ -365,16 +365,21 @@ public abstract class SceneObject : GameObject
     double rotation = EffectiveRotation;
     if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
 
-    // then scale it by half our size and offset it by our world position
-    return new Point(position.X + offset.X*(size.X*0.5), position.Y + offset.Y*(size.Y*0.5));
+    // then offset it by our world position
+    return position + LocalToScene(offset);
+  }
+  
+  public Vector LocalToScene(Vector localSize)
+  {
+    return new Vector(localSize.X*0.5*Width, localSize.Y*0.5*Height);
   }
 
-  public Point SceneToLocal(Point worldPoint) { return SceneToLocal(worldPoint.X, worldPoint.Y); }
+  public Point SceneToLocal(Point scenePoint) { return SceneToLocal(scenePoint.X, scenePoint.Y); }
 
-  public Point SceneToLocal(double worldX, double worldY)
+  public Point SceneToLocal(double sceneX, double sceneY)
   {
-    // center the point around our origin, and scale it down by half our size
-    Point localPoint = new Point((worldX - position.X)*2/size.X, (worldY - position.Y)*2/size.Y);
+    // center the point around our origin, and scale it down by half our size (so it ends up between -1 and 1)
+    Point localPoint = new Point((sceneX - position.X)*2/Width, (sceneY - position.Y)*2/Height);
     // then rotate it if necessary
     double rotation = EffectiveRotation;
     if(rotation != 0)
@@ -382,6 +387,11 @@ public abstract class SceneObject : GameObject
       localPoint = new Vector(localPoint).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
     }
     return localPoint;
+  }
+  
+  public Vector SceneToLocal(Vector sceneSize)
+  {
+    return new Vector(sceneSize.X*2/Width, sceneSize.Y*2/Height);
   }
   #endregion
 

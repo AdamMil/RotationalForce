@@ -33,8 +33,8 @@ class VectorAnimationEditor : Form
 
   public void CreateNew()
   {
-    animation = new VectorAnimation();
-    animation.AddFrame(new VectorAnimation.Frame());
+    animation = new VertexAnimation();
+    animation.AddFrame(new VertexAnimation.Frame());
     Mode = EditMode.Animation;
   }
 
@@ -98,7 +98,7 @@ class VectorAnimationEditor : Form
     {
       case EditMode.Animation:
       {
-        VectorAnimation.Frame frame = animation.Frames[listBox.SelectedIndex];
+        VertexAnimation.Frame frame = animation.Frames[listBox.SelectedIndex];
         animation.RemoveFrame(listBox.SelectedIndex);
         animation.InsertFrame(listBox.SelectedIndex + distance, frame);
         PopulateListbox(listBox.SelectedIndex + distance);
@@ -107,7 +107,7 @@ class VectorAnimationEditor : Form
 
       case EditMode.Frame:
       {
-        VectorAnimation.Polygon poly = SelectedFrame.Polygons[listBox.SelectedIndex];
+        VertexAnimation.Polygon poly = SelectedFrame.Polygons[listBox.SelectedIndex];
         SelectedFrame.RemovePolygon(listBox.SelectedIndex);
         SelectedFrame.InsertPolygon(listBox.SelectedIndex + distance, poly);
         PopulateListbox(listBox.SelectedIndex + distance);
@@ -124,7 +124,7 @@ class VectorAnimationEditor : Form
       case EditMode.Animation:
       {
         double time = 0.0;
-        foreach(VectorAnimation.Frame frame in animation.Frames)
+        foreach(VertexAnimation.Frame frame in animation.Frames)
         {
           listBox.Items.Add("Frame @ " + time.ToString("n"));
           time += frame.FrameTime;
@@ -196,11 +196,9 @@ class VectorAnimationEditor : Form
     }
   }
 
-int ixx;
   private void renderPanel_Paint(object sender, PaintEventArgs e)
   {
-Console.WriteLine("painting "+ixx++);
-    VectorAnimation.Polygon poly = SelectedPolygon;
+    VertexAnimation.Polygon poly = SelectedPolygon;
     if(poly != null)
     {
       Point[] points = new Point[poly.Vertices.Count];
@@ -242,7 +240,7 @@ Console.WriteLine("painting "+ixx++);
     }
   }
 
-  VectorAnimation animation;
+  VertexAnimation animation;
   int selectedFrame, selectedPolygon = -1, selectedVertex = -1;
   EditMode mode;
 
@@ -465,11 +463,11 @@ Console.WriteLine("painting "+ixx++);
     switch(Mode)
     {
       case EditMode.Animation:
-        animation.InsertFrame(listBox.SelectedIndex+1, new VectorAnimation.Frame());
+        animation.InsertFrame(listBox.SelectedIndex+1, new VertexAnimation.Frame());
         PopulateListbox(listBox.SelectedIndex + 1);
         break;
       case EditMode.Frame:
-        SelectedFrame.InsertPolygon(listBox.SelectedIndex+1, new VectorAnimation.Polygon());
+        SelectedFrame.InsertPolygon(listBox.SelectedIndex+1, new VertexAnimation.Polygon());
         PopulateListbox(listBox.SelectedIndex + 1);
         break;
     }
@@ -491,7 +489,7 @@ Console.WriteLine("painting "+ixx++);
         if(listBox.Items.Count == 1) // we can't delete the last frame, but we can clear it
         {
           animation.RemoveFrame(0);
-          animation.AddFrame(new VectorAnimation.Frame());
+          animation.AddFrame(new VertexAnimation.Frame());
           MessageBox.Show("The last frame cannot be deleted, so it was cleared.", "Frame cleared",
                           MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -554,7 +552,7 @@ Console.WriteLine("painting "+ixx++);
         break;
       case EditMode.Vertex:
         // and since vertices are value objects, we need to replace them by hand
-        ReplaceSelectedVertex((VectorAnimation.Vertex)propertyGrid.SelectedObject, false);
+        ReplaceSelectedVertex((VertexAnimation.Vertex)propertyGrid.SelectedObject, false);
         break;
     }
   }
@@ -568,13 +566,13 @@ Console.WriteLine("painting "+ixx++);
   }
   #endregion
 
-  void InvalidatePolygonBounds(VectorAnimation.Polygon poly, bool invalidateRender)
+  void InvalidatePolygonBounds(VertexAnimation.Polygon poly, bool invalidateRender)
   {
     if(poly.Vertices.Count == 0) return; // nothing to invalidate!
 
     // find the polygon's bounding area, in local space coordinates
     double left=double.MaxValue, right=double.MinValue, top=double.MaxValue, bottom=double.MinValue;
-    foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+    foreach(VertexAnimation.Vertex vertex in poly.Vertices)
     {
       if(vertex.Position.X < left) left = vertex.Position.X;
       if(vertex.Position.X > right) right = vertex.Position.X;
@@ -600,11 +598,11 @@ Console.WriteLine("painting "+ixx++);
   #region Modification of vertices and polygons
   void CreateNewPolygon(Point pt)
   {
-    VectorAnimation.Polygon poly = new VectorAnimation.Polygon();
+    VertexAnimation.Polygon poly = new VertexAnimation.Polygon();
     SelectedFrame.AddPolygon(poly);
     SelectPolygon(SelectedFrame.Polygons.Count - 1);
 
-    VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
+    VertexAnimation.Vertex vertex = new VertexAnimation.Vertex();
     vertex.Color    = Color.White;
     vertex.Position = ControlToLocal(pt);
     poly.AddVertex(vertex);
@@ -613,7 +611,7 @@ Console.WriteLine("painting "+ixx++);
   
   void MoveSelectedVertexTo(Point pt)
   {
-    VectorAnimation.Vertex vertex = SelectedVertex;
+    VertexAnimation.Vertex vertex = SelectedVertex;
     vertex.Position = ControlToLocal(pt);
     ReplaceSelectedVertex(vertex, true);
   }
@@ -628,10 +626,10 @@ Console.WriteLine("painting "+ixx++);
     GLPoint localOffset = new GLPoint(offset.Width *2/(double)viewArea.Width,
                                       offset.Height*2/(double)viewArea.Height);
 
-    VectorAnimation.Polygon polygon = SelectedPolygon;
+    VertexAnimation.Polygon polygon = SelectedPolygon;
 
     // create a copy of the polygon's vertices
-    VectorAnimation.Vertex[] vertices = new VectorAnimation.Vertex[polygon.Vertices.Count];
+    VertexAnimation.Vertex[] vertices = new VertexAnimation.Vertex[polygon.Vertices.Count];
     polygon.Vertices.CopyTo(vertices, 0);
     polygon.ClearVertices(); // and then clear them
 
@@ -648,12 +646,10 @@ Console.WriteLine("painting "+ixx++);
     InvalidatePolygonBounds(SelectedPolygon, false); // invalidate where the polygon has moved to
   }
   
-  void ReplaceSelectedVertex(VectorAnimation.Vertex vertex, bool updatePropertyGrid)
+  void ReplaceSelectedVertex(VertexAnimation.Vertex vertex, bool updatePropertyGrid)
   {
-Console.WriteLine("Moving " + ixx++);
     InvalidatePolygonBounds(SelectedPolygon, true);
-    SelectedPolygon.RemoveVertex(selectedVertex);
-    SelectedPolygon.InsertVertex(selectedVertex, vertex);
+    SelectedPolygon.SetVertex(selectedVertex, vertex);
     InvalidatePolygonBounds(SelectedPolygon, true);
     
     if(updatePropertyGrid && Mode == EditMode.Vertex) propertyGrid.SelectedObject = vertex;
@@ -662,19 +658,19 @@ Console.WriteLine("Moving " + ixx++);
 
   #region Selecting items in the UI and data structures
   /// <summary>Gets a the current frame. This is guaranteed to be non-null.</summary>
-  VectorAnimation.Frame SelectedFrame
+  VertexAnimation.Frame SelectedFrame
   {
     get { return animation.Frames[selectedFrame]; }
   }
   
   /// <summary>Gets the currently selected polygon. This will be null if no polygon is selected.</summary>
-  VectorAnimation.Polygon SelectedPolygon
+  VertexAnimation.Polygon SelectedPolygon
   {
     get { return selectedPolygon == -1 ? null : SelectedFrame.Polygons[selectedPolygon]; }
   }
   
   /// <summary>Gets the currently selected vertex. This will throw an exception if no vertex is selected.</summary>
-  VectorAnimation.Vertex SelectedVertex
+  VertexAnimation.Vertex SelectedVertex
   {
     get { return SelectedPolygon.Vertices[selectedVertex]; }
   }
@@ -830,7 +826,7 @@ Console.WriteLine("Moving " + ixx++);
   // returns true if anything was selected and false otherwise.
   bool SelectPolygonAndVertex(int polygonIndex, Point pt)
   {
-    VectorAnimation.Polygon poly = SelectedFrame.Polygons[polygonIndex];
+    VertexAnimation.Polygon poly = SelectedFrame.Polygons[polygonIndex];
     for(int i=0; i<poly.Vertices.Count; i++)
     {
       Point vertex = LocalToControl(poly.Vertices[i].Position); // compare vertices in window space
@@ -847,13 +843,13 @@ Console.WriteLine("Moving " + ixx++);
   }
 
   /// <summary>Determines whether the specified polygon contains the given point.</summary>
-  static bool PolygonContains(VectorAnimation.Polygon poly, GLPoint point)
+  static bool PolygonContains(VertexAnimation.Polygon poly, GLPoint point)
   {
     if(poly.Vertices.Count < 3) return false; // if it's not a proper polygon, it won't contain the point.
 
     // create a GameLib polygon, since it has the appropriate functionality already
     GLPoly glPoly = new GLPoly(poly.Vertices.Count);
-    foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+    foreach(VertexAnimation.Vertex vertex in poly.Vertices)
     {
       glPoly.AddPoint(vertex.Position);
     }
