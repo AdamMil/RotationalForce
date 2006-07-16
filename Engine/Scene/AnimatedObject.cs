@@ -33,6 +33,15 @@ public struct AnimationData
 public abstract class Animation
 {
   [Category("Behavior")]
+  [Description("Determines how the animation interpolates between frames.")]
+  [DefaultValue(InterpolationMode.Linear)]
+  public InterpolationMode Interpolation
+  {
+    get { return interpolation; }
+    set { interpolation = value; }
+  }
+
+  [Category("Behavior")]
   [Description("Determines how the animation loops by default.")]
   [DefaultValue(LoopType.NoLoop)]
   public LoopType Looping
@@ -44,6 +53,7 @@ public abstract class Animation
   protected internal abstract void Render(ref AnimationData data);
   protected internal abstract void Simulate(ref AnimationData data, double timeDelta);
 
+  InterpolationMode interpolation;
   LoopType looping;
 }
 #endregion

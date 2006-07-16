@@ -9,9 +9,9 @@ using Color = System.Drawing.Color;
 namespace RotationalForce.Engine
 {
 
-#region VectorAnimation
+#region VertexAnimation
 [Serializable]
-public sealed class VectorAnimation : Animation
+public sealed class VertexAnimation : Animation
 {
   #region Nested classes
   #region Frame
@@ -255,6 +255,11 @@ public sealed class VectorAnimation : Animation
     {
       vertices.RemoveAt(index);
     }
+    
+    public void SetVertex(int index, Vertex vertex)
+    {
+      vertices[index] = vertex;
+    }
 
     public void Render()
     {
@@ -445,11 +450,11 @@ public sealed class VectorAnimation : Animation
 }
 #endregion
 
-public class VectorObject : AnimatedObject
+public class VertexObject : AnimatedObject
 {
   protected override void ValidateAnimation(Animation animation)
   {
-    if(!(animation is VectorAnimation))
+    if(!(animation is VertexAnimation))
       throw new ArgumentException("This is not the right kind of animation! (Expecting a VectorAnimation)");
   }
 }
