@@ -22,6 +22,7 @@ public struct CatmullInterpolator
   //
   // source: http://www.gamedev.net/reference/articles/article1497.asp
   // (although the tangent calculation in that article seems to be in error -- I've corrected it)
+  // also: http://www.cubic.org/docs/hermite.htm  (haven't read this, but it looks useful)
   // note that Cubic interpolation is equivalent to Catmull interpolation where previous == start and end == next
 
   /// <summary>Creates a Catmull-Rom interpolator with four sample points and equal timing between the points.</summary>
