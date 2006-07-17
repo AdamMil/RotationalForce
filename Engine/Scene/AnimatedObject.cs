@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 
 namespace RotationalForce.Engine
@@ -58,9 +59,32 @@ public abstract class Animation
 }
 #endregion
 
-#region AnimatedObject
-public abstract class AnimatedObject : SceneObject
+#region AnimationFrame
+[Serializable]
+public abstract class AnimationFrame
 {
+  /// <summary>The length of time spent rendering this frame, in seconds, at the default animation speed.</summary>
+  [Category("Behavior")]
+  [Description("The length of time spent rendering this frame, in seconds, at the default animation speed.")]
+  public double FrameTime
+  {
+    get { return frameTime; }
+    set
+    {
+      if(value < 0) throw new ArgumentOutOfRangeException("FrameTime", value, "FrameTime cannot be negative.");
+      frameTime = value;
+    }
+  }
+
+  /// <summary>The length of this frame, in seconds.</summary>
+  double frameTime;
+}
+#endregion
+
+#region AnimatedObject
+public class AnimatedObject : SceneObject
+{
+  [Browsable(false)]
   public Animation Animation
   {
     get { return animation; }
@@ -68,29 +92,22 @@ public abstract class AnimatedObject : SceneObject
     {
       if(value != animation)
       {
-        if(value == null)
-        {
-          animation = null;
-        }
-        else
-        {
-          ValidateAnimation(value);
-          animation = value;
-        }
-
+        animation = value;
         data = new AnimationData(); // reset the animation data when the animation changes
       }
     }
   }
 
-  protected internal override void Render()
-  {
-    if(animation != null) base.Render(); // only render if we have an animtion configured
-  }
-
   protected override void RenderContent()
   {
-    animation.Render(ref data); // no null check because that's handled in Render()
+    if(animation != null)
+    {
+      animation.Render(ref data);
+    }
+    else
+    {
+      base.RenderContent(); // use default rendering if there's no animation
+    }
   }
 
   protected internal override void Simulate(double timeDelta)
@@ -98,8 +115,6 @@ public abstract class AnimatedObject : SceneObject
     base.Simulate(timeDelta);
     if(animation != null) animation.Simulate(ref data, timeDelta);
   }
-
-  protected abstract void ValidateAnimation(Animation animation);
 
   /// <summary>The object's current animation.</summary>
   Animation animation;
