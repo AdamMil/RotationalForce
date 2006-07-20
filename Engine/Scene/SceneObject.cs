@@ -1089,7 +1089,6 @@ public abstract class SceneObject : GameObject
   }
   
   /// <summary>Gets/sets whether the object will be returned by picking functions.</summary>
-  [Category("Miscellaneous")]
   [Description("Determines whether this object will be returned by picking functions.")]
   [DefaultValue(false)]
   public bool PickingAllowed
