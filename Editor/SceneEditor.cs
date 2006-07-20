@@ -5,7 +5,7 @@ using System.Windows.Forms;
 using RotationalForce.Engine;
 using GameLib.Interop.OpenGL;
 using MathConst = GameLib.Mathematics.MathConst;
-using GLMath  = GameLib.Mathematics.GLMath;
+using Math2D  = GameLib.Mathematics.TwoD.Math2D;
 using GLPoint = GameLib.Mathematics.TwoD.Point;
 using GLRect  = GameLib.Mathematics.TwoD.Rectangle;
 using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
@@ -1415,7 +1415,7 @@ public class SceneEditor : Form
       void DragRotation(MouseDragEventArgs e)
       {
         // get the rotation in radians
-        double rotation = GLMath.AngleBetween(dragCenter, SceneView.ClientToScene(e.Location)) - dragRotation;
+        double rotation = Math2D.AngleBetween(dragCenter, SceneView.ClientToScene(e.Location)) - dragRotation;
         // convert to a value from 0-360. we use degrees so that with the shift-mode, we can get exact 45/90/180/etc
         // degree angles (because the engine uses degrees internally), and we normalize it so that the shift-mode will
         // work and the status text will look nice
@@ -1483,7 +1483,7 @@ public class SceneEditor : Form
         }
 
         // and the initial rotation value
-        dragRotation = GLMath.AngleBetween(dragCenter, SceneView.ClientToScene(e.Location));
+        dragRotation = Math2D.AngleBetween(dragCenter, SceneView.ClientToScene(e.Location));
       }
 
       void StartMove()
@@ -2531,9 +2531,10 @@ public class SceneEditor : Form
 
       AnimatedObject obj = new AnimatedObject();
       obj.Animation = anim;
+      obj.Layer     = Editor.CurrentLayer; 
+      obj.Position  = SceneView.ClientToScene(at);
+      obj.Size      = new Vector(SceneView.CameraSize/10, SceneView.CameraSize/10);
       obj.SetScriptVar("__isTerrain", true);
-      obj.Position = SceneView.ClientToScene(at);
-      obj.Size = new Vector(SceneView.CameraSize/10, SceneView.CameraSize/10);
       Scene.AddObject(obj);
       SelectObject(obj);
 
@@ -3134,6 +3135,16 @@ public class SceneEditor : Form
         sceneView.CameraPosition = new GLPoint(sceneView.CameraX + xd, sceneView.CameraY + yd);
         InvalidateView();
         e.Handled = true;
+      }
+      else
+      {
+        switch(e.KeyCode)
+        {
+          case Keys.Oem1: case Keys.NumPad1:
+            break;
+            CurrentLayer = 0;
+            e.Handled = true;
+        }
       }
     }
   }
