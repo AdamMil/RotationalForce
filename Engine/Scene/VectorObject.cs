@@ -36,29 +36,22 @@ public sealed class VectorAnimation : Animation
     {
       if(polygon == null) throw new ArgumentNullException("polygon");
       InsertPolygon(polygons.Count, polygon);
-      OnFrameChanged(true);
     }
 
     public void ClearPolygons()
     {
-      if(polygons.Count != 0)
-      {
-        polygons.Clear();
-        OnFrameChanged(true);
-      }
+      polygons.Clear();
     }
 
     public void InsertPolygon(int index, Polygon polygon)
     {
       if(polygon == null) throw new ArgumentNullException("frame");
       polygons.Insert(index, polygon);
-      OnFrameChanged(true);
     }
 
     public void RemovePolygon(int index)
     {
       polygons.RemoveAt(index);
-      OnFrameChanged(true);
     }
 
     public void Render(ref AnimationData data)
@@ -69,24 +62,11 @@ public sealed class VectorAnimation : Animation
       }
     }
 
-    /// <summary>Called when the frame changes.</summary>
-    /// <param name="geometryChanged">If true, indicates that the actual shape of the polygons has changed. Otherwise,
-    /// the change is limited to miscellaneous properties, like color.
-    /// </param>
-    internal void OnFrameChanged(bool geometryChanged)
-    {
-      if(geometryChanged)
-      {
-        frameChanged = true;
-      }
-    }
-
     /// <summary>The polygons that make up this animation frame.</summary>
     List<Polygon> polygons = new List<Polygon>(4);
     /// <summary>Determines whether this frame will be interpolated into the next frame.</summary>
     bool interpolate = true;
     /// <summary>Determines whether the frame has changed and cached rendering information must be recalculated.</summary>
-    bool frameChanged = true;
   }
   #endregion
 
@@ -104,14 +84,7 @@ public sealed class VectorAnimation : Animation
     public bool BlendingEnabled
     {
       get { return blendEnabled; }
-      set
-      {
-        if(value != blendEnabled)
-        {
-          blendEnabled = value;
-          OnPolygonChanged(false);
-        }
-      }
+      set { blendEnabled = value; }
     }
 
     /// <summary>Get/sets the source blending mode of the polygon, if blending is enabled.</summary>
@@ -125,14 +98,7 @@ public sealed class VectorAnimation : Animation
     public SourceBlend SourceBlendMode
     {
       get { return sourceBlend; }
-      set
-      {
-        if(value != sourceBlend)
-        {
-          sourceBlend = value;
-          OnPolygonChanged(false);
-        }
-      }
+      set { sourceBlend = value; }
     }
 
     /// <summary>Get/sets the destination blending mode of the polygon, if blending is enabled.</summary>
@@ -146,14 +112,7 @@ public sealed class VectorAnimation : Animation
     public DestinationBlend DestinationBlendMode
     {
       get { return destBlend; }
-      set
-      {
-        if(value != destBlend)
-        {
-          destBlend = value;
-          OnPolygonChanged(false);
-        }
-      }
+      set { destBlend = value; }
     }
     #endregion
 
@@ -167,14 +126,7 @@ public sealed class VectorAnimation : Animation
     public Color StrokeColor
     {
       get { return strokeColor; }
-      set
-      {
-        if(value != strokeColor)
-        {
-          strokeColor = value;
-          OnPolygonChanged(false);
-        }
-      }
+      set { strokeColor = value; }
     }
 
     /// <summary>Gets/sets the width of the polygon's outline, in pixels.</summary>
@@ -187,13 +139,9 @@ public sealed class VectorAnimation : Animation
       get { return strokeWidth; }
       set
       {
-        if(value != strokeWidth)
-        {
-          if(strokeWidth < 0)
-            throw new ArgumentOutOfRangeException("StrokeWidth", value, "The stroke width cannot be negative.");
-          strokeWidth = value;
-          OnPolygonChanged(false);
-        }
+        if(strokeWidth < 0)
+          throw new ArgumentOutOfRangeException("StrokeWidth", value, "The stroke width cannot be negative.");
+        strokeWidth = value;
       }
     }
     #endregion
@@ -214,7 +162,7 @@ public sealed class VectorAnimation : Animation
         if(value != genTextureCoords)
         {
           genTextureCoords = value;
-          OnPolygonChanged(false);
+          InvalidateGeometry();
         }
       }
     }
@@ -238,7 +186,6 @@ public sealed class VectorAnimation : Animation
         if(value != textureName)
         {
           textureName = value;
-          OnPolygonChanged(false);
         }
       }
     }
@@ -257,7 +204,7 @@ public sealed class VectorAnimation : Animation
         if(value != textureOffset)
         {
           textureOffset = value;
-          OnPolygonChanged(false);
+          InvalidateGeometry();
         }
       }
     }
@@ -277,13 +224,27 @@ public sealed class VectorAnimation : Animation
         if(value != textureRotation)
         {
           textureRotation = value;
-          OnPolygonChanged(false);
+          InvalidateGeometry();
         }
       }
     }
     #endregion
 
-    #region LOD
+    #region LOD & Spline
+    /// <summary>Determines whether the polygon has any spline edges.</summary>
+    [Browsable(false)]
+    public bool HasSpline
+    {
+      get
+      {
+        for(int i=0; i<vertices.Count; i++)
+        {
+          if(!vertices[i].Split) return true;
+        }
+        return false;
+      }
+    }
+
     /// <summary>The Level Of Detail threshold that determines how many of the points generated by the
     /// subdivision process will be discarded. A higher value will discard more points. A value of zero will discard
     /// no points.
@@ -295,8 +256,8 @@ public sealed class VectorAnimation : Animation
     /// likely to be above the threshold).
     /// </remarks>
     /// <seealso cref="Subdivisions"/>
-    [Description("The Level Of Detail threshold that indirectly determines how many of the points generated by the "+
-      "spline subdivisions process will be discarded. A lower value will discard fewer points, and zero will discard "+
+    [Description("The Level Of Detail threshold that determines how many of the points generated by the "+
+      "spline subdivision process will be discarded. A lower value will discard fewer points, and zero will discard "+
       "no points. Using a value of zero, however, is strongly discouraged due to the tendency of the spline "+
       "algorithm to generate many useless points if any of the vertices are split (Split is true).")]
     [DefaultValue(DefaultLOD)]
@@ -309,7 +270,7 @@ public sealed class VectorAnimation : Animation
         {
           if(value < 0) throw new ArgumentOutOfRangeException("LOD", value, "LOD cannot be negative.");
           lodThreshold = value;
-          OnPolygonChanged(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -335,7 +296,7 @@ public sealed class VectorAnimation : Animation
             throw new ArgumentOutOfRangeException("Subdivisions", value, "Subdivisions must be greater than or equal to 1.");
           }
           subdivisions = value;
-          OnPolygonChanged(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -353,9 +314,8 @@ public sealed class VectorAnimation : Animation
         if(value != shadeModel)
         {
           shadeModel = value;
-          // the subdivision process interpolates the colors different depending on the shade model, so we pass true
-          // to force the polygon to be re-subdivided.
-          OnPolygonChanged(true);
+          // the subdivision process interpolates the colors differently depending on the shade model
+          InvalidateGeometry();
         }
       }
     }
@@ -364,6 +324,24 @@ public sealed class VectorAnimation : Animation
     public ReadOnlyCollection<Vertex> Vertices
     {
       get { return new ReadOnlyCollection<Vertex>(vertices); }
+    }
+
+    /// <summary>Creates a copy of this polygon will all spline edges subdivided into static vertices.</summary>
+    public Polygon CloneAsVertexPolygon()
+    {
+      if(tessellationDirty) Tessellate();
+      
+      Polygon poly = new Polygon();
+      for(int i=0; i<numSubPoints; i++)
+      {
+        Vertex vertex = new Vertex();
+        vertex.Color    = subPoints[i].Color;
+        vertex.Position = subPoints[i].Position;
+        vertex.Split    = true;
+        poly.AddVertex(vertex);
+      }
+      
+      return poly;
     }
 
     public void AddVertex(Vertex vertex)
@@ -376,7 +354,7 @@ public sealed class VectorAnimation : Animation
       if(vertices.Count != 0)
       {
         vertices.Clear();
-        OnPolygonChanged(true);
+        InvalidateGeometry();
       }
     }
 
@@ -385,14 +363,14 @@ public sealed class VectorAnimation : Animation
       if(vertex.Polygon != null) throw new ArgumentException("Vertex already belongs to a polygon.");
       vertices.Insert(index, vertex);
       vertex.Polygon = this;
-      OnPolygonChanged(true);
+      InvalidateGeometry();
     }
 
     public void RemoveVertex(int index)
     {
       vertices[index].Polygon = null;
       vertices.RemoveAt(index);
-      OnPolygonChanged(true);
+      InvalidateGeometry();
     }
 
     public void Render()
@@ -526,9 +504,12 @@ public sealed class VectorAnimation : Animation
       }
     }
 
-    internal void OnPolygonChanged(bool geometryChanged)
+    /// <summary>Called when the tessellated/subdivided geometry of the polygon needs to be recalculated. Changes to
+    /// interpolated vertex properties (color and texture coordinate) also cause this to need to be recalculated.
+    /// </summary>
+    internal void InvalidateGeometry()
     {
-      if(geometryChanged) tessellationDirty = true;
+      tessellationDirty = true;
     }
 
     const int DefaultSubdivisions = 20;
@@ -565,7 +546,7 @@ public sealed class VectorAnimation : Animation
       if(subState.PointsConsidered >= 3) // if this is the third or subsequent point, we can apply the LOD algorithm
       {
         // get the angle between the new point and the previous point
-        double newAngle = Math2D.AngleBetween(subPoint.Position, subState.PrevPoint.Position);
+        double newAngle = Math2D.AngleBetween(subState.PrevPoint.Position, subPoint.Position);
         // get the difference between that angle and the last angle
         double delta = newAngle - subState.PrevAngle;
         
@@ -605,7 +586,7 @@ public sealed class VectorAnimation : Animation
     /// <summary>Unconditionally adds a <see cref="SubPoint"/> to the list of subdivision points.</summary>
     void AddSubPointToArray(ref SubPoint subPoint)
     {
-      if(subPoints == null || subPoints.Length == numSubPoints)
+      if(subPoints == null || subPoints.Length == numSubPoints) // (re)allocate the array if necessary
       {
         SubPoint[] newPoints = new SubPoint[numSubPoints == 0 ? 8 : numSubPoints*2];
         if(numSubPoints != 0)
@@ -615,7 +596,7 @@ public sealed class VectorAnimation : Animation
         subPoints = newPoints;
       }
       
-      subPoints[numSubPoints++] = subPoint;
+      subPoints[numSubPoints++] = subPoint; // add the point and increment the point count
     }
 
     /// <summary>Completes the subdivision process.</summary>
@@ -632,27 +613,40 @@ public sealed class VectorAnimation : Animation
       subState.PointsConsidered = 0;
     }
 
-    /// <summary>Gets a control point index given the indices of the start and end points of the spline.</summary>
-    int GetIndex(int offset, int startPoint, int endPoint)
+    /// <summary>Gets a control point index for a clamped spline given the indices of the start and end points of the
+    /// spline and the offset into that range.
+    /// </summary>
+    int GetClampedIndex(int offset, int startPoint, int endPoint)
     {
-      int newIndex = startPoint + offset;
-      if(endPoint == -1) // the spline is closed, meaning that the newIndex will wrap around
+      if(startPoint < endPoint) // it's a spline clamped to the given points, and they don't span zero
       {
-        return newIndex<0 ? vertices.Count+newIndex : newIndex>=vertices.Count ? newIndex-vertices.Count : newIndex;
-      }
-      else if(startPoint < endPoint) // it's a spline clamped to the given points
-      {
+        int newIndex = startPoint + offset; // simply clamp the index to the end points
         return newIndex<startPoint ? startPoint : newIndex>endPoint ? endPoint : newIndex;
       }
       else // the spline is clamped to the given points, and they span the zero index
       {
-        if(offset < 0) return startPoint;
-        int rightLength = vertices.Count-startPoint;
-        if(offset < rightLength) return newIndex;
-        offset -= rightLength;
-        if(offset > endPoint) return endPoint;
-        return offset;
+        // on a number line, the valid values are split. for instance, a polygon with 4 sides may have a spline edge
+        // spanning indices 3, 0, and 1. this splits it into two groups: one on the left, based at zero, and one on
+        // the right, based at 'startPoint'
+        if(offset < 0) return startPoint;            // if the offset is negative, we know it's out of bounds.
+        int rightLength = vertices.Count-startPoint; // calculate the number of points in the right group of indices.
+        if(offset < rightLength) return startPoint + offset; // if 'offset' is fewer, then it hasn't wrapped around and
+                                                             // the index is the 'startPoint' plus the 'offset'
+        offset -= rightLength;                    // otherwise it has wrapped, so subtract the number of points on
+                                                  // the right side to rebase the offset from the 0-based left side.
+        if(offset > endPoint) return endPoint;    // if the offset is greater than the index of the endpoint, clamp it.
+        return offset;                            // otherwise, the offset is valid, so return it as an index.
       }
+    }
+    
+    /// <summary>Gets a control point index for a closed spline given the start point of the current segment and the
+    /// offset into that segment.
+    /// </summary>
+    int GetClosedIndex(int offset, int startPoint)
+    {
+      // in a closed spline, the indices wrap around.
+      int newIndex = startPoint + offset;
+      return newIndex<0 ? vertices.Count+newIndex : newIndex>=vertices.Count ? newIndex-vertices.Count : newIndex;
     }
 
     /// <summary>Subdivides the shape into points.</summary>
@@ -675,10 +669,10 @@ public sealed class VectorAnimation : Animation
       {
         for(int vertexIndex=0; vertexIndex<vertices.Count; vertexIndex++)
         {
-          // get the indices of the control points
-          int i0 = GetIndex(0, vertexIndex, -1), i1 = GetIndex(1, vertexIndex, -1),
-              i2 = GetIndex(2, vertexIndex, -1), i3 = GetIndex(3, vertexIndex, -1);
-          SubdivideSegment(i0, i1, i2, i3);
+          // get the indices of the four spline control points for a closed spline.
+          int i0 = GetClosedIndex(0, vertexIndex), i1 = GetClosedIndex(1, vertexIndex),
+              i2 = GetClosedIndex(2, vertexIndex), i3 = GetClosedIndex(3, vertexIndex);
+          SubdivideSegment(i0, i1, i2, i3); // and subdivide this 
         }
       }
       else // the shaped is composed of straight-line segments, possibly with spline-based segments too
@@ -710,8 +704,8 @@ public sealed class VectorAnimation : Animation
             // to create a clamped b-spline, we pretend that there are three of each first and last control point
             for(int i=-2; i < splineLength; i++)
             {
-              int i0 = GetIndex(  i, breakPoint, lastEdge), i1 = GetIndex(i+1, breakPoint, lastEdge),
-                  i2 = GetIndex(i+2, breakPoint, lastEdge), i3 = GetIndex(i+3, breakPoint, lastEdge);
+              int i0 = GetClampedIndex(  i, breakPoint, lastEdge), i1 = GetClampedIndex(i+1, breakPoint, lastEdge),
+                  i2 = GetClampedIndex(i+2, breakPoint, lastEdge), i3 = GetClampedIndex(i+3, breakPoint, lastEdge);
               SubdivideSegment(i0, i1, i2, i3);
             }
           }
@@ -736,7 +730,7 @@ public sealed class VectorAnimation : Animation
         double b2 = (deltaSquared - deltaCubed + delta + 1/3.0) * 0.5; // (-3delta^3 + 3delta^2 + 3delta + 1) / 6
         double b3 = deltaCubed / 6;                                    // delta^3 / 6
 
-        // using the blending factors, calculate the point on the spline
+        // using the blending factors (which sum to 1.0), calculate the point on the spline
         SubPoint subPoint = new SubPoint();
         subPoint.Position.X = b0*vertices[i0].Position.X + b1*vertices[i1].Position.X +
                               b2*vertices[i2].Position.X + b3*vertices[i3].Position.X;
@@ -749,32 +743,19 @@ public sealed class VectorAnimation : Animation
         }
         else // otherwise, we do.
         {
-          double r, g, b, a;
+          int a, r, g, b;
 
-          r  = vertices[i0].Color.R/255.0 * b0;
-          g  = vertices[i0].Color.G/255.0 * b0;
-          b  = vertices[i0].Color.B/255.0 * b0;
-          a  = vertices[i0].Color.A/255.0 * b0;
+          // use the same blending factors to calculate the interpolated colors
+          a = (int)Math.Round(vertices[i0].Color.A*b0 + vertices[i1].Color.A*b1 +
+                              vertices[i2].Color.A*b2 + vertices[i3].Color.A*b3);
+          r = (int)Math.Round(vertices[i0].Color.R*b0 + vertices[i1].Color.R*b1 +
+                              vertices[i2].Color.R*b2 + vertices[i3].Color.R*b3);
+          g = (int)Math.Round(vertices[i0].Color.G*b0 + vertices[i1].Color.G*b1 +
+                              vertices[i2].Color.G*b2 + vertices[i3].Color.G*b3);
+          b = (int)Math.Round(vertices[i0].Color.B*b0 + vertices[i1].Color.B*b1 +
+                              vertices[i2].Color.B*b2 + vertices[i3].Color.B*b3);
 
-          r += vertices[i1].Color.R/255.0 * b1;
-          g += vertices[i1].Color.G/255.0 * b1;
-          b += vertices[i1].Color.B/255.0 * b1;
-          a += vertices[i1].Color.A/255.0 * b1;
-
-          r += vertices[i2].Color.R/255.0 * b2;
-          g += vertices[i2].Color.G/255.0 * b2;
-          b += vertices[i2].Color.B/255.0 * b2;
-          a += vertices[i2].Color.A/255.0 * b2;
-
-          r += vertices[i3].Color.R/255.0 * b3;
-          g += vertices[i3].Color.G/255.0 * b3;
-          b += vertices[i3].Color.B/255.0 * b3;
-          a += vertices[i3].Color.A/255.0 * b3;
-
-          subPoint.Color = Color.FromArgb(EngineMath.Clip((int)Math.Round(a*255), 0, 255),
-                                          EngineMath.Clip((int)Math.Round(r*255), 0, 255),
-                                          EngineMath.Clip((int)Math.Round(g*255), 0, 255),
-                                          EngineMath.Clip((int)Math.Round(b*255), 0, 255));
+          subPoint.Color = Color.FromArgb(a, r, g, b);
         }
 
         AddSubPoint(ref subPoint); // attempt to add the new point to the shape
@@ -921,7 +902,7 @@ public sealed class VectorAnimation : Animation
         if(value != color)
         {
           color = value;
-          OnVertexChanged(false);
+          InvalidateGeometry();
         }
       }
     }
@@ -936,7 +917,7 @@ public sealed class VectorAnimation : Animation
         if(value != position)
         {
           position = value;
-          OnVertexChanged(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -951,7 +932,7 @@ public sealed class VectorAnimation : Animation
         if(value != split)
         {
           split = value;
-          OnVertexChanged(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -966,7 +947,7 @@ public sealed class VectorAnimation : Animation
         if(value != textureCoord)
         {
           textureCoord = value;
-          OnVertexChanged(false);
+          InvalidateGeometry();
         }
       }
     }
@@ -983,9 +964,9 @@ public sealed class VectorAnimation : Animation
 
     internal Polygon Polygon;
 
-    void OnVertexChanged(bool geometryChanged)
+    void InvalidateGeometry()
     {
-      if(Polygon != null) Polygon.OnPolygonChanged(geometryChanged);
+      if(Polygon != null) Polygon.InvalidateGeometry();
     }
 
     /// <summary>This vertex's position within the polygon.</summary>

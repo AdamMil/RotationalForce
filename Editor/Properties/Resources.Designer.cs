@@ -81,13 +81,6 @@ namespace RotationalForce.Editor.Properties {
             }
         }
         
-        internal static System.Drawing.Bitmap TerrainTool {
-            get {
-                object obj = ResourceManager.GetObject("TerrainTool", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
         internal static byte[] ZoomIn {
             get {
                 object obj = ResourceManager.GetObject("ZoomIn", resourceCulture);
