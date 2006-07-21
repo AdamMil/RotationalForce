@@ -62,7 +62,10 @@ sealed class MainForm : Form
     SceneEditor sceneEditor = ActiveMdiChild as SceneEditor;
     if(sceneEditor != null)
     {
+      statusLabel.Spring = false;
+      statusLabel.Width  = 1;
       ToolStripManager.Merge(sceneEditor.StatusBar, statusBar);
+      statusLabel.Spring = true;
     }
   }
 
@@ -125,8 +128,8 @@ sealed class MainForm : Form
     // newVectorAnimationMenuItem
     // 
     this.newVectorAnimationMenuItem.Name = "newVectorAnimationMenuItem";
-    this.newVectorAnimationMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift)
-                | System.Windows.Forms.Keys.N)));
+    this.newVectorAnimationMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift) 
+            | System.Windows.Forms.Keys.N)));
     this.newVectorAnimationMenuItem.Size = new System.Drawing.Size(224, 22);
     this.newVectorAnimationMenuItem.Text = "&Vector Animation";
     this.newVectorAnimationMenuItem.Click += new System.EventHandler(this.newObjectMenuItem_Click);
@@ -150,8 +153,8 @@ sealed class MainForm : Form
     // openVectorAnimationMenuItem
     // 
     this.openVectorAnimationMenuItem.Name = "openVectorAnimationMenuItem";
-    this.openVectorAnimationMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift)
-                | System.Windows.Forms.Keys.O)));
+    this.openVectorAnimationMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift) 
+            | System.Windows.Forms.Keys.O)));
     this.openVectorAnimationMenuItem.Size = new System.Drawing.Size(237, 22);
     this.openVectorAnimationMenuItem.Text = "&Vector Animation...";
     // 
@@ -213,8 +216,8 @@ sealed class MainForm : Form
     // saveAllMenuItem
     // 
     this.saveAllMenuItem.Name = "saveAllMenuItem";
-    this.saveAllMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift)
-                | System.Windows.Forms.Keys.S)));
+    this.saveAllMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift) 
+            | System.Windows.Forms.Keys.S)));
     this.saveAllMenuItem.Size = new System.Drawing.Size(179, 22);
     this.saveAllMenuItem.Text = "Save a&ll";
     // 

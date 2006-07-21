@@ -47,7 +47,6 @@ public class SceneEditor : Form
     toolBar.Items[0].Tag = Tools.Object;
     toolBar.Items[1].Tag = Tools.Layers;
     toolBar.Items[2].Tag = Tools.Zoom;
-    toolBar.Items[3].Tag = Tools.Terrain;
 
     CurrentTool = Tools.Object;
   }
@@ -223,7 +222,6 @@ public class SceneEditor : Form
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ToolStripButton terrainTool;
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
     this.toolBar = new System.Windows.Forms.ToolStrip();
     this.rightPane = new System.Windows.Forms.SplitContainer();
@@ -243,7 +241,6 @@ public class SceneEditor : Form
     layerTool = new System.Windows.Forms.ToolStripButton();
     cameraTool = new System.Windows.Forms.ToolStripButton();
     menuBar = new System.Windows.Forms.MenuStrip();
-    terrainTool = new System.Windows.Forms.ToolStripButton();
     menuBar.SuspendLayout();
     this.toolBar.SuspendLayout();
     this.rightPane.Panel1.SuspendLayout();
@@ -349,8 +346,7 @@ public class SceneEditor : Form
     this.toolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             selectTool,
             layerTool,
-            cameraTool,
-            terrainTool});
+            cameraTool});
     this.toolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
     this.toolBar.Location = new System.Drawing.Point(561, 3);
     this.toolBar.Name = "toolBar";
@@ -359,8 +355,8 @@ public class SceneEditor : Form
     // 
     // rightPane
     // 
-    this.rightPane.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
-                | System.Windows.Forms.AnchorStyles.Right)));
+    this.rightPane.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Right)));
     this.rightPane.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
     this.rightPane.Location = new System.Drawing.Point(560, 30);
     this.rightPane.Name = "rightPane";
@@ -408,9 +404,9 @@ public class SceneEditor : Form
     // 
     // objectList
     // 
-    this.objectList.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
-                | System.Windows.Forms.AnchorStyles.Left)
-                | System.Windows.Forms.AnchorStyles.Right)));
+    this.objectList.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
     listViewGroup1.Header = "Static Images";
     listViewGroup1.Name = "staticImgGroup";
     listViewGroup2.Header = "Animated Images";
@@ -452,9 +448,9 @@ public class SceneEditor : Form
     // renderPanel
     // 
     this.renderPanel.AllowDrop = true;
-    this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
-                | System.Windows.Forms.AnchorStyles.Left)
-                | System.Windows.Forms.AnchorStyles.Right)));
+    this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
     this.renderPanel.BackColor = System.Drawing.Color.Black;
     this.renderPanel.Controls.Add(menuBar);
     this.renderPanel.Location = new System.Drawing.Point(2, 3);
@@ -495,20 +491,8 @@ public class SceneEditor : Form
     // layerLabel
     // 
     this.layerLabel.Name = "layerLabel";
-    this.layerLabel.Size = new System.Drawing.Size(38, 17);
-    this.layerLabel.Text = "Layer:";
-    // 
-    // terrainTool
-    // 
-    terrainTool.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-    terrainTool.Image = global::RotationalForce.Editor.Properties.Resources.TerrainTool;
-    terrainTool.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
-    terrainTool.ImageTransparentColor = System.Drawing.Color.Magenta;
-    terrainTool.Name = "terrainTool";
-    terrainTool.Size = new System.Drawing.Size(23, 20);
-    terrainTool.Text = "Terrain";
-    terrainTool.ToolTipText = "Terrain. Use this tool to create vector-based terrain.";
-    terrainTool.Click += new System.EventHandler(this.tool_Click);
+    this.layerLabel.Size = new System.Drawing.Size(47, 17);
+    this.layerLabel.Text = "Layer: 0";
     // 
     // SceneEditor
     // 
@@ -599,6 +583,12 @@ public class SceneEditor : Form
       linksTool   = new LinksSubTool(editor, this);
       mountTool   = new MountSubTool(editor, this);
       spatialTool = new SpatialSubTool(editor, this);
+      vectorTool  = new VectorSubTool(editor, this);
+    }
+
+    public SceneObject SelectedObject
+    {
+      get { return selectedObjects.Count == 0 ? null : selectedObjects[0]; }
     }
 
     public override void Activate()
@@ -627,6 +617,11 @@ public class SceneEditor : Form
     public MountSubTool MountTool
     {
       get { return mountTool; }
+    }
+
+    public VectorSubTool VectorTool
+    {
+      get { return vectorTool; }
     }
 
     public ObjectSubTool SubTool
@@ -1157,36 +1152,50 @@ public class SceneEditor : Form
           if(SelectedObjects.Count == 0 || !ObjectTool.selectedObjectBounds.Contains(e.Location))
           {
             SelectObject(e.Location, true);
-            if(SelectedObjects.Count == 0) return false; // if there was no object under the mouse, return false
           }
 
-          if(SelectedObjects.Count == 1)
+          if(SelectedObjects.Count != 0)
           {
-            SceneObject obj = SelectedObjects[0];
-            menu.MenuItems.Add(new MenuItem("Edit collision area", menu_EditCollision));
-            menu.MenuItems.Add(new MenuItem("Edit link points", menu_EditLinks));
-            if(obj.Mounted)
+            if(SelectedObjects.Count == 1)
             {
-              menu.MenuItems.Add(new MenuItem("Dismount object", menu_Dismount));
+              SceneObject obj = SelectedObjects[0];
+              menu.MenuItems.Add("Edit collision area", menu_EditCollision);
+              menu.MenuItems.Add("Edit link points", menu_EditLinks);
+              if(obj.Mounted)
+              {
+                menu.MenuItems.Add("Dismount object", menu_Dismount);
+              }
+              else
+              {
+                menu.MenuItems.Add("Mount to another object", menu_Mount);
+              }
+              if(VectorSubTool.IsValidObject(obj))
+              {
+                menu.MenuItems.Add("Edit vector properties",
+                                   delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.VectorTool; });
+              }
+              menu.MenuItems.Add("-");
             }
-            else
+
+            menu.MenuItems.Add(new MenuItem("Delete object(s)", menu_Delete, Shortcut.Del));
+            menu.MenuItems.Add("Export object(s)", menu_Export);
+            
+            foreach(SceneObject obj in SelectedObjects)
             {
-              menu.MenuItems.Add(new MenuItem("Mount to another object", menu_Mount));
+              if(obj.Rotation != 0)
+              {
+                menu.MenuItems.Add("Reset rotation", menu_ResetRotation);
+                break;
+              }
             }
-            menu.MenuItems.Add(new MenuItem("-"));
+            
+            menu.MenuItems.Add("-");
           }
 
-          menu.MenuItems.Add(new MenuItem("Delete object(s)", menu_Delete, Shortcut.Del));
-          menu.MenuItems.Add(new MenuItem("Export object(s)", menu_Export));
-          
-          foreach(SceneObject obj in SelectedObjects)
-          {
-            if(obj.Rotation != 0)
-            {
-              menu.MenuItems.Add(new MenuItem("Reset rotation", menu_ResetRotation));
-              break;
-            }
-          }
+          menu.MenuItems.Add("New vertex shape",
+                             delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, true); });
+          menu.MenuItems.Add("New spline shape",
+                             delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, false); });
 
           menu.Show(Panel, e.Location);
           return true;
@@ -1201,15 +1210,17 @@ public class SceneEditor : Form
       {
         // we only care about left-drags
         if(e.Button != MouseButtons.Left) return false;
-        
-        // if zero or one objects are selected, select the object under the pointer
-        if(SelectedObjects.Count < 2)
+
+        dragHandle = GetHandleUnderPoint(e.Location);
+
+        // if zero or one objects are selected and the mouse cursor is not over a control handle,
+        // select the object under the pointer
+        if(dragHandle == Handle.None && SelectedObjects.Count < 2)
         {
           SceneObject obj = ObjectTool.ObjectUnderPoint(e.Location);
           if(obj != null) ObjectTool.SelectObject(obj, true);
+          dragHandle = GetHandleUnderPoint(e.Location);
         }
-        
-        dragHandle = GetHandleUnderPoint(e.Location);
 
         // if the user drags outside the selection rectangle, do a box-selection
         if(dragHandle == Handle.None && !GetHandleBorder().Contains(e.Location))
@@ -1667,6 +1678,9 @@ public class SceneEditor : Form
 
       void SelectObject(Point pt, bool deselectOthers)
       {
+        // clicking on a control handle should not change the selection
+        if(GetHandleUnderPoint(pt) != Handle.None) return;
+
         SceneObject obj = ObjectTool.ObjectUnderPoint(pt);
         if(obj != null) ObjectTool.SelectObject(obj, deselectOthers);
         else if(deselectOthers) ObjectTool.DeselectObjects();
@@ -1858,15 +1872,774 @@ public class SceneEditor : Form
     }
     #endregion
 
+    #region VectorTool
+    public sealed class VectorSubTool : ObjectSubTool
+    {
+      public VectorSubTool(SceneEditor editor, ObjectTool parent) : base(editor, parent) { }
+
+      public override void Activate()
+      {
+        Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
+
+        AnimatedObject selectedObject = null;
+        foreach(SceneObject obj in ObjectTool.selectedObjects)
+        {
+          if(IsValidObject(obj))
+          {
+            selectedObject = obj as AnimatedObject;
+            break;
+          }
+        }
+        
+        if(selectedObject != null)
+        {
+          SelectObject(selectedObject);
+          UpdatePropertyGrid();
+        }
+        else
+        {
+          ObjectTool.DeselectObjects();
+        }
+      }
+
+      public override void Deactivate()
+      {
+        Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
+      }
+
+      public override void KeyPress(KeyEventArgs e, bool down)
+      {
+        char c = (char)e.KeyValue;
+        if(down && e.KeyCode == Keys.Delete)
+        {
+          DeleteSelection();
+          e.Handled = true;
+        }
+      }
+
+      public override bool MouseClick(MouseEventArgs e)
+      {
+        if(e.Button == MouseButtons.Left)
+        {
+          if(Control.ModifierKeys == Keys.None)
+          {
+            if(!SelectObject(e.Location, SelectMode.DeselectPoints))
+            {
+              DeselectObject();
+            }
+            return true;
+          }
+          // shift-click toggles selection of individual vertices
+          else if(Control.ModifierKeys == Keys.Shift)
+          {
+            if(SelectedObject == null)
+            {
+              SelectObject(e.Location, SelectMode.Select);
+            }
+            else
+            {
+              TrySelectObjectAndPoint(SelectedObject, e.Location, SelectMode.Toggle);
+            }
+          }
+          // alt-click breaks/joins the shape at that point (spline shapes only)
+        }
+        else if(e.Button == MouseButtons.Right)
+        {
+          SelectObject(e.Location, SelectMode.Select);
+          ContextMenu menu = new ContextMenu();
+
+          if(SelectedObject != null)
+          {
+            if(selectedPoints.Count != SelectedPoly.Vertices.Count)
+            {
+              menu.MenuItems.Add("Select all vertices", delegate(object s, EventArgs a) { SelectAllPoints(); });
+            }
+
+            if(selectedPoints.Count != 0) // operations upon the selected vertices
+            {
+              bool addSeparator = false;
+              // if there's only one selected point, and this is a spline shape, allow the shape to be broken/joined
+              // there
+              if(selectedPoints.Count == 1 && false)
+              {
+                if(false)
+                {
+                  menu.MenuItems.Add("Break spline at vertex");
+                }
+                else
+                {
+                  menu.MenuItems.Add("Join spline at vertex");
+                }
+
+                addSeparator = true;
+              }
+
+              if(selectedPoints.Count != SelectedPoly.Vertices.Count)
+              {
+                menu.MenuItems.Add("Delete selected vertices",
+                                   delegate(object s, EventArgs a) { DeleteSelectedPoints(); });
+                addSeparator = true;
+              }
+
+              if(addSeparator)
+              {
+                menu.MenuItems.Add("-");
+              }
+            }
+
+            // if it only has one polygon, the polygon can be added to another vector object
+            if(SelectedFrame.Polygons.Count == 1)
+            {
+              menu.MenuItems.Add("Join with another object");
+            }
+
+            if(SelectedPoly.HasSpline)
+            {
+              menu.MenuItems.Add("Convert spline polygon to vertex polygon", menu_ConvertPolyToVertexPoly);
+            }
+
+            // if it has multiple polygons, the order of the current polygon can be changed
+            if(SelectedFrame.Polygons.Count > 1)
+            {
+              bool hasSpline = false;
+              for(int i=0; i<SelectedFrame.Polygons.Count; i++)
+              {
+                if(SelectedFrame.Polygons[i].HasSpline)
+                {
+                  hasSpline = true;
+                  break;
+                }
+              }
+
+              if(hasSpline)
+              {
+                menu.MenuItems.Add("Convert spline shape to vertex shape", menu_ConvertShapeToVertexShape);
+              }
+
+              menu.MenuItems.Add("Split polygon into separate shape");
+              menu.MenuItems.Add("Delete selected polygon",
+                                 delegate(object s, EventArgs a) { DeleteSelectedPolygon(); });
+
+              if(selectedPoly != 0)
+              {
+                menu.MenuItems.Add("Move polygon towards back", delegate(object s, EventArgs a) { MovePolygon(-1); });
+              }
+              if(selectedPoly != SelectedFrame.Polygons.Count-1)
+              {
+                menu.MenuItems.Add("Move polygon towards front", delegate(object s, EventArgs a) { MovePolygon(1); });
+              }
+            }
+
+            menu.MenuItems.Add("Delete shape", delegate(object s, EventArgs a) { DeleteSelectedObject(); });
+            menu.MenuItems.Add("Edit shape properties",
+                               delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.SpatialTool; });
+            menu.MenuItems.Add("Edit in animation editor");
+            menu.MenuItems.Add("-");
+          }
+
+          menu.MenuItems.Add("New vertex shape",
+                             delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, true); });
+          menu.MenuItems.Add("New spline shape",
+                             delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, false); });
+
+          menu.Show(Panel, e.Location);
+          return true;
+        }
+
+        return false;
+      }
+
+      public override bool MouseDragStart(MouseEventArgs e)
+      {
+        if(e.Button == MouseButtons.Left) // for a left drag, move the selected vertex/polygon/object
+        {
+          if(!SelectObject(e.Location, selectedPoints.Count > 1 ? SelectMode.DeselectIfNone : SelectMode.DeselectPoints))
+          {
+            return false;
+          }
+
+          dragPoints.Clear();
+          // if no points or all the points are selected, move the whole polygon or object
+          if(selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count)
+          {
+            if(SelectedFrame.Polygons.Count == 1) // if there's only one polygon, drag the whole object
+            {
+              dragPoints.Add(SelectedObject.Position);
+            }
+            else // otherwise, just drag the one polygon
+            {
+              for(int i=0; i<SelectedPoly.Vertices.Count; i++)
+              {
+                dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[i].Position));
+              }
+            }
+          }
+          else // otherwise, just drag the selected points
+          {
+            foreach(int selectedPoint in selectedPoints)
+            {
+              dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoint].Position));
+            }
+          }
+          return true;
+        }
+        else if(e.Button == MouseButtons.Right) // for right drags, clone and move vertices
+        {
+          // if there wasn't a point under the mouse, return false
+          if(!SelectObject(e.Location, SelectMode.DeselectPoints) || selectedPoints.Count != 1) return false;
+          CloneAndSelectPoint(selectedPoints[0]);
+          dragPoints.Clear();
+          dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoints[0]].Position));
+          return true;
+        }
+
+        return false;
+      }
+
+      public override void MouseDrag(MouseDragEventArgs e)
+      {
+        ObjectTool.InvalidateSelectedBounds(true);
+
+        Size clientDist = new Size(e.X-e.Start.X, e.Y-e.Start.Y);
+
+        if(Control.ModifierKeys == Keys.Shift)
+        {
+          if(Math.Abs(clientDist.Width) > Math.Abs(clientDist.Height))
+          {
+            clientDist.Height = 0;
+          }
+          else
+          {
+            clientDist.Width = 0;
+          }
+        }
+
+        Vector sceneDist = SceneView.ClientToScene(clientDist);
+
+        // move the selected polygon/object if no points or all points are selected
+        if(selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count)
+        {
+          if(SelectedFrame.Polygons.Count == 1) // if there's only one polygon, move the whole object
+          {
+            SelectedObject.Position = dragPoints[0] + sceneDist;
+          }
+          else // otherwise, move the selected polygon
+          {
+            for(int i=0; i<SelectedPoly.Vertices.Count; i++)
+            {
+              SelectedPoly.Vertices[i].Position = SelectedObject.SceneToLocal(dragPoints[i] + sceneDist);
+            }
+          }
+        }
+        else // otherwise, just move the selected points
+        {
+          for(int i=0; i<selectedPoints.Count; i++)
+          {
+            SelectedPoly.Vertices[selectedPoints[i]].Position = SelectedObject.SceneToLocal(dragPoints[i] + sceneDist);
+          }
+        }
+
+        RecalculateObjectBounds();
+        ObjectTool.RecalculateAndInvalidateSelectedBounds();
+      }
+
+      public override void MouseDragEnd(MouseDragEventArgs e)
+      {
+        // if we were moving the whole object, just invalidate the render
+        if((selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count) &&
+         SelectedFrame.Polygons.Count == 1)
+        {
+          Editor.InvalidateRender();
+        }
+        else // otherwise, we'll need to recalculate the object bounds
+        {
+          ObjectTool.InvalidateSelectedBounds(true);
+          RecalculateObjectBounds();
+          ObjectTool.RecalculateAndInvalidateSelectedBounds();
+        }
+      }
+
+      void RecalculateObjectBounds()
+      {
+        // calculate the minimum bounding box to contain the points, assign the bounding box, and then readjust the
+        // position of all points so that they fit within the new bounding box without moving
+
+        double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue; // our local-space bounds
+        foreach(VectorAnimation.Polygon poly in SelectedFrame.Polygons)
+        {
+          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+          {
+            if(vertex.Position.X < x1) x1 = vertex.Position.X;
+            if(vertex.Position.Y < y1) y1 = vertex.Position.Y;
+            if(vertex.Position.X > x2) x2 = vertex.Position.X;
+            if(vertex.Position.Y > y2) y2 = vertex.Position.Y;
+          }
+        }
+
+        Vector localBounds = new Vector(x2-x1, y2-y1);
+        double localSize   = Math.Max(localBounds.X, localBounds.Y);
+        double localScale  = 2/localSize;
+        Vector offset      = (new Vector(localSize, localSize) - localBounds) * 0.5 * localScale + new Vector(-1, -1);
+
+        // we'll make the new bounds a square for ease-of-use, so find the longest axis. the new data will be centered
+        // within the object.
+        Vector sceneBounds = SelectedObject.LocalToScene(localBounds);
+        double sceneSize   = Math.Max(sceneBounds.X, sceneBounds.Y);
+        SelectedObject.Position = SelectedObject.LocalToScene(new GLPoint(x1+localBounds.X*0.5, y1+localBounds.Y*0.5));
+        SelectedObject.Size     = new Vector(sceneSize, sceneSize);
+
+        foreach(VectorAnimation.Polygon poly in SelectedFrame.Polygons)
+        {
+          for(int i=0; i<poly.Vertices.Count; i++)
+          {
+            VectorAnimation.Vertex vertex = poly.Vertices[i];
+            // find the offset of the point within the old local bounds, scale it to be from 0 to 2, and offset it to
+            // be from -1 to 1, centered in the object.
+            Vector newPos = (new Vector(vertex.Position.X - x1, vertex.Position.Y - y1) * localScale + offset);
+            vertex.Position = newPos.ToPoint();
+          }
+        }
+      }
+
+      public override void PaintDecoration(Graphics g)
+      {
+        VectorAnimation.Polygon poly = SelectedPoly;
+        if(poly != null)
+        {
+          Point[] points = new Point[poly.Vertices.Count];
+          for(int i=0; i<points.Length; i++)
+          {
+            points[i] = SceneView.SceneToClient(SelectedObject.LocalToScene(poly.Vertices[i].Position));
+          }
+
+          if(points.Length > 1)
+          {
+            g.DrawLines(Pens.Green, points);
+            g.DrawLine(Pens.Green, points[points.Length-1], points[0]);
+          }
+
+          for(int i=0; i<points.Length; i++)
+          {
+            Rectangle rect = new Rectangle(points[i].X-2, points[i].Y-2, 5, 5);
+            g.FillRectangle(selectedPoints.Contains(i) ? Brushes.Red : Brushes.Green, rect);
+            g.DrawRectangle(Pens.White, rect);
+          }
+        }
+      }
+
+      [Flags]
+      enum SelectMode
+      {
+        Select=0,
+        Toggle=1,
+
+        DeselectPoints=2,
+        DeselectIfNone=4,
+        DeselectMask=6,
+      }
+
+      VectorAnimation SelectedAnimation
+      {
+        get { return SelectedObject == null ? null : SelectedObject.Animation as VectorAnimation; }
+      }
+
+      VectorAnimation.Frame SelectedFrame
+      {
+        get { return SelectedObject == null ? null : SelectedAnimation.Frames[0]; }
+      }
+
+      AnimatedObject SelectedObject
+      {
+        get { return (AnimatedObject)ObjectTool.SelectedObject; }
+      }
+      
+      VectorAnimation.Polygon SelectedPoly
+      {
+        get { return SelectedObject == null ? null : SelectedFrame.Polygons[selectedPoly]; }
+      }
+
+      void CloneAndSelectPoint(int vertexIndex)
+      {
+        SelectedPoly.InsertVertex(vertexIndex, SelectedPoly.Vertices[vertexIndex].Clone());
+        SelectVertex(vertexIndex+1, true);
+      }
+
+      void DeleteSelection()
+      {
+        if(selectedPoints.Count != 0)
+        {
+          DeleteSelectedPoints();
+        }
+        else if(SelectedObject != null)
+        {
+          DeleteSelectedPolygon();
+        }
+      }
+
+      void DeleteSelectedPoints()
+      {
+        if(selectedPoints.Count != 0)
+        {
+          selectedPoints.Sort();
+          for(int i=selectedPoints.Count-1; i>=0; i--)
+          {
+            SelectedPoly.RemoveVertex(selectedPoints[i]);
+          }
+          selectedPoints.Clear();
+
+          if(SelectedPoly.Vertices.Count == 0)
+          {
+            DeleteSelectedPolygon();
+          }
+          else
+          {
+            OnSelectionChanged();
+            OnDeleted();
+          }
+        }
+      }
+
+      void DeleteSelectedPolygon()
+      {
+        if(SelectedFrame.Polygons.Count == 1)
+        {
+          DeleteSelectedObject();
+        }
+        else
+        {
+          int selection = selectedPoly;
+          SelectedFrame.RemovePolygon(selectedPoly);
+          selectedPoly = 0;
+
+          if(selection >= SelectedFrame.Polygons.Count)
+          {
+            selection--;
+          }
+          SelectPolygon(selection);
+          OnDeleted();
+        }
+      }
+
+      void DeleteSelectedObject()
+      {
+        if(SelectedObject != null)
+        {
+          SceneObject obj = SelectedObject;
+          ObjectTool.InvalidateSelectedBounds(true);
+          DeselectObject();
+          Scene.RemoveObject(obj);
+        }
+      }
+
+      void DeselectObject()
+      {
+        if(SelectedObject != null)
+        {
+          DeselectPoints();
+          ObjectTool.DeselectObjects();
+          selectedPoly = 0;
+          OnSelectionChanged();
+        }
+      }
+
+      void DeselectPoints()
+      {
+        selectedPoints.Clear();
+        OnSelectionChanged();
+      }
+
+      public static bool IsValidObject(SceneObject obj)
+      {
+        AnimatedObject animObj = obj as AnimatedObject;
+        if(animObj != null)
+        {
+          VectorAnimation anim = animObj.Animation as VectorAnimation;
+          if(anim == null || anim.Frames.Count == 0)
+          {
+            return false;
+          }
+
+          return true;
+        }
+
+        return false;
+      }
+
+      void MovePolygon(int offset) // offset is assumed to be -1 or 1
+      {
+        if(offset == -1 && selectedPoly > 0 ||
+         offset == 1 && selectedPoly < SelectedFrame.Polygons.Count-1)
+        {
+          VectorAnimation.Polygon poly = SelectedPoly;
+          SelectedFrame.RemovePolygon(selectedPoly);
+          SelectedFrame.InsertPolygon(selectedPoly + offset, poly);
+          SelectPolygon(selectedPoly + offset);
+        }
+      }
+
+      void SelectAllPoints()
+      {
+        if(selectedPoints.Count != SelectedPoly.Vertices.Count)
+        {
+          selectedPoints.Clear();
+          for(int i=0; i<SelectedPoly.Vertices.Count; i++)
+          {
+            selectedPoints.Add(i);
+          }
+          OnSelectionChanged();
+        }
+      }
+
+      bool SelectObject(Point pt, SelectMode mode)
+      {
+        Rectangle clientRect = SceneView.ClientRect;
+        clientRect.Inflate(DecorationRadius, DecorationRadius);
+
+        foreach(SceneObject obj in Scene.PickRectangle(SceneView.ClientToScene(clientRect),
+                                                       Editor.GetPickerOptions()))
+        {
+          if(IsValidObject(obj) && TrySelectObjectAndPoint((AnimatedObject)obj, pt, mode))
+          {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      bool SelectPolygonAndPoint(AnimatedObject obj, int polyIndex, Point pt, SelectMode mode)
+      {
+        VectorAnimation.Polygon poly = ((VectorAnimation)obj.Animation).Frames[0].Polygons[polyIndex];
+        for(int i=0; i<poly.Vertices.Count; i++)
+        {
+          // compare vertices in window space
+          Point vertex = SceneView.SceneToClient(obj.LocalToScene(poly.Vertices[i].Position));
+          int xd = vertex.X-pt.X, yd=vertex.Y-pt.Y, distSqr=xd*xd+yd*yd;
+          if(distSqr<=32) // select points within approx 5.66 pixels
+          {
+            SelectObject(obj);
+            SelectPolygon(polyIndex);
+            if((mode&SelectMode.Toggle) != 0 && selectedPoints.Contains(i))
+            {
+              selectedPoints.Remove(i);
+              OnSelectionChanged();
+            }
+            else
+            {
+              SelectVertex(i, (mode&SelectMode.DeselectMask) == SelectMode.DeselectPoints);
+            }
+            return true;
+          }
+        }
+
+        if((mode&SelectMode.DeselectMask) != 0)
+        {
+          DeselectPoints();
+        }
+        return false;
+      }
+
+      void SelectObject(AnimatedObject obj)
+      {
+        if(obj != SelectedObject)
+        {
+          ObjectTool.SelectObject(obj, true);
+          selectedPoly = 0;
+          ObjectTool.InvalidateSelectedBounds(false);
+          SelectPolygon(0);
+        }
+      }
+
+      void SelectPolygon(int polyIndex)
+      {
+        if(polyIndex != selectedPoly)
+        {
+          selectedPoly = polyIndex;
+          DeselectPoints();
+        }
+      }
+
+      void SelectVertex(int vertexIndex, bool deselectOthers)
+      {
+        if(deselectOthers)
+        {
+          if(selectedPoints.Count == 1 && selectedPoints[0] == vertexIndex)
+          {
+            return;
+          }
+          selectedPoints.Clear();
+        }
+
+        if(deselectOthers || !selectedPoints.Contains(vertexIndex))
+        {
+          selectedPoints.Add(vertexIndex);
+          OnSelectionChanged();
+        }
+      }
+
+      bool TrySelectObjectAndPoint(AnimatedObject obj, Point pt, SelectMode mode)
+      {
+        GLPoint localPoint = obj.SceneToLocal(SceneView.ClientToScene(pt));
+
+        // scan the polygons from the top down
+        VectorAnimation.Frame frame = ((VectorAnimation)obj.Animation).Frames[0];
+        for(int polyIndex=frame.Polygons.Count-1; polyIndex >= 0; polyIndex--)
+        {
+          // if the polygon contains the point, select it and then 
+          if(PolygonContains(frame.Polygons[polyIndex], localPoint))
+          {
+            SelectObject(obj);
+            SelectPolygonAndPoint(obj, polyIndex, pt, mode);
+            return true;
+          }
+          else if(SelectPolygonAndPoint(obj, polyIndex, pt, mode))
+          {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      void OnDeleted()
+      {
+        ObjectTool.InvalidateSelectedBounds(true);
+        RecalculateObjectBounds();
+      }
+
+      void OnSelectionChanged()
+      {
+        UpdatePropertyGrid();
+        Editor.InvalidateDecoration();
+      }
+
+      void UpdatePropertyGrid()
+      {
+        if(SelectedObject == null)
+        {
+          Editor.HideRightPane();
+          Editor.propertyGrid.SelectedObjects = null;
+        }
+        else
+        {
+          if(selectedPoints.Count == 0)
+          {
+            Editor.propertyGrid.SelectedObject = SelectedPoly;
+          }
+          else
+          {
+            object[] vertices = new object[selectedPoints.Count];
+            for(int i=0; i<vertices.Length; i++)
+            {
+              vertices[i] = SelectedPoly.Vertices[selectedPoints[i]];
+            }
+            Editor.propertyGrid.SelectedObjects = vertices;
+          }
+
+          Editor.ShowPropertyGrid();
+        }
+      }
+
+      void menu_ConvertPolyToVertexPoly(object sender, EventArgs e)
+      {
+        DeselectPoints();
+        VectorAnimation.Polygon vertexPoly = SelectedPoly.CloneAsVertexPolygon();
+        SelectedFrame.RemovePolygon(selectedPoly);
+        SelectedFrame.InsertPolygon(selectedPoly, vertexPoly);
+        UpdatePropertyGrid();
+      }
+
+      void menu_ConvertShapeToVertexShape(object sender, EventArgs e)
+      {
+        DeselectPoints();
+        for(int i=0; i<SelectedFrame.Polygons.Count; i++)
+        {
+          VectorAnimation.Polygon vertexPoly = SelectedFrame.Polygons[i].CloneAsVertexPolygon();
+          SelectedFrame.RemovePolygon(i);
+          SelectedFrame.InsertPolygon(i, vertexPoly);
+        }
+        UpdatePropertyGrid();
+      }
+
+      void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
+      {
+        Editor.InvalidateRender();
+      }
+
+      List<int> selectedPoints = new List<int>();
+      List<GLPoint> dragPoints = new List<GLPoint>();
+      int selectedPoly;
+
+      /// <summary>Determines whether the specified polygon contains the given point.</summary>
+      static bool PolygonContains(VectorAnimation.Polygon poly, GLPoint point)
+      {
+        if(poly.Vertices.Count < 3) return false; // if it's not a proper polygon, it won't contain the point.
+
+        // create a GameLib polygon, since it has the appropriate functionality already
+        GLPoly glPoly = new GLPoly(poly.Vertices.Count);
+        foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+        {
+          glPoly.AddPoint(vertex.Position);
+        }
+
+        if(glPoly.IsConvex()) // if the created polygon is convex, we can check immediately
+        {
+          return glPoly.ConvexContains(point);
+        }
+        else // otherwise, it's non-convex, so we need to split it into convex polygons
+        {
+          try
+          {
+            foreach(GLPoly convexPoly in glPoly.Split()) // split it
+            {
+              if(convexPoly.ConvexContains(point)) return true; // and check each one
+            }
+          }
+          catch(NotSupportedException) { } // this can happen if the polygon is complex. we just return false, then.
+
+          return false;
+        }
+      }
+    }
+    #endregion
+
     LinksSubTool linksTool;
     MountSubTool mountTool;
     SpatialSubTool spatialTool;
+    VectorSubTool vectorTool;
     #endregion
 
     #region Delegation to subtool
     public override void KeyPress(KeyEventArgs e, bool down)
     {
       SubTool.KeyPress(e, down);
+
+      if(!e.Handled)
+      {
+        char c = char.ToLowerInvariant((char)e.KeyValue);
+        if(e.Modifiers == Keys.Alt && c >= '0' && c <= '9')
+        {
+          int layer = c=='0' ? 9 : c-'1';
+          foreach(SceneObject obj in selectedObjects)
+          {
+            obj.Layer = layer;
+          }
+          EditorApp.MainForm.StatusText = "Object(s) moved to layer "+layer;
+          Editor.CurrentLayer = layer;
+          Editor.InvalidateRender();
+          e.Handled = true;
+        }
+        else if(down && e.Modifiers == Keys.Shift && c == 'v')
+        {
+          SubTool = VectorTool;
+          e.Handled = true;
+        }
+        else if(down && e.Modifiers == Keys.Shift && c == 's')
+        {
+          SubTool = SpatialTool;
+          e.Handled = true;
+        }
+      }
     }
 
     public override bool MouseClick(MouseEventArgs e)
@@ -1938,6 +2711,44 @@ public class SceneEditor : Form
     {
       selectedObjectBounds = new Rectangle();
       selectedObjectSceneBounds = new GLRect();
+    }
+
+    void CreateShape(Point at, bool breakVertices)
+    {
+      VectorAnimation anim = new VectorAnimation();
+
+      VectorAnimation.Frame frame = new VectorAnimation.Frame();
+      anim.AddFrame(frame);
+
+      VectorAnimation.Polygon poly = new VectorAnimation.Polygon();
+      frame.AddPolygon(poly);
+
+      VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
+      vertex.Color = Color.White;
+      vertex.Position = new GLPoint(-1, -1);
+      vertex.Split = breakVertices;
+      poly.AddVertex(vertex);
+
+      vertex = vertex.Clone();
+      vertex.Position = new GLPoint(1, -1);
+      poly.AddVertex(vertex);
+      vertex = vertex.Clone();
+      vertex.Position = new GLPoint(1, 1);
+      poly.AddVertex(vertex);
+      vertex = vertex.Clone();
+      vertex.Position = new GLPoint(-1, 1);
+      poly.AddVertex(vertex);
+
+      AnimatedObject obj = new AnimatedObject();
+      obj.Animation = anim;
+      obj.Layer     = Editor.CurrentLayer;
+      obj.Position  = SceneView.ClientToScene(at);
+      obj.Size      = new Vector(SceneView.CameraSize/10, SceneView.CameraSize/10);
+      Scene.AddObject(obj);
+      Editor.InvalidateRender();
+      SelectObject(obj, true);
+
+      SubTool = VectorTool;
     }
 
     void DeselectObject(SceneObject obj)
@@ -2159,735 +2970,6 @@ public class SceneEditor : Form
     Panel layerPanel;
   }
   #endregion
-  
-  #region TerrainTool
-  sealed class TerrainTool : EditTool
-  {
-    public TerrainTool(SceneEditor editor) : base(editor) { }
-
-    public override void Activate()
-    {
-      Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
-    }
-
-    public override void Deactivate()
-    {
-      DeselectObject();
-      Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
-    }
-
-    public override void KeyPress(KeyEventArgs e, bool down)
-    {
-      if(down && e.KeyCode == Keys.Delete)
-      {
-        DeleteSelection();
-      }
-    }
-
-    public override bool MouseClick(MouseEventArgs e)
-    {
-      if(e.Button == MouseButtons.Left)
-      {
-        if(Control.ModifierKeys == Keys.None)
-        {
-          if(!SelectObject(e.Location, SelectMode.DeselectPoints))
-          {
-            DeselectObject();
-          }
-          return true;
-        }
-        // shift-click toggles selection of individual vertices
-        else if(Control.ModifierKeys == Keys.Shift)
-        {
-          if(selectedObject == null)
-          {
-            SelectObject(e.Location, SelectMode.Select);
-          }
-          else
-          {
-            TrySelectObjectAndPoint(selectedObject, e.Location, SelectMode.Toggle);
-          }
-        }
-        // alt-click breaks/joins the shape at that point (spline shapes only)
-      }
-      else if(e.Button == MouseButtons.Right)
-      {
-        SelectObject(e.Location, SelectMode.Select);
-        ContextMenu menu = new ContextMenu();
-
-        if(selectedObject != null)
-        {
-          if(selectedPoints.Count != SelectedPoly.Vertices.Count) 
-          {
-            menu.MenuItems.Add("Select all vertices", delegate(object s, EventArgs a) { SelectAllPoints(); });
-          }
-          
-          if(selectedPoints.Count != 0) // operations upon the selected vertices
-          {
-            bool addSeparator = false;
-            // if there's only one selected point, and this is a spline shape, allow the shape to be broken/joined
-            // there
-            if(selectedPoints.Count == 1 && false)
-            {
-              if(false)
-              {
-                menu.MenuItems.Add("Break spline at vertex");
-              }
-              else
-              {
-                menu.MenuItems.Add("Join spline at vertex");
-              }
-              
-              addSeparator = true;
-            }
-
-            if(selectedPoints.Count != SelectedPoly.Vertices.Count)
-            {
-              menu.MenuItems.Add("Delete selected vertices",
-                                 delegate(object s, EventArgs a) { DeleteSelectedPoints(); });
-              addSeparator = true;
-            }
-            
-            if(addSeparator)
-            {
-              menu.MenuItems.Add("-");
-            }
-          }
-
-          // if it only has one polygon, the polygon can be added to another vector object
-          if(SelectedFrame.Polygons.Count == 1)
-          {
-            menu.MenuItems.Add("Join with another object");
-          }
-
-          // if it has multiple polygons, the order of the current polygon can be changed
-          if(SelectedFrame.Polygons.Count > 1)
-          {
-            menu.MenuItems.Add("Split polygon into separate shape");
-            menu.MenuItems.Add("Delete selected polygon",
-                               delegate(object s, EventArgs a) { DeleteSelectedPolygon(); });
-
-            if(selectedPoly != 0)
-            {
-              menu.MenuItems.Add("Move polygon towards back", delegate(object s, EventArgs a) { MovePolygon(-1); });
-            }
-            if(selectedPoly != SelectedFrame.Polygons.Count-1)
-            {
-              menu.MenuItems.Add("Move polygon towards front", delegate(object s, EventArgs a) { MovePolygon(1); });
-            }
-          }
-
-          menu.MenuItems.Add("Delete shape", delegate(object s, EventArgs a) { DeleteSelectedObject(); });
-          menu.MenuItems.Add("Edit shape properties", menu_EditShapeProperties);
-          menu.MenuItems.Add("Edit in animation editor");
-          menu.MenuItems.Add("-");
-        }
-
-        menu.MenuItems.Add("New vertex shape", delegate(object s, EventArgs a) { CreateShape(e.Location, true); });
-        menu.MenuItems.Add("New spline shape", delegate(object s, EventArgs a) { CreateShape(e.Location, false); });
-
-        menu.Show(Panel, e.Location);
-        return true;
-      }
-      
-      return false;
-    }
-
-    public override bool MouseDragStart(MouseEventArgs e)
-    {
-      if(e.Button == MouseButtons.Left) // for a left drag, move the selected vertex/polygon/object
-      {
-        if(!SelectObject(e.Location, selectedPoints.Count > 1 ? SelectMode.DeselectIfNone : SelectMode.DeselectPoints))
-        {
-          return false;
-        }
-
-        dragPoints.Clear();
-        // if no points or all the points are selected, move the whole polygon or object
-        if(selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count)
-        {
-          if(SelectedFrame.Polygons.Count == 1) // if there's only one polygon, drag the whole object
-          {
-            dragPoints.Add(selectedObject.Position);
-          }
-          else // otherwise, just drag the one polygon
-          {
-            for(int i=0; i<SelectedPoly.Vertices.Count; i++)
-            {
-              dragPoints.Add(selectedObject.LocalToScene(SelectedPoly.Vertices[i].Position));
-            }
-          }
-        }
-        else // otherwise, just drag the selected points
-        {
-          foreach(int selectedPoint in selectedPoints)
-          {
-            dragPoints.Add(selectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoint].Position));
-          }
-        }
-        return true;
-      }
-      else if(e.Button == MouseButtons.Right) // for right drags, clone and move vertices
-      {
-        // if there wasn't a point under the mouse, return false
-        if(!SelectObject(e.Location, SelectMode.DeselectPoints) || selectedPoints.Count != 1) return false;
-        CloneAndSelectPoint(selectedPoints[0]);
-        dragPoints.Clear();
-        dragPoints.Add(selectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoints[0]].Position));
-        return true;
-      }
-
-      return false;
-    }
-
-    public override void MouseDrag(MouseDragEventArgs e)
-    {
-      InvalidateSelectedObjectBounds(true);
-
-      Size clientDist = new Size(e.X-e.Start.X, e.Y-e.Start.Y);
-
-      if(Control.ModifierKeys == Keys.Shift)
-      {
-        if(Math.Abs(clientDist.Width) > Math.Abs(clientDist.Height))
-        {
-          clientDist.Height = 0;
-        }
-        else
-        {
-          clientDist.Width = 0;
-        }
-      }
-
-      Vector sceneDist = SceneView.ClientToScene(clientDist);
-
-      // move the selected polygon/object if no points or all points are selected
-      if(selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count)
-      {
-        if(SelectedFrame.Polygons.Count == 1) // if there's only one polygon, move the whole object
-        {
-          selectedObject.Position = dragPoints[0] + sceneDist;
-        }
-        else // otherwise, move the selected polygon
-        {
-          for(int i=0; i<SelectedPoly.Vertices.Count; i++)
-          {
-            SelectedPoly.Vertices[i].Position = selectedObject.SceneToLocal(dragPoints[i] + sceneDist);
-          }
-        }
-      }
-      else // otherwise, just move the selected points
-      {
-        for(int i=0; i<selectedPoints.Count; i++)
-        {
-          SelectedPoly.Vertices[selectedPoints[i]].Position = selectedObject.SceneToLocal(dragPoints[i] + sceneDist);
-        }
-      }
-
-      RecalculateObjectBounds();
-      InvalidateSelectedObjectBounds(true);
-    }
-
-    public override void MouseDragEnd(MouseDragEventArgs e)
-    {
-      // if we were moving the whole object, just invalidate the render
-      if((selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count) &&
-         SelectedFrame.Polygons.Count == 1)
-      {
-        Editor.InvalidateRender();
-      }
-      else // otherwise, we'll need to recalculate the object bounds
-      {
-        InvalidateSelectedObjectBounds(true);
-        RecalculateObjectBounds();
-        InvalidateSelectedObjectBounds(true);
-      }
-    }
-
-    void RecalculateObjectBounds()
-    {
-      // calculate the minimum bounding box to contain the points, assign the bounding box, and then readjust the
-      // position of all points so that they fit within the new bounding box without moving
-      
-      double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue; // our local-space bounds
-      foreach(VectorAnimation.Polygon poly in SelectedFrame.Polygons)
-      {
-        foreach(VectorAnimation.Vertex vertex in poly.Vertices)
-        {
-          if(vertex.Position.X < x1) x1 = vertex.Position.X;
-          if(vertex.Position.Y < y1) y1 = vertex.Position.Y;
-          if(vertex.Position.X > x2) x2 = vertex.Position.X;
-          if(vertex.Position.Y > y2) y2 = vertex.Position.Y;
-        }
-      }
-
-      Vector localBounds = new Vector(x2-x1, y2-y1);
-      double localSize   = Math.Max(localBounds.X, localBounds.Y);
-      double localScale  = 2/localSize;
-      Vector offset      = (new Vector(localSize, localSize) - localBounds) * 0.5 * localScale + new Vector(-1, -1);
-
-      // we'll make the new bounds a square for ease-of-use, so find the longest axis. the new data will be centered
-      // within the object.
-      Vector sceneBounds = selectedObject.LocalToScene(localBounds);
-      double sceneSize   = Math.Max(sceneBounds.X, sceneBounds.Y);
-      selectedObject.Position = selectedObject.LocalToScene(new GLPoint(x1+localBounds.X*0.5, y1+localBounds.Y*0.5));
-      selectedObject.Size     = new Vector(sceneSize, sceneSize);
-
-      foreach(VectorAnimation.Polygon poly in SelectedFrame.Polygons)
-      {
-        for(int i=0; i<poly.Vertices.Count; i++)
-        {
-          VectorAnimation.Vertex vertex = poly.Vertices[i];
-          // find the offset of the point within the old local bounds, scale it to be from 0 to 2, and offset it to
-          // be from -1 to 1, centered in the object.
-          Vector newPos = (new Vector(vertex.Position.X - x1, vertex.Position.Y - y1) * localScale + offset);
-          vertex.Position = newPos.ToPoint();
-        }
-      }
-    }
-
-    public override void PaintDecoration(Graphics g)
-    {
-      VectorAnimation.Polygon poly = SelectedPoly;
-      if(poly != null)
-      {
-        Point[] points = new Point[poly.Vertices.Count];
-        for(int i=0; i<points.Length; i++)
-        {
-          points[i] = SceneView.SceneToClient(selectedObject.LocalToScene(poly.Vertices[i].Position));
-        }
-
-        if(points.Length > 1)
-        {
-          g.DrawLines(Pens.Green, points);
-          g.DrawLine(Pens.Green, points[points.Length-1], points[0]);
-        }
-        
-        for(int i=0; i<points.Length; i++)
-        {
-          Rectangle rect = new Rectangle(points[i].X-2, points[i].Y-2, 5, 5);
-          g.FillRectangle(selectedPoints.Contains(i) ? Brushes.Red : Brushes.Green, rect);
-          g.DrawRectangle(Pens.White, rect);
-        }
-      }
-    }
-
-    [Flags]
-    enum SelectMode
-    {
-      Select = 0,
-      Toggle = 1,
-
-      DeselectPoints = 2,
-      DeselectIfNone = 4,
-      DeselectMask = 6,
-    }
-
-    VectorAnimation SelectedAnimation
-    {
-      get { return selectedObject == null ? null : selectedObject.Animation as VectorAnimation; }
-    }
-
-    VectorAnimation.Frame SelectedFrame
-    {
-      get { return selectedObject == null ? null : SelectedAnimation.Frames[0]; }
-    }
-
-    VectorAnimation.Polygon SelectedPoly
-    {
-      get { return selectedObject == null ? null : SelectedFrame.Polygons[selectedPoly]; }
-    }
-
-    void CloneAndSelectPoint(int vertexIndex)
-    {
-      SelectedPoly.InsertVertex(vertexIndex, SelectedPoly.Vertices[vertexIndex].Clone());
-      SelectVertex(vertexIndex+1, true);
-    }
-
-    void CreateShape(Point at, bool breakVertices)
-    {
-      VectorAnimation anim = new VectorAnimation();
-
-      VectorAnimation.Frame frame = new VectorAnimation.Frame();
-      anim.AddFrame(frame);
-
-      VectorAnimation.Polygon poly = new VectorAnimation.Polygon();
-      frame.AddPolygon(poly);
-
-      VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
-      vertex.Color = Color.White;
-      vertex.Position = new GLPoint(-1, -1);
-      vertex.Split = breakVertices;
-      poly.AddVertex(vertex);
-
-      vertex = vertex.Clone();
-      vertex.Position = new GLPoint(1, -1);
-      poly.AddVertex(vertex);
-      vertex = vertex.Clone();
-      vertex.Position = new GLPoint(1, 1);
-      poly.AddVertex(vertex);
-      vertex = vertex.Clone();
-      vertex.Position = new GLPoint(-1, 1);
-      poly.AddVertex(vertex);
-
-      AnimatedObject obj = new AnimatedObject();
-      obj.Animation = anim;
-      obj.Layer     = Editor.CurrentLayer; 
-      obj.Position  = SceneView.ClientToScene(at);
-      obj.Size      = new Vector(SceneView.CameraSize/10, SceneView.CameraSize/10);
-      obj.SetScriptVar("__isTerrain", true);
-      Scene.AddObject(obj);
-      SelectObject(obj);
-
-      InvalidateSelectedObjectBounds(true);
-    }
-
-    void DeleteSelection()
-    {
-      if(selectedPoints.Count != 0)
-      {
-        DeleteSelectedPoints();
-      }
-      else if(selectedObject != null)
-      {
-        DeleteSelectedPolygon();
-      }
-    }
-    
-    void DeleteSelectedPoints()
-    {
-      if(selectedPoints.Count != 0)
-      {
-        selectedPoints.Sort();
-        for(int i=selectedPoints.Count-1; i>=0; i--)
-        {
-          SelectedPoly.RemoveVertex(selectedPoints[i]);
-        }
-        selectedPoints.Clear();
-
-        if(SelectedPoly.Vertices.Count == 0)
-        {
-          DeleteSelectedPolygon();
-        }
-        else
-        {
-          OnSelectionChanged();
-          OnDeleted();
-        }
-      }
-    }
-    
-    void DeleteSelectedPolygon()
-    {
-      if(SelectedFrame.Polygons.Count == 1)
-      {
-        DeleteSelectedObject();
-      }
-      else
-      {
-        int selection = selectedPoly;
-        SelectedFrame.RemovePolygon(selectedPoly);
-        selectedPoly = -1;
-
-        if(selection >= SelectedFrame.Polygons.Count)
-        {
-          selection--;
-        }
-        SelectPolygon(selection);
-        OnDeleted();
-      }
-    }
-    
-    void DeleteSelectedObject()
-    {
-      if(selectedObject != null)
-      {
-        SceneObject obj = selectedObject;
-        InvalidateSelectedObjectBounds(true);
-        DeselectObject();
-        Scene.RemoveObject(obj);
-      }
-    }
-
-    void DeselectObject()
-    {
-      if(selectedObject != null)
-      {
-        InvalidateSelectedObjectBounds(false);
-        DeselectPoints();
-        selectedObject    = null;
-        selectedPoly      = -1;
-        OnSelectionChanged();
-      }
-    }
-
-    void DeselectPoints()
-    {
-      selectedPoints.Clear();
-      OnSelectionChanged();
-    }
-
-    bool IsValidObject(SceneObject obj)
-    {
-      AnimatedObject animObj = obj as AnimatedObject;
-      if(animObj != null)
-      {
-        VectorAnimation anim = animObj.Animation as VectorAnimation;
-        if(anim == null || anim.Frames.Count == 0)
-        {
-          return false;
-        }
-
-        if(!object.Equals(animObj.SafeGetScriptVar("__isTerrain"), true)) return false;
-
-        return true;
-      }
-      
-      return false;
-    }
-
-    void MovePolygon(int offset) // offset is assumed to be -1 or 1
-    {
-      if(offset == -1 && selectedPoly > 0 ||
-         offset == 1 && selectedPoly < SelectedFrame.Polygons.Count-1)
-      {
-        VectorAnimation.Polygon poly = SelectedPoly;
-        SelectedFrame.RemovePolygon(selectedPoly);
-        SelectedFrame.InsertPolygon(selectedPoly + offset, poly);
-        SelectPolygon(selectedPoly + offset);
-      }
-    }
-
-    void SelectAllPoints()
-    {
-      if(selectedPoints.Count != SelectedPoly.Vertices.Count)
-      {
-        selectedPoints.Clear();
-        for(int i=0; i<SelectedPoly.Vertices.Count; i++)
-        {
-          selectedPoints.Add(i);
-        }
-        OnSelectionChanged();
-      }
-    }
-
-    bool SelectObject(Point pt, SelectMode mode)
-    {
-      Rectangle clientRect = SceneView.ClientRect;
-      clientRect.Inflate(DecorationRadius, DecorationRadius);
-
-      foreach(SceneObject obj in Scene.PickRectangle(SceneView.ClientToScene(clientRect),
-                                                     Editor.GetPickerOptions()))
-      {
-        if(IsValidObject(obj) && TrySelectObjectAndPoint((AnimatedObject)obj, pt, mode))
-        {
-          return true;
-        }
-      }
-
-      return false;
-    }
-
-    bool SelectPolygonAndPoint(AnimatedObject obj, int polyIndex, Point pt, SelectMode mode)
-    {
-      VectorAnimation.Polygon poly = ((VectorAnimation)obj.Animation).Frames[0].Polygons[polyIndex];
-      for(int i=0; i<poly.Vertices.Count; i++)
-      {
-        // compare vertices in window space
-        Point vertex = SceneView.SceneToClient(obj.LocalToScene(poly.Vertices[i].Position));
-        int xd = vertex.X-pt.X, yd=vertex.Y-pt.Y, distSqr=xd*xd+yd*yd;
-        if(distSqr<=32) // select points within approx 5.66 pixels
-        {
-          SelectObject(obj);
-          SelectPolygon(polyIndex);
-          if((mode&SelectMode.Toggle) != 0 && selectedPoints.Contains(i))
-          {
-            selectedPoints.Remove(i);
-            OnSelectionChanged();
-          }
-          else
-          {
-            SelectVertex(i, (mode&SelectMode.DeselectMask) == SelectMode.DeselectPoints);
-          }
-          return true;
-        }
-      }
-      
-      if((mode&SelectMode.DeselectMask) != 0)
-      {
-        DeselectPoints();
-      }
-      return false;
-    }
-
-    void SelectObject(AnimatedObject obj)
-    {
-      if(obj != selectedObject)
-      {
-        InvalidateSelectedObjectBounds(false);
-
-        selectedObject = obj;
-        selectedPoly   = -1;
-        InvalidateSelectedObjectBounds(false);
-        SelectPolygon(0);
-      }
-    }
-    
-    void SelectPolygon(int polyIndex)
-    {
-      if(polyIndex != selectedPoly)
-      {
-        selectedPoly = polyIndex;
-        DeselectPoints();
-      }
-    }
-    
-    void SelectVertex(int vertexIndex, bool deselectOthers)
-    {
-      if(deselectOthers)
-      {
-        if(selectedPoints.Count == 1 && selectedPoints[0] == vertexIndex)
-        {
-          return;
-        }
-        selectedPoints.Clear();
-      }
-
-      if(deselectOthers || !selectedPoints.Contains(vertexIndex))
-      {
-        selectedPoints.Add(vertexIndex);
-        OnSelectionChanged();
-      }
-    }
-
-    bool TrySelectObjectAndPoint(AnimatedObject obj, Point pt, SelectMode mode)
-    {
-      GLPoint localPoint = obj.SceneToLocal(SceneView.ClientToScene(pt));
-
-      // scan the polygons from the top down
-      VectorAnimation.Frame frame = ((VectorAnimation)obj.Animation).Frames[0];
-      for(int polyIndex=frame.Polygons.Count-1; polyIndex >= 0; polyIndex--)
-      {
-        // if the polygon contains the point, select it and then 
-        if(PolygonContains(frame.Polygons[polyIndex], localPoint))
-        {
-          SelectObject(obj);
-          SelectPolygonAndPoint(obj, polyIndex, pt, mode);
-          return true;
-        }
-        else if(SelectPolygonAndPoint(obj, polyIndex, pt, mode))
-        {
-          return true;
-        }
-      }
-
-      return false;
-    }
-
-    void InvalidateSelectedObjectBounds(bool invalidateRender)
-    {
-      if(selectedObject != null)
-      {
-        Rectangle clientRect = SceneView.SceneToClient(selectedObject.GetRotatedAreaBounds());
-        clientRect.Inflate(DecorationRadius, DecorationRadius);
-
-        if(invalidateRender)
-        {
-          Editor.InvalidateRender(clientRect);
-        }
-        else
-        {
-          Editor.InvalidateDecoration(clientRect);
-        }
-      }
-    }
-
-    void OnDeleted()
-    {
-      InvalidateSelectedObjectBounds(true);
-      RecalculateObjectBounds();
-    }
-
-    void OnSelectionChanged()
-    {
-      UpdatePropertyGrid();
-      Editor.InvalidateDecoration();
-    }
-
-    void UpdatePropertyGrid()
-    {
-      if(selectedObject == null)
-      {
-        Editor.HideRightPane();
-        Editor.propertyGrid.SelectedObjects = null;
-      }
-      else
-      {
-        if(selectedPoints.Count == 0)
-        {
-          Editor.propertyGrid.SelectedObject = SelectedPoly;
-        }
-        else
-        {
-          object[] vertices = new object[selectedPoints.Count];
-          for(int i=0; i<vertices.Length; i++)
-          {
-            vertices[i] = SelectedPoly.Vertices[selectedPoints[i]];
-          }
-          Editor.propertyGrid.SelectedObjects = vertices;
-        }
-
-        Editor.ShowPropertyGrid();
-      }
-    }
-
-    void menu_EditShapeProperties(object sender, EventArgs e)
-    {
-      Editor.propertyGrid.SelectedObject = selectedObject;
-      Editor.ShowPropertyGrid();
-    }
-
-    void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
-    {
-      Editor.InvalidateRender();
-    }
-
-    AnimatedObject selectedObject;
-    List<int> selectedPoints = new List<int>();
-    List<GLPoint> dragPoints = new List<GLPoint>();
-    int selectedPoly;
-
-    /// <summary>Determines whether the specified polygon contains the given point.</summary>
-    static bool PolygonContains(VectorAnimation.Polygon poly, GLPoint point)
-    {
-      if(poly.Vertices.Count < 3) return false; // if it's not a proper polygon, it won't contain the point.
-
-      // create a GameLib polygon, since it has the appropriate functionality already
-      GLPoly glPoly = new GLPoly(poly.Vertices.Count);
-      foreach(VectorAnimation.Vertex vertex in poly.Vertices)
-      {
-        glPoly.AddPoint(vertex.Position);
-      }
-
-      if(glPoly.IsConvex()) // if the created polygon is convex, we can check immediately
-      {
-        return glPoly.ConvexContains(point);
-      }
-      else // otherwise, it's non-convex, so we need to split it into convex polygons
-      {
-        try
-        {
-          foreach(GLPoly convexPoly in glPoly.Split()) // split it
-          {
-            if(convexPoly.ConvexContains(point)) return true; // and check each one
-          }
-        }
-        catch(NotSupportedException) { } // this can happen if the polygon is complex. we just return false, then.
-
-        return false;
-      }
-    }
-  }
-  #endregion
 
   #region ZoomTool
   sealed class ZoomTool : EditTool
@@ -2961,80 +3043,6 @@ public class SceneEditor : Form
   }
   #endregion
 
-/*class SplineTool : EditTool
-{
-  public SplineTool(SceneEditor editor) : base(editor) { }
-
-  public override bool MouseClick(MouseEventArgs e)
-  {
-    if(e.Button == MouseButtons.Left)
-    {
-      points.Add(e.Location);
-    }
-    else if(e.Button == MouseButtons.Right)
-    {
-      points.Clear();
-    }
-    Editor.InvalidateDecoration();
-    return true;
-  }
-
-  public override void PaintDecoration(Graphics g)
-  {
-    if(points.Count == 0) return;
-
-    { Point prevPt = points[0];
-      for(int i=1; i<points.Count; i++)
-      {
-        g.DrawLine(Pens.DarkGreen, prevPt, points[i]);
-        prevPt = points[i];
-      }
-    }
-
-    foreach(Point pt in points)
-    {
-      g.FillRectangle(Brushes.Green, new Rectangle(pt.X-1, pt.Y-1, 3, 3));
-    }
-    
-    if(points.Count >= 2)
-    {
-      const int Divisions = 8;
-      PointF prevPoint = new PointF();
-
-      for(int fsi=-2,oi=0; oi<points.Count; fsi++,oi++)
-      {
-        int a = getIndex(fsi), b = getIndex(fsi+1), c = getIndex(fsi+2), d = getIndex(fsi+3);
-        for(int i=0; i<Divisions; i++)
-        {
-          double delta = i / (double)Divisions;
-          double invDelta = 1-delta;
-
-          double b0 = invDelta*invDelta*invDelta/6.0f;
-          double b1 = (3*delta*delta*delta - 6*delta*delta +4)/6.0f;
-          double b2 = (-3*delta*delta*delta +3*delta*delta + 3*delta + 1)/6.0f;
-          double b3 =  delta*delta*delta/6.0f;
-
-          float newX = (float)(b0 * points[a].X + b1 * points[b].X + b2 * points[c].X + b3 * points[d].X);
-          float newY = (float)(b0 * points[a].Y + b1 * points[b].Y + b2 * points[c].Y + b3 * points[d].Y);
-
-          if(oi+i != 0)
-          {
-            g.DrawLine(Pens.White, prevPoint.X, prevPoint.Y, newX, newY);
-          }
-          
-          prevPoint = new PointF(newX, newY);
-        }
-      }
-
-      g.DrawLine(Pens.White, prevPoint.X, prevPoint.Y, points[points.Count-1].X, points[points.Count-1].Y);
-    }
-  }
-
-  int getIndex(int i) { return i<0 ? 0 : i>=points.Count ? points.Count-1 : i; }
-
-  List<Point> points = new List<Point>();
-}*/
-
   class Toolbox
   {
     public Toolbox(SceneEditor editor) { this.editor = editor; }
@@ -3057,15 +3065,6 @@ public class SceneEditor : Form
       }
     }
 
-    public TerrainTool Terrain
-    {
-      get
-      {
-        if(terrainTool == null) terrainTool = new TerrainTool(editor);
-        return terrainTool;
-      }
-    }
-
     public ZoomTool Zoom
     {
       get
@@ -3078,7 +3077,6 @@ public class SceneEditor : Form
     SceneEditor editor;
     ObjectTool objectTool;
     LayerTool layerTool;
-    TerrainTool terrainTool;
     ZoomTool zoomTool;
   }
 
@@ -3089,11 +3087,15 @@ public class SceneEditor : Form
     {
       if(value != currentTool)
       {
-        if(currentTool != null) currentTool.Deactivate();
+        if(currentTool != null)
+        {
+          currentTool.Deactivate();
+        }
+
         renderPanel.Cursor = Cursors.Default;
         currentTool = value;
         currentTool.Activate();
-        
+
         foreach(ToolStripButton item in toolBar.Items)
         {
           item.Checked = item.Tag == value;
@@ -3126,6 +3128,7 @@ public class SceneEditor : Form
     
     if(!e.Handled)
     {
+      char c = (char)e.KeyValue;
       // do keyboard scrolling if the arrow keys are pressed
       if(e.KeyCode == Keys.Up || e.KeyCode == Keys.Down || e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
       {
@@ -3136,15 +3139,9 @@ public class SceneEditor : Form
         InvalidateView();
         e.Handled = true;
       }
-      else
+      else if(e.Modifiers == Keys.None && c >= '0' && c <= '9') // plain number presses change current layer
       {
-        switch(e.KeyCode)
-        {
-          case Keys.Oem1: case Keys.NumPad1:
-            break;
-            CurrentLayer = 0;
-            e.Handled = true;
-        }
+        CurrentLayer = c == '0' ? 9 : c-'1'; // '1'-'9' are layers 0-8. '0' is layer 9.
       }
     }
   }

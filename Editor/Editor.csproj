@@ -110,7 +110,6 @@
     <Content Include="Resources\TriggerIcon.bmp" />
     <Content Include="Resources\ZoomIn.cur" />
     <Content Include="Resources\ZoomOut.cur" />
-    <None Include="Resources\TerrainTool.bmp" />
     <None Include="Resources\ZoomTool.bmp" />
   </ItemGroup>
 </Project>
