@@ -575,6 +575,7 @@ public class SceneEditor : Form
   }
   #endregion
 
+  // FIXME: invalidating an object doesn't invalidate its mounts
   #region ObjectTool
   sealed class ObjectTool : EditTool
   {
@@ -1142,6 +1143,10 @@ public class SceneEditor : Form
         {
           ToggleObjectSelection(e.Location);
           return true;
+        }
+        else if(e.Button == MouseButtons.Middle) // middle click swaps between object/vector mode
+        {
+          ObjectTool.SubTool = ObjectTool.VectorTool;
         }
         // a plain right click opens a context menu for the selected items
         else if(e.Button == MouseButtons.Right && Control.ModifierKeys == Keys.None)
@@ -1898,13 +1903,15 @@ public class SceneEditor : Form
         }
         else
         {
-          ObjectTool.DeselectObjects();
+          DeselectObject();
         }
       }
 
       public override void Deactivate()
       {
         Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
+        DeselectPoints();
+        selectedPoly = 0;
       }
 
       public override void KeyPress(KeyEventArgs e, bool down)
@@ -1942,6 +1949,10 @@ public class SceneEditor : Form
             }
           }
           // alt-click breaks/joins the shape at that point (spline shapes only)
+        }
+        else if(e.Button == MouseButtons.Middle) // middle click swaps between object/vector mode
+        {
+          ObjectTool.SubTool = ObjectTool.SpatialTool;
         }
         else if(e.Button == MouseButtons.Right)
         {

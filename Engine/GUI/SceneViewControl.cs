@@ -354,40 +354,92 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   
   #region Camera mounting
   /// <summary>Gets a value that indicates whether the camera is currently mounted to an object.</summary>
+  [Browsable(false)]
   public bool CameraMounted
   {
     get { return mountObject != null; }
   }
+
+  /// <summary>Gets/sets how far into the future the camera will predict the mounted object's motion, in seconds.</summary>
+  [Category("Mounting")]
+  [Description("How far into the future the camera will predict the mounted object's motion, in seconds.")]
+  public double MountLookahead
+  {
+    get { return mountLookahead; }
+    set { mountLookahead = value; }
+  }
+
+  /// <summary>Gets/sets an arbitrary offset applied to the camera's mount target.</summary>
+  /// <remarks>This is wholly different from the offset passed to the <see cref="MountCamera"/> function. The mount
+  /// offset is an offset from where the camera's normal destination is not a link point on the mount object.
+  /// </remarks>
+  [Category("Mounting")]
+  [Description("An arbitrary offset applied to the camera's mount point.")]
+  public Vector MountOffset
+  {
+    get { return mountOffset; }
+    set { mountOffset = value; }
+  }
+
+  /// <summary>Gets/sets the maximum distance the camera can be from its mount point, in scene units.</summary>
+  /// <remarks>R</remarks>
+  [Category("Mounting")]
+  [Description("The maximum distance the camera can be from its mount point, in scene units.")]
+  public double MountRadius
+  {
+    get { return mountRadius; }
+    set
+    {
+      if(mountRadius < 0)
+        throw new ArgumentOutOfRangeException("MountRadius", value, "Mount radius cannot be negative.");
+      mountRadius = value;
+    }
+  }
   
+  /// <summary>Gets/sets the rigidity of the camera mount. This is a non-negative value that describes how quickly the
+  /// camera will approach its mount target.
+  /// </summary>
+  [Category("Mounting")]
+  [Description("The rigidity of the mount point. This is a non-negative value that describes how quickly the camera "+
+    "will approach its mount point.")]
+  public double MountRigidity
+  {
+    get { return mountRigidity; }
+    set
+    {
+      if(mountRigidity < 0)
+        throw new ArgumentOutOfRangeException("MountRigidity", value, "Mount rigidity cannot be negative.");
+      mountRigidity = value;
+    }
+  }
+
   /// <summary>Mounts the camera to an object.</summary>
   /// <param name="mountTo">The <see cref="SceneObject"/> to which the camera will be mounted.</param>
   /// <param name="offset">The offset from the center of the object of the point at which the camera will be mounted.
   /// The mounted point will rotate along with the object.
   /// </param>
-  /// <param name="rigidity">The rigidity of the mount. This must be zero or a non-negative number. If set to zero or
-  /// a number greater than or equal to one, the mount will be perfectly rigid, and the camera will follow the mount
-  /// point exactly. Otherwise values between zero and one will cause the camera to move towards the mount point more
-  /// or less lazily. Higher values will be less lazy.
-  /// </param>
   /// <param name="snapToMount">If true, the camera will immediately snap to the mount point. This does not affect the
   /// future movement of the camera, which is determined by <paramref name="rigidity"/>.
   /// </param>
-  public void MountCamera(SceneObject mountTo, double offsetX, double offsetY, double rigidity, bool snapToMount)
+  /// <remarks>The camera's destination (mount target) is calculated by taking the offset from the object's center
+  /// given to this function, predicting its future position with <see cref="MountLookahead"/>, and adding the
+  /// <see cref="MountOffset"/>. The <see cref="MountRigidity"/> then determines how far the camera will move towards
+  /// the destination. Finally, the camera is clipped to be no more than <see cref="MountRadius"/> away from the
+  /// object.
+  /// </remarks>
+  public void MountCamera(SceneObject mountTo, double offsetX, double offsetY, bool snapToMount)
   {
     if(mountTo == null) throw new ArgumentNullException("mountTo", "Can't mount the camera to a null object.");
-    if(rigidity < 0) throw new ArgumentOutOfRangeException("rigidity", "Mount rigidity cannot be negative.");
-    if(rigidity >= 1) rigidity = 0;
 
     if(CameraMounted) DismountCamera();
     else StopCameraMove();
     
-    mountObject   = mountTo;
-    mountRigidity = rigidity;
-    mountLinkID   = offsetX == 0 && offsetY == 0 ? -1 : mountObject.AddLinkPoint(offsetX, offsetY);
+    mountObject = mountTo;
+    mountLinkID = offsetX == 0 && offsetY == 0 ? -1 : mountObject.AddLinkPoint(offsetX, offsetY);
 
     if(snapToMount)
     {
-      currentCamera.Center = CameraMountPosition;
+      currentCamera.Center = CameraMountTarget;
       OnCameraChanged();
     }
   }
@@ -398,12 +450,27 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   {
     if(CameraMounted)
     {
-      if(mountLinkID != -1) mountObject.RemoveLinkPoint(mountLinkID);
+      if(mountLinkID != -1)
+      {
+        mountObject.RemoveLinkPoint(mountLinkID);
+        mountLinkID = -1;
+      }
       mountObject = null;
     }
   }
   
   /// <summary>Gets the current mount position, in scene units.</summary>
+  Point CameraMountTarget
+  {
+    get
+    {
+      // get the base mount position
+      Point position = CameraMountPosition;
+      // then apply the lookahead and offset
+      return position + mountObject.Velocity*mountLookahead + mountOffset;
+    }
+  }
+  
   Point CameraMountPosition
   {
     get { return mountLinkID == -1 ? mountObject.Position : mountObject.GetLinkPoint(mountLinkID); }
@@ -597,29 +664,40 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     }
     else if(CameraMounted) // otherwise, if the camera is following a target, update its location
     {
-      Point mountPoint = CameraMountPosition;
-
-      if(mountRigidity == 0) // if the mount is perfectly rigid, snap directly to the mount point
+      if(mountRadius == 0) // if the mount radius is zero, just snap directly to the mount point
       {
         currentCamera.Center = CameraMountPosition;
       }
-      else // the mount is flexible
+      else
       {
-        Vector vector   = currentCamera.Center - mountPoint;
-        double distance = vector.LengthSqr; // distance to mount (squared)
+        Point  target   = CameraMountTarget;
+        Vector vector   = target - currentCamera.Center;
+        double distance = vector.LengthSqr; // distance to mount target, squared
 
-        if(!EngineMath.Equals(distance, 0)) // if the distance is zero, normalization is undefined
+        // if the distance is near zero, we can't normalize the vector. and we're close enough anyway.
+        if(!EngineMath.Equals(distance, 0))
         {
-          vector.Normalize(distance*timeDelta*mountRigidity); // calculate movement distance
+          vector.Normalize(Math.Sqrt(distance)*timeDelta*mountRigidity); // calculate movement distance
           // if the movement distance is further than the real distance, just snap to the target
           if(vector.LengthSqr >= distance)
           {
-            currentCamera.Center = CameraMountPosition;
+            currentCamera.Center = target;
           }
           else // otherwise, move part of the way to the target
           {
             currentCamera.Center += vector;
           }
+        }
+
+        // clip to the maximum radius (which is calculated based on the mount point, not the camera target)
+        target   = CameraMountPosition;
+        vector   = currentCamera.Center - CameraMountPosition;
+        distance = vector.LengthSqr; // distance from mount point (on object), squared
+
+        if(distance > mountRadius*mountRadius)
+        {
+          vector.Normalize(mountRadius);
+          currentCamera.Center = CameraMountPosition + vector;
         }
       }
 
@@ -687,8 +765,14 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// <summary>How far we are in the morph from the source to the target, expressed as a number from 0 to 1.</summary>
   double interpolationPosition;
 
-  /// <summary>How rigid the mount is. The special value of zero means that the camera tracks the mount perfectly.</summary>
-  double mountRigidity;
+  /// <summary>An arbitrary offset applied to the camera's mount target.</summary>
+  Vector mountOffset;
+  /// <summary>A maximum radius for the camera mount point.</summary>
+  double mountRadius;
+  /// <summary>How rigid the mount is. With higher values, the camera will approach its target more quickly.</summary>
+  double mountRigidity = 2.5;
+  /// <summary>How far ahead in time the camera predicts the object's position.</summary>
+  double mountLookahead = 3/4.0;
   /// <summary>The object to which the camera is mounted, or null if the camera is not mounted.</summary>
   SceneObject mountObject;
 
