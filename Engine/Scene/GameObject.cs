@@ -20,6 +20,17 @@ public abstract class GameObject
   {
     return scriptData == null ? false : scriptData.ContainsKey(name);
   }
+  
+  public void DeleteScriptVar(string name)
+  {
+    if(scriptData != null)
+    {
+      if(scriptData.Remove(name) && scriptData.Count == 0)
+      {
+        scriptData = null; // free the dictionary when the last variable has been deleted
+      }
+    }
+  }
 
   public object GetScriptVar(string name)
   {

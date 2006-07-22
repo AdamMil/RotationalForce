@@ -68,7 +68,8 @@ static class EngineApp
     obj.SetVelocity(100, 0);
     obj.SetAcceleration(0, 300);
     obj.AngularVelocity = 300;
-    view.MountCamera(obj, 0, 0, 0, true);
+    view.MountCamera(obj, 0, 0, false);
+    view.MountRadius = view.CameraArea.Height * 0.4;
 
     for(int i=0; i<10000; i += 25)
     {

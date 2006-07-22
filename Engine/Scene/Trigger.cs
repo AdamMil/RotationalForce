@@ -55,7 +55,7 @@ public class TriggerObject : SceneObject
  	      }
  	    }
  	  }
- 	  
+
  	  // if we want ObjectLeave notification and some objects may have been last frame
  	  if(ObjectLeave != null && hitLastFrame != null)
  	  {
