@@ -1,9 +1,36 @@
 using RotationalForce.Engine;
 using TheEngine = RotationalForce.Engine.Engine;
 using System.Drawing;
+using GameLib.Interop.OpenGL;
 
 namespace RotationalForce
 {
+
+public class RectangleObject : SceneObject
+{
+  public RectangleObject()
+  {
+    BlendingEnabled = true;
+    SetBlendingMode(SourceBlend.SrcAlpha, DestinationBlend.OneMinusSrcAlpha);
+  }
+
+  protected override void RenderContent()
+  {
+    if(BlendingEnabled)
+    {
+      GL.glEnable(GL.GL_LINE_SMOOTH);
+    }
+
+    GL.glBegin(GL.GL_LINE_LOOP);
+    GL.glVertex2f(-1f, -1f);
+    GL.glVertex2f(1f, -1f);
+    GL.glVertex2f(1f, 1f);
+    GL.glVertex2f(-1f, 1f);
+    GL.glEnd();
+
+    GL.glDisable(GL.GL_LINE_SMOOTH);
+  }
+}
 
 static class EngineApp
 {

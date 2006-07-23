@@ -60,7 +60,6 @@ public abstract class Animation
 #endregion
 
 #region AnimationFrame
-[Serializable]
 public abstract class AnimationFrame
 {
   /// <summary>The length of time spent rendering this frame, in seconds, at the default animation speed.</summary>

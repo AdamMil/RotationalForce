@@ -2755,6 +2755,7 @@ public class SceneEditor : Form
       obj.Layer     = Editor.CurrentLayer;
       obj.Position  = SceneView.ClientToScene(at);
       obj.Size      = new Vector(SceneView.CameraSize/10, SceneView.CameraSize/10);
+
       Scene.AddObject(obj);
       Editor.InvalidateRender();
       SelectObject(obj, true);
