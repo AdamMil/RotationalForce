@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -78,7 +79,13 @@ public class DeserializationStore
     this.reader = reader;
     this.ns     = reader.LocalName;
 
-    reader.Read();
+    // it's possible that the reader has no namespace node, in which case, there are no values to read.
+    // but if it does have a namespace node, move past it.
+    hasNamespaceNode = reader.NodeType == XmlNodeType.Element;
+    if(hasNamespaceNode)
+    {
+      reader.Read();
+    }
   }
 
   /// <summary>Gets the value corresponding to the given name.</summary>
@@ -125,26 +132,28 @@ public class DeserializationStore
   /// <returns>Returns true if the value was found and false otherwise.</returns>
   public bool TryGetValue(string name, out object value)
   {
-    if(values == null) // if we've read no values, initialize the value dictionary
+    if(!hasNamespaceNode)
+    {
+      value = null;
+      return false;
+    }
+    else if(values == null)
     {
       values = new LinkedList<KeyValuePair<string, object>>();
     }
-    else // otherwise, check if we've read this value already.
+    else if(TryGetCachedValue(name, out value))
     {
-      if(TryGetCachedValue(name, out value)) // if so, return success
-      {
-        return true;
-      }
+      return true; // if it's in the value cache, return it
     }
 
     // otherwise, we haven't read it yet, so read until we find it.
-    while(reader.NodeType != XmlNodeType.EndElement) // while we're not at the end of the data yet
+    while(reader.NodeType == XmlNodeType.Element) // while we're not at the end of the data yet
     {
       string nodeName = reader.LocalName;
 
       reader.Read(); // read to the data element
       value = Serializer.InnerDeserialize(reader);
-      reader.ReadEndElement(); // read the closing data element
+      Serializer.ReadEndElement(reader); // read the closing data element
 
       // prepend the new object to the list (where it can be found quickest)
       values.AddFirst(new KeyValuePair<string, object>(nodeName, value));
@@ -164,12 +173,14 @@ public class DeserializationStore
   /// <summary>Advances the reader past all the remaining nodes in the value store.</summary>
   internal void Finish()
   {
-    // skip all data nodes until we find the closing namespace node
-    while(!string.Equals(reader.LocalName, ns, StringComparison.Ordinal) && reader.NodeType != XmlNodeType.EndElement)
+    if(hasNamespaceNode)
     {
-      reader.Skip();
+      while(reader.NodeType == XmlNodeType.Element) // skip all data nodes
+      {
+        reader.Skip();
+      }
+      reader.ReadEndElement(); // then consume the closing namespace node
     }
-    reader.ReadEndElement(); // then consume the closing namespace node
   }
 
   /// <summary>Searches the cache for a named value.</summary>
@@ -196,6 +207,7 @@ public class DeserializationStore
   XmlReader reader;
   string ns;
   LinkedList<KeyValuePair<string,object>> values;
+  bool hasNamespaceNode;
 }
 #endregion
 
@@ -217,11 +229,13 @@ public interface ISerializable
   /// <see cref="System.Object.GetType()"/>, the object's fields will automatically be serialized and deserialized, and
   /// don't need to be added manually.
   /// </remarks>
-  void SerializeCustomValues(SerializationStore store);
+  void Serialize(SerializationStore store);
 
-  /// <summary>Provides the additonal serialization data added by <see cref="SerializeCustomValues"/>.</summary>
-  /// <remarks>Note that if <see cref="SerializeCustomValues"/> does not add any data, this method will not be called.</remarks>
-  void DeserializeCustomValues(DeserializationStore store);
+  /// <summary>Provides the additonal serialization data added by <see cref="Serialize"/>.</summary>
+  /// <remarks>Note that if <see cref="Serialize"/> does not add any data, this method will still be
+  /// called.
+  /// </remarks>
+  void Deserialize(DeserializationStore store);
 }
 #endregion
 
@@ -235,8 +249,8 @@ public interface ISerializable
 ///   public static Singleton Instance = new Singleton();
 ///   
 ///   Type ISerializable.TypeToSerialize { get { return typeof(SingletonReference); } }
-///   void ISerializable.SerializeCustomValues(SerializationStore store) { }
-///   void ISerializable.DeserializeCustomValues(DeserializationStore store) { }
+///   void ISerializable.Serialize(SerializationStore store) { }
+///   void ISerializable.Deserialize(DeserializationStore store) { }
 /// }
 /// 
 /// sealed class SingletonReference : IObjectReference
@@ -258,7 +272,7 @@ public static class Serializer
 {
   static Serializer()
   {
-    typeDict = new Dictionary<string,Type>(16);
+    typeDict = new Dictionary<string,Type>(18);
     typeDict["int"]      = typeof(int);
     typeDict["double"]   = typeof(double);
     typeDict["string"]   = typeof(string);
@@ -275,6 +289,9 @@ public static class Serializer
     typeDict["dateTime"] = typeof(DateTime);
     typeDict["decimal"]  = typeof(decimal);
     typeDict["sbyte"]    = typeof(sbyte);
+
+    typeDict["point"]    = typeof(GameLib.Mathematics.TwoD.Point);
+    typeDict["vector"]   = typeof(GameLib.Mathematics.TwoD.Vector);
   }
 
   #region Serialization
@@ -321,6 +338,14 @@ public static class Serializer
     {
       SerializeArray((Array)obj, type, store);
     }
+    else if(obj is IList)
+    {
+      SerializeIList((IList)obj, type, store);
+    }
+    else if(obj is IDictionary)
+    {
+      SerializeDictionary((IDictionary)obj, type, store);
+    }
     else // otherwise, it's an object (a non-primitive, non-simple type)
     {
       SerializeObject(obj, type, store);
@@ -353,6 +378,29 @@ public static class Serializer
 
     store.WriteEndElement(); // close the array attribute
   }
+  
+  static void SerializeDictionary(IDictionary dict, Type type, XmlWriter store)
+  {
+    SerializeTypeTag(type, store);
+    
+    foreach(DictionaryEntry de in dict)
+    {
+      InnerSerialize(de.Key, store);
+      InnerSerialize(de.Value, store);
+    }
+
+    store.WriteEndElement();
+  }
+  
+  static void SerializeIList(IList list, Type type, XmlWriter store)
+  {
+    SerializeTypeTag(type, store);
+    foreach(object o in list)
+    {
+      InnerSerialize(o, store);
+    }
+    store.WriteEndElement();
+  }
 
   static void SerializeObject(object obj, Type type, XmlWriter store)
   {
@@ -362,7 +410,7 @@ public static class Serializer
     Type typeToSerialize = iserializable == null ? type : iserializable.TypeToSerialize;
 
     // write the opening element with the type name of the object
-    store.WriteStartElement(XmlConvert.EncodeLocalName(GetTypeName(typeToSerialize)));
+    SerializeTypeTag(typeToSerialize, store);
 
     if(typeToSerialize != type) // if the type is different, add an attribute indicating that
     {
@@ -370,57 +418,78 @@ public static class Serializer
     }
     else // otherwise, write out the fields. (if the type is different we can't write out the fields)
     {
-      // get the instance fields (public and private)
-      FieldInfo[] fields = type.GetFields(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance);
-
-      // loop through fields and write the simple ones as attributes.
-      int numFields = fields.Length;
-      for(int i=0; i<numFields; i++)
-      {
-        FieldInfo fi = fields[i];
-        if(!fi.IsNotSerialized && !IsSimpleType(fi.FieldType))
-        {
-          // if it's a serializable, non-simple field, skip it for now (we'll handle those later)
-          continue;
-        }
-
-        if(!fi.IsNotSerialized) // if it's a simple type...
-        {
-          store.WriteAttributeString(fi.Name, GetSimpleValue(fi.GetValue(obj), fi.FieldType));
-        }
-
-        fields[i--] = fields[--numFields]; // remove this element since we've handled it already
-      }
-
-      // then, write the non-simple ones as elements. this doesn't handle circular references.
-      for(int i=0; i<numFields; i++)
-      {
-        FieldInfo fi = fields[i];
-        store.WriteStartElement(fi.Name);
-        InnerSerialize(fi.GetValue(obj), store);
-        store.WriteEndElement();
-      }
+      SerializeObjectFields(type, obj, store);
     }
 
     // then handle ISerializable's custom fields, which may add new elements.
     if(iserializable != null)
     {
       SerializationStore customStore = new SerializationStore(store, "CustomValues");
-      iserializable.SerializeCustomValues(customStore);
+      iserializable.Serialize(customStore);
       customStore.Finish();
     }
 
     store.WriteEndElement(); // finally, write the end element
   }
 
+  static void SerializeObjectFields(Type objectType, object instance, XmlWriter store)
+  {
+    Dictionary<string,object> fieldNames = new Dictionary<string,object>();
+    List<Type> hierarchy = GetTypeHierarchy(objectType);
+
+    // first, write the non-simple fields as attributes
+    foreach(Type type in hierarchy)
+    {
+      SerializeSimpleObjectFields(type, instance, store, fieldNames);
+    }
+
+    // then, write the non-simple ones as elements. this doesn't handle circular references.
+    foreach(Type type in hierarchy)
+    {
+      SerializeComplexObjectFields(type, instance, store, fieldNames);
+    }
+  }
+
+  static void SerializeComplexObjectFields(Type type, object instance, XmlWriter store,
+                                           Dictionary<string,object> fieldNames)
+  {
+    // get the instance fields (public and private)
+    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
+                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
+    for(int i=0; i<fields.Length; i++)
+    {
+      FieldInfo fi = fields[i];
+      if(!ShouldSkipField(fi) && !IsSimpleType(fi.FieldType))
+      {
+        store.WriteStartElement(GetFieldName(fi.Name, fieldNames));
+        InnerSerialize(fi.GetValue(instance), store);
+        store.WriteEndElement();
+      }
+    }
+  }
+
+  static void SerializeSimpleObjectFields(Type type, object instance, XmlWriter store,
+                                          Dictionary<string,object> fieldNames)
+  {
+    // get the instance fields (public and private)
+    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
+                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
+    // loop through fields and write the simple ones as attributes.
+    for(int i=0; i<fields.Length; i++)
+    {
+      FieldInfo fi = fields[i];
+      if(!ShouldSkipField(fi) && IsSimpleType(fi.FieldType))
+      {
+        store.WriteAttributeString(GetFieldName(fi.Name, fieldNames),
+                                   GetSimpleValue(fi.GetValue(instance), fi.FieldType));
+      }
+    }
+  }
+
   /// <summary>Gets a string representation of a simple object.</summary>
   static string GetSimpleValue(object value, Type type)
   {
-    if(type.IsEnum)
-    {
-      return Enum.GetName(type, value); // represent enum values by name
-    }
-    else if(type.IsArray) // if it's an array, represent it as a comma-separated list. it will be one-dimensional
+    if(type.IsArray) // if it's an array, represent it as a comma-separated list. it will be one-dimensional
     {
       Array array = (Array)value; 
       if(array.Length == 0)
@@ -441,6 +510,12 @@ public static class Serializer
         return sb.ToString();
       }
     }
+    else if(type == typeof(System.Drawing.Color))
+    {
+      System.Drawing.Color color = (System.Drawing.Color)value;
+      string rgb = color.R+","+color.G+","+color.B;
+      return color.A == 255 ? rgb : rgb+","+color.A.ToString();
+    }
     else // handle types representable by TypeCodes
     {
       switch(Type.GetTypeCode(type))
@@ -458,7 +533,6 @@ public static class Serializer
         case TypeCode.Int64: return ((long)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.SByte: return ((sbyte)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.Single: return ((float)value).ToString("R", CultureInfo.InvariantCulture);
-        case TypeCode.String: return (string)value;
         case TypeCode.UInt16: return ((ushort)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.UInt32: return ((uint)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.UInt64: return ((ulong)value).ToString(CultureInfo.InvariantCulture);
@@ -467,35 +541,63 @@ public static class Serializer
     }
   }
 
-  /// <summary>Given a type, gets its (possibly abbreviated) type name.</summary>
   static string GetTypeName(Type type)
   {
-    if(type.IsEnum)
+    bool abbreviated;
+    return GetTypeName(type, out abbreviated);
+  }
+
+  /// <summary>Given a type, gets its (possibly abbreviated) type name.</summary>
+  static string GetTypeName(Type type, out bool abbreviated)
+  {
+    abbreviated = true;
+    switch(Type.GetTypeCode(type))
     {
-      return type.FullName; // enums have numeric typecodes, so special case them here
+      case TypeCode.Boolean: return "bool";
+      case TypeCode.Byte: return "byte";
+      case TypeCode.Char: return "char";
+      case TypeCode.DateTime: return "dateTime";
+      case TypeCode.Decimal:  return "decimal";
+      case TypeCode.Double: return "double";
+      case TypeCode.Int16:  return "short";
+      case TypeCode.Int32:  return "int";
+      case TypeCode.Int64:  return "long";
+      case TypeCode.Object:
+        if(type == typeof(GameLib.Mathematics.TwoD.Point))
+        {
+          return "point";
+        }
+        else if(type == typeof(GameLib.Mathematics.TwoD.Vector))
+        {
+          return "vector";
+        }
+        else
+        {
+          abbreviated = false;
+          return type.FullName;
+        }
+      case TypeCode.SByte:  return "sbyte";
+      case TypeCode.Single: return "float";
+      case TypeCode.String: return "string";
+      case TypeCode.UInt16: return "ushort";
+      case TypeCode.UInt32: return "uint";
+      case TypeCode.UInt64: return "ulong";
+      default: throw new NotSupportedException("Unsupported type: "+type.FullName);
+    }
+  }
+  
+  static void SerializeTypeTag(Type type, XmlWriter store)
+  {
+    bool abbreviated;
+    string typeName = GetTypeName(type, out abbreviated);
+    if(abbreviated)
+    {
+      store.WriteStartElement(typeName);
     }
     else
     {
-      switch(Type.GetTypeCode(type))
-      {
-        case TypeCode.Boolean: return "bool";
-        case TypeCode.Byte: return "byte";
-        case TypeCode.Char: return "char";
-        case TypeCode.DateTime: return "dateTime";
-        case TypeCode.Decimal:  return "decimal";
-        case TypeCode.Double: return "double";
-        case TypeCode.Int16:  return "short";
-        case TypeCode.Int32:  return "int";
-        case TypeCode.Int64:  return "long";
-        case TypeCode.Object: return type.FullName;
-        case TypeCode.SByte:  return "sbyte";
-        case TypeCode.Single: return "float";
-        case TypeCode.String: return "string";
-        case TypeCode.UInt16: return "ushort";
-        case TypeCode.UInt32: return "uint";
-        case TypeCode.UInt64: return "ulong";
-        default: throw new NotSupportedException("Unsupported type: "+type.FullName);
-      }
+      store.WriteStartElement("object");
+      store.WriteAttributeString(XmlConvert.EncodeLocalName(".type"), typeName);
     }
   }
   #endregion
@@ -526,7 +628,7 @@ public static class Serializer
     }
 
     object value = InnerDeserialize(store); // deserialize the root object
-    store.ReadEndElement(); // and consume the end node
+    ReadEndElement(store); // and consume the end node
     return value; // return the object
   }
   
@@ -535,7 +637,13 @@ public static class Serializer
   /// </summary>
   internal static object InnerDeserialize(XmlReader store)
   {
-    Type type = GetTypeFromName(XmlConvert.DecodeName(store.LocalName));
+    string typeName = store.LocalName;
+    if(string.Equals(typeName, "object", StringComparison.Ordinal))
+    {
+      typeName = store.GetAttribute(XmlConvert.EncodeLocalName(".type"));
+    }
+
+    Type type = GetTypeFromName(XmlConvert.DecodeName(typeName));
 
     if(type == null)
     {
@@ -548,6 +656,14 @@ public static class Serializer
     else if(type.IsArray)
     {
       return DeserializeArray(type, store);
+    }
+    else if(typeof(IList).IsAssignableFrom(type))
+    {
+      return DeserializeIList(type, store);
+    }
+    else if(typeof(IDictionary).IsAssignableFrom(type))
+    {
+      return DeserializeDictionary(type, store);
     }
     else
     {
@@ -572,7 +688,7 @@ public static class Serializer
     {
       int[] indices = new int[lengths.Length];
 
-      while(store.Read() && store.NodeType != XmlNodeType.EndElement)
+      while(store.Read() && store.NodeType == XmlNodeType.Element)
       {
         array.SetValue(InnerDeserialize(store), indices);
 
@@ -593,18 +709,41 @@ public static class Serializer
     return array;
   }
 
+  static IDictionary DeserializeDictionary(Type type, XmlReader store)
+  {
+    IDictionary dict = (IDictionary)ConstructObject(type);
+    
+    store.Read(); // advance to first item, or the end tag
+    while(store.NodeType == XmlNodeType.Element)
+    {
+      object key = InnerDeserialize(store);
+      store.Read(); // advance past key
+      object value = InnerDeserialize(store);
+      store.Read(); // advance past value to next item, or the end tag
+      dict.Add(key, value);
+    }
+    
+    return dict;
+  }
+
+  static IList DeserializeIList(Type type, XmlReader store)
+  {
+    IList list = (IList)ConstructObject(type);
+    
+    store.Read(); // advance to first item, or the end tag
+    while(store.NodeType == XmlNodeType.Element)
+    {
+      list.Add(InnerDeserialize(store));
+      store.Read(); // advance to next item, or the end tag
+    }
+    
+    return list;
+  }
+
   /// <summary>Deserializes a class or struct from the store.</summary>
   static object DeserializeObject(Type type, XmlReader store)
   {
-    ConstructorInfo ci = type.GetConstructor(Type.EmptyTypes);
-    if(ci == null)
-    {
-      throw new ArgumentException("Unable to construct object of type "+type.FullName+
-                                    " because it has no parameterless constructor.");
-    }
-
-    object obj = ci.Invoke(null);
-
+    object obj  = ConstructObject(type);
     string attr = store.GetAttribute(XmlConvert.EncodeLocalName(".isProxy"));
     bool isProxy = !string.IsNullOrEmpty(attr) && XmlConvert.ToBoolean(attr);
 
@@ -612,57 +751,23 @@ public static class Serializer
     {
       store.Read(); // advance to "CustomValues" or the end tag
     }
-    else // otherwise, deserialize the fields (this will 
+    else // otherwise, deserialize the fields
     {
-      // first, loop through fields and write the simple ones as attributes.
-      FieldInfo[] fields = type.GetFields(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance);
-      int numFields = fields.Length;
-      for(int i=0; i<numFields; i++)
-      {
-        FieldInfo fi = fields[i];
-        if(!fi.IsNotSerialized && !IsSimpleType(fi.FieldType))
-        {
-          // if it's a serializable, non-simple field, skip it for now
-          continue;
-        }
-
-        if(!fi.IsNotSerialized) // if it's a simple type...
-        {
-          fi.SetValue(obj, ParseSimpleValue(store.GetAttribute(fi.Name), fi.FieldType));
-        }
-
-        fields[i--] = fields[--numFields]; // remove this element since we've handled it already
-      }
-
-      // then, read the non-simple ones as elements
-      for(int i=0; i<numFields; i++)
-      {
-        FieldInfo fi = fields[i];
-        store.Read(); // read the field name element
-        if(!string.Equals(store.LocalName, fi.Name, StringComparison.Ordinal))
-        {
-          throw new ArgumentException("Expected node: " + fi.Name);
-        }
-        store.Read(); // read the data element
-        fi.SetValue(obj, InnerDeserialize(store));
-        store.ReadEndElement(); // move past the the closing data element
-      }
-
-      // either move past the closing field name element, or if there were no fields, to "CustomValues" or the end tag
-      store.Read();
+      DeserializeObjectFields(type, obj, store);
     }
 
     ISerializable iserializable = obj as ISerializable;
     // if it implements ISerializable and we're not at the end yet
-    if(iserializable != null && store.NodeType != XmlNodeType.EndElement)
+    if(iserializable != null)
     {
-      if(!string.Equals(store.LocalName, "CustomValues", StringComparison.Ordinal))
+      if(store.NodeType == XmlNodeType.Element &&
+         !string.Equals(store.LocalName, "CustomValues", StringComparison.Ordinal))
       {
-        throw new ArgumentException("Expected 'CustomValues' element for object of type: "+type.FullName);
+        throw new ArgumentException("Unexpected element '"+store.LocalName+"' found in object of type: "+type.FullName);
       }
 
       DeserializationStore customStore = new DeserializationStore(store);
-      iserializable.DeserializeCustomValues(customStore);
+      iserializable.Deserialize(customStore);
       customStore.Finish();
     }
 
@@ -671,14 +776,100 @@ public static class Serializer
     return objRef != null ? objRef.GetRealObject() : obj;
   }
 
+  static void DeserializeObjectFields(Type objectType, object instance, XmlReader store)
+  {
+    Dictionary<string, object> fieldNames = new Dictionary<string, object>();
+    List<Type> hierarchy = GetTypeHierarchy(objectType);
+
+    // first, write the non-simple fields as attributes
+    foreach(Type type in hierarchy)
+    {
+      DeserializeSimpleObjectFields(type, instance, store, fieldNames);
+    }
+
+    if(!store.IsEmptyElement) store.Read(); // read inside the open tag
+
+    // then, write the non-simple ones as elements. this doesn't handle circular references.
+    foreach(Type type in hierarchy)
+    {
+      DeserializeComplexObjectFields(type, instance, store, fieldNames);
+    }
+  }
+
+  static void DeserializeComplexObjectFields(Type type, object instance, XmlReader store,
+                                             Dictionary<string,object> fieldNames)
+  {
+    // get the instance fields (public and private)
+    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
+                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
+    for(int i=0; i<fields.Length; i++)
+    {
+      FieldInfo fi = fields[i];
+      if(!ShouldSkipField(fi) && !IsSimpleType(fi.FieldType))
+      {
+        string fieldName = GetFieldName(fi.Name, fieldNames);
+        if(!string.Equals(store.LocalName, fieldName, StringComparison.Ordinal))
+        {
+          throw new ArgumentException("Expected node: " + fi.Name);
+        }
+        store.Read(); // read the data element
+        fi.SetValue(instance, InnerDeserialize(store));
+        ReadEndElement(store); // move past the the closing data element
+        ReadEndElement(store); // move past the the closing field name element
+      }
+    }
+  }
+
+  static void DeserializeSimpleObjectFields(Type type, object instance, XmlReader store,
+                                            Dictionary<string,object> fieldNames)
+  {
+    // first, loop through fields and write the simple ones as attributes.
+    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
+                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
+    for(int i=0; i<fields.Length; i++)
+    {
+      FieldInfo fi = fields[i];
+      if(!ShouldSkipField(fi) && IsSimpleType(fi.FieldType))
+      {
+        fi.SetValue(instance, ParseSimpleValue(store.GetAttribute(GetFieldName(fi.Name, fieldNames)), fi.FieldType));
+      }
+    }
+  }
+
+  static object ConstructObject(Type type)
+  {
+    ConstructorInfo ci;
+
+    // first see if the object has the "special" deserialization constructor (which takes a dummy ISerializable)
+    ci = type.GetConstructor(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic,
+                             null, iserializableTypeArray, null);
+    if(ci != null)
+    {
+      return ci.Invoke(new object[1] { null });
+    }
+
+    if(type.IsValueType) // if it's a value type, it won't have a parameterless constructor...
+    {
+      return Activator.CreateInstance(type); // ... but we can use the Activator class to do it
+    }
+    else // otherwise, see if it has a parameterless constructor
+    {
+      ci = type.GetConstructor(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic,
+                               null, Type.EmptyTypes, null);
+      if(ci != null)
+      {
+        return ci.Invoke(null);
+      }
+    }
+
+    throw new ArgumentException("Unable to construct object of type "+type.FullName+
+                                " because it has no suitable constructor.");
+  }
+
   /// <summary>Parses a simple value from a string, given its type.</summary>
   static object ParseSimpleValue(string text, Type type)
   {
-    if(type.IsEnum)
-    {
-      return Enum.Parse(type, text);
-    }
-    else if(type.IsArray) // if it's an array, the text will be a comma separated list
+    if(type.IsArray) // if it's an array, the text will be a comma separated list
     {
       Type elementType = type.GetElementType();
       string[] values = text.Split(',');
@@ -688,6 +879,12 @@ public static class Serializer
         array.SetValue(ParseSimpleValue(values[i], elementType), i);
       }
       return array;
+    }
+    else if(type == typeof(System.Drawing.Color))
+    {
+      string[] values = text.Split(',');
+      return System.Drawing.Color.FromArgb(values.Length == 4 ? int.Parse(values[3]) : 255,
+                                           int.Parse(values[0]), int.Parse(values[1]), int.Parse(values[2]));
     }
     else
     {
@@ -704,7 +901,6 @@ public static class Serializer
         case TypeCode.Int64: return long.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.SByte: return sbyte.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.Single: return float.Parse(text, CultureInfo.InvariantCulture);
-        case TypeCode.String: return text;
         case TypeCode.UInt16: return ushort.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.UInt32: return uint.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.UInt64: return ulong.Parse(text, CultureInfo.InvariantCulture);
@@ -740,21 +936,60 @@ public static class Serializer
 
     throw new TypeLoadException("Unable to find type: "+name);
   }
+  
+  internal static void ReadEndElement(XmlReader store)
+  {
+    if(store.IsEmptyElement)
+    {
+      store.Read();
+    }
+    else
+    {
+      store.ReadEndElement();
+    }
+  }
   #endregion
+
+  static string GetFieldName(string name, Dictionary<string,object> fieldNames)
+  {
+    string testName = name;
+    int which = 2;
+
+    while(fieldNames.ContainsKey(testName))
+    {
+      testName = name + which.ToString(CultureInfo.InvariantCulture);
+      which++;
+    }
+    
+    fieldNames[testName] = null;
+    return testName;
+  }
+
+  static List<Type> GetTypeHierarchy(Type type)
+  {
+    List<Type> hierarchy = new List<Type>();
+    do
+    {
+      hierarchy.Add(type);
+      type = type.BaseType;
+    } while(type != null);
+    hierarchy.Reverse();
+    return hierarchy;
+  }
 
   /// <summary>Determines if a type is simple enough that it can be represented in an attribute string.</summary>
   /// <param name="type"></param>
   /// <returns></returns>
   static bool IsSimpleType(Type type)
   {
-    if(type.IsPrimitive || type == typeof(string) || type.IsEnum || type == typeof(DateTime))
+    if(type.IsPrimitive || type.IsEnum || type == typeof(DateTime) || type == typeof(System.Drawing.Color))
     {
-      return true; // numerics, chars, strings, enums, and dates are simple.
+      return true; // numerics, chars, enums, and dates are simple.
     }
     else if(type.IsArray && type.GetArrayRank() == 1) // if it's a one-dimensional array ...
     {
-      Type subType = type.GetElementType(); // ... of a non-array, non-string simple type, then it's simple
-      return !subType.IsArray && subType != typeof(string) && IsSimpleType(subType);
+      Type subType = type.GetElementType(); // ... of a non-array, non-color simple type, then it's simple
+      return !subType.IsArray && subType != typeof(System.Drawing.Color) && IsSimpleType(subType);
     }
     else // otherwise, it's not simple
     {
@@ -762,7 +997,13 @@ public static class Serializer
     }
   }
   
+  static bool ShouldSkipField(FieldInfo fi)
+  {
+    return fi.IsNotSerialized || fi.IsLiteral || fi.IsInitOnly || typeof(Delegate).IsAssignableFrom(fi.FieldType);
+  }
+  
   static readonly Dictionary<string,Type> typeDict;
+  static readonly Type[] iserializableTypeArray = new Type[1] { typeof(ISerializable) };
 }
 #endregion
 

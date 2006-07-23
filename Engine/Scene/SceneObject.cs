@@ -19,32 +19,6 @@ public enum ShadeModel : byte
   Flat, Smooth
 }
 
-public class RectangleObject : SceneObject
-{
-  public RectangleObject()
-  {
-    BlendingEnabled = true;
-    SetBlendingMode(SourceBlend.SrcAlpha, DestinationBlend.OneMinusSrcAlpha);
-  }
-
-  protected override void RenderContent()
-  {
-    if(BlendingEnabled)
-    {
-      GL.glEnable(GL.GL_LINE_SMOOTH);
-    }
-
-    GL.glBegin(GL.GL_LINE_LOOP);
-      GL.glVertex2f(-1f, -1f);
-      GL.glVertex2f(1f, -1f);
-      GL.glVertex2f(1f, 1f);
-      GL.glVertex2f(-1f, 1f);
-    GL.glEnd();
-    
-    GL.glDisable(GL.GL_LINE_SMOOTH);
-  }
-}
-
 #region Blending-related types
 /// <summary>An enum containing acceptable source blending modes.</summary>
 public enum SourceBlend : uint
@@ -138,12 +112,14 @@ public struct LinkPoint
 }
 
 /// <summary>The base class of all renderable game objects.</summary>
-public abstract class SceneObject : GameObject
+public abstract class SceneObject : GameObject, ISerializable
 {
   public SceneObject()
   {
     SetRectangularCollisionArea(-1, -1, 1, 1);
   }
+
+  SceneObject(ISerializable dummy) { }
 
   #region Blending
   [Category("Rendering")]
@@ -1193,6 +1169,37 @@ public abstract class SceneObject : GameObject
   }
   #endregion
 
+  #region Serialization
+  protected virtual Type TypeToSerialize
+  {
+    get { return GetType(); }
+  }
+  
+  protected virtual void Serialize(SerializationStore store)
+  {
+  }
+
+  protected virtual void Deserialize(DeserializationStore store)
+  {
+    InvalidateSpatialInfo(); // spatial information is not serialized, so we need to recalculate it
+  }
+
+  Type ISerializable.TypeToSerialize
+  {
+    get { return TypeToSerialize; }
+  }
+
+  void ISerializable.Serialize(SerializationStore store)
+  {
+    Serialize(store);
+  }
+
+  void ISerializable.Deserialize(DeserializationStore store)
+  {
+    Deserialize(store);
+  }
+  #endregion
+
   #region Internal stuff
   /// <summary>Gets/sets the scene of this object and all its mounted objects.</summary>
   internal Scene Scene
@@ -1509,13 +1516,13 @@ public abstract class SceneObject : GameObject
   /// <summary>The rotational velocity of the object, in degrees per second.</summary>
   double autoRotation;
   /// <summary>Cached spatial information.</summary>
-  SpatialInfo spatial;
+  [NonSerialized] SpatialInfo spatial;
   /// <summary>The object's link points (or null if the object contains no link points).</summary>
   LinkPoint[] linkPoints;
   /// <summary>The number of link points contained in <see cref="linkPoints"/>.</summary>
   int numLinkPoints;
   /// <summary>The scene containing this object (or null if the object is not part of a scene).</summary>
-  Scene scene;
+  [NonSerialized] Scene scene;
   /// <summary>The object to which this object is mounted.</summary>
   SceneObject mountParent;
   /// <summary>A bitfield that identifies the groups to which this object belongs.</summary>
