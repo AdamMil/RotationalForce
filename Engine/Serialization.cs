@@ -10,6 +10,127 @@ using System.Xml;
 namespace RotationalForce.Engine
 {
 
+#region UniqueObject
+/// <summary>Provides a way that identical objects in the object graph can be pooled. This also works around the
+/// problem of id</summary>
+public abstract class UniqueObject : ISerializable
+{
+  protected UniqueObject()
+  {
+    // generate a unique ID even if we're being deserialized, because we don't want the deserialized ID to conflict
+    // with another ID
+    id = nextID++;
+  }
+
+  protected virtual void Serialize(SerializationStore store) { }
+  protected virtual void Deserialize(DeserializationStore store) { }
+
+  #region ISerializable
+  Type ISerializable.TypeToSerialize
+  {
+    get
+    {
+      // if we're not combining identical objects, or this object hasn't been serialized yet, then serialize this type
+      if(!objectPool.ContainsKey(id))
+      {
+        return GetType();
+      }
+      else // otherwise, we are combining identical objects, and this object's been serialized already.
+      {
+         return typeof(UniqueObjectReference);
+      }
+    }
+  }
+
+  void ISerializable.BeforeSerialize(SerializationStore store)
+  {
+    store.AddValue("UniqueObject.ID", id);
+    AddToPool(id, this);
+  }
+
+  void ISerializable.BeforeDeserialize(DeserializationStore store)
+  {
+    uint serializedId = store.GetUint32("UniqueObject.ID");
+    AddToPool(serializedId, this);
+  }
+
+  void ISerializable.Serialize(SerializationStore store)
+  {
+    Serialize(store);
+  }
+
+  void ISerializable.Deserialize(DeserializationStore store)
+  {
+    Deserialize(store);
+  }
+  #endregion
+  
+  uint id;
+
+  /// <summary>Retrieves a pooled object, given its ID. The object must exist in the pool, or an exception will occur.</summary>
+  internal static UniqueObject GetPooledObject(uint id)
+  {
+    return objectPool[id];
+  }
+
+  /// <summary>Resets the pool of known objects. This should be called before and after each block of serializations
+  /// that need identical objects to be pooled. Failing to call this can cause objects to hang around in memory and
+  /// never be deleted, and can cause future serializations/deserializations to fail.
+  /// </summary>
+  internal static void ResetObjectPool()
+  {
+    objectPool.Clear();
+  }
+  
+  static Dictionary<uint,UniqueObject> objectPool = new Dictionary<uint,UniqueObject>();
+
+  static void AddToPool(uint id, UniqueObject obj)
+  {
+    if(objectPool != null)
+    {
+      objectPool.Add(id, obj);
+    }
+  }
+
+  static uint nextID = 1;
+}
+#endregion
+
+#region UniqueObjectReference
+sealed class UniqueObjectReference : ISerializable, IObjectReference
+{
+  Type ISerializable.TypeToSerialize
+  {
+    get { return GetType(); }
+  }
+
+  void ISerializable.BeforeSerialize(SerializationStore store)
+  {
+  }
+
+  void ISerializable.BeforeDeserialize(DeserializationStore store)
+  {
+    id = store.GetUint32("UniqueObject:ID");
+  }
+
+  void ISerializable.Serialize(SerializationStore store)
+  {
+  }
+
+  void ISerializable.Deserialize(DeserializationStore store)
+  {
+  }
+
+  object IObjectReference.GetRealObject()
+  {
+    return UniqueObject.GetPooledObject(id);
+  }
+  
+  uint id;
+}
+#endregion
+
+
 #region SerializationStore
 public class SerializationStore
 {
@@ -46,7 +167,7 @@ public class SerializationStore
     addedNames.Add(name);
     #endif
 
-    writer.WriteStartElement(name);
+    writer.WriteStartElement(XmlConvert.EncodeLocalName(name));
     Serializer.InnerSerialize(value, writer);
     writer.WriteEndElement();
   }
@@ -113,6 +234,11 @@ public class DeserializationStore
     return (int)GetValue(name);
   }
 
+  public uint GetUint32(string name)
+  {
+    return (uint)GetValue(name);
+  }
+
   public float GetSingle(string name)
   {
     return (float)GetValue(name);
@@ -149,14 +275,14 @@ public class DeserializationStore
     // otherwise, we haven't read it yet, so read until we find it.
     while(reader.NodeType == XmlNodeType.Element) // while we're not at the end of the data yet
     {
-      string nodeName = reader.LocalName;
+      string nodeName = XmlConvert.DecodeName(reader.LocalName);
 
       reader.Read(); // read to the data element
       value = Serializer.InnerDeserialize(reader);
       Serializer.ReadEndElement(reader); // read the closing data element
 
       // prepend the new object to the list (where it can be found quickest)
-      values.AddFirst(new KeyValuePair<string, object>(nodeName, value));
+      values.AddFirst(new KeyValuePair<string,object>(nodeName, value));
 
       reader.Read(); // consume the closing variable name node, advancing to the next node, or the end of the data
 
@@ -223,6 +349,24 @@ public interface ISerializable
   /// </remarks>
   /// <seealso cref="IObjectReference"/>
   Type TypeToSerialize { get; }
+
+  /// <summary>Gives the object a chance to add additional serialization data. This method will be added before any
+  /// complex fields (such as pointers to other objects) are processed.</summary>
+  /// <remarks>The point of this method is to enable objects to handle circular references without too much trouble.
+  /// An object can add itself to a dictionary in this method. The object can then return a proxy from
+  /// <see cref="TypeToSerialize"/> based on that information.
+  /// </remarks>
+  /// <seealso cref="IObjectReference"/>
+  void BeforeSerialize(SerializationStore store);
+
+  /// <summary>Provides the additonal serialization data added by <see cref="BeforeSerialize"/>.</summary>
+  /// <remarks>The point of this method is to enable objects to handle circular references without too much trouble.
+  /// An object can add itself to a dictionary in this method, and any proxies for this object can read the dictionary
+  /// to find the original object. Note that if <see cref="BeforeSerialize"/> does not add any data, this method will
+  /// still be called.
+  /// </remarks>
+  /// <seealso cref="IObjectReference"/>
+  void BeforeDeserialize(DeserializationStore store);
 
   /// <summary>Gives the object a chance to add additional serialization data.</summary>
   /// <remarks>Note that as long as <see cref="TypeToSerialize"/> returns a value equal to
@@ -294,20 +438,55 @@ public static class Serializer
     typeDict["vector"]   = typeof(GameLib.Mathematics.TwoD.Vector);
   }
 
+  /// <summary>Resets the pool of known objects. This should be called before each block of
+  /// serialization/deserializations that need <see cref="UniqueObject"/> pointers to be pooled. This is necessary to
+  /// properly handle circular pointers and multiple pointers to the same object. Failing to call this can cause future
+  /// serializations/deserializations to fail.
+  /// </summary>
+  public static void BeginBatch()
+  {
+    UniqueObject.ResetObjectPool();
+  }
+
+  /// <summary>Resets the pool of known objects. This should be called before each block of
+  /// serialization/deserializations that need <see cref="UniqueObject"/> pointers to be pooled. This is necessary to
+  /// properly handle circular pointers and multiple pointers to the same object. Failing to call this can cause
+  /// objects to hang around in memory and never be deleted, and can cause future serializations/deserializations
+  /// to fail.
+  /// </summary>
+  public static void EndBatch()
+  {
+    UniqueObject.ResetObjectPool();
+  }
+
   #region Serialization
+  public static XmlWriter CreateXmlWriter(Stream store, bool allowMultipleObjects)
+  {
+    return CreateXmlWriter(new StreamWriter(store), allowMultipleObjects);
+  }
+
+  public static XmlWriter CreateXmlWriter(TextWriter store, bool allowMultipleObjects)
+  {
+    XmlWriterSettings settings = new XmlWriterSettings();
+    settings.CheckCharacters = false;
+    settings.NewLineHandling = NewLineHandling.Entitize;
+    if(allowMultipleObjects)
+    {
+      settings.ConformanceLevel = ConformanceLevel.Fragment;
+    }
+    return XmlWriter.Create(store, settings);
+  }
+
   /// <summary>Serializes an object into the given <see cref="Stream"/>. The object can be null.</summary>
   public static void Serialize(object obj, Stream store)
   {
-    Serialize(obj, new StreamWriter(store));
+    Serialize(obj, CreateXmlWriter(store, false));
   }
 
   /// <summary>Serializes an object into the given <see cref="TextWriter"/>. The object can be null.</summary>
   public static void Serialize(object obj, TextWriter store)
   {
-    XmlWriterSettings settings = new XmlWriterSettings();
-    settings.CheckCharacters = false;
-    settings.NewLineHandling = NewLineHandling.Entitize;
-    Serialize(obj, XmlWriter.Create(store, settings));
+    Serialize(obj, CreateXmlWriter(store, false));
   }
 
   /// <summary>Serializes an object into the given <see cref="XmlWriter"/>. The object can be null.</summary>
@@ -333,6 +512,10 @@ public static class Serializer
     else if(IsSimpleType(type)) // otherwise, if it's a simple type, write out the simple type (eg, <int>5</int>)
     {
       store.WriteElementString(XmlConvert.EncodeLocalName(GetTypeName(type)), GetSimpleValue(obj, type));
+    }
+    else if(type == typeof(string))
+    {
+      store.WriteElementString(XmlConvert.EncodeLocalName(GetTypeName(type)), (string)obj);
     }
     else if(type.IsArray) // otherwise, if it's a complex array (simple arrays are handled by GetSimpleValue)
     {
@@ -418,13 +601,27 @@ public static class Serializer
     }
     else // otherwise, write out the fields. (if the type is different we can't write out the fields)
     {
-      SerializeObjectFields(type, obj, store);
+      SerializeSimpleObjectFields(type, obj, store);
     }
 
-    // then handle ISerializable's custom fields, which may add new elements.
+    // call .BeforeSerialize if applicable
     if(iserializable != null)
     {
-      SerializationStore customStore = new SerializationStore(store, "CustomValues");
+      SerializationStore customStore = new SerializationStore(store, XmlConvert.EncodeLocalName(".BeforeFields"));
+      iserializable.BeforeSerialize(customStore);
+      customStore.Finish();
+    }
+
+    // then serialize the complex fields
+    if(typeToSerialize == type)
+    {
+      SerializeComplexObjectFields(type, obj, store);
+    }
+
+    // then call .Serialize, if applicable.
+    if(iserializable != null)
+    {
+      SerializationStore customStore = new SerializationStore(store, XmlConvert.EncodeLocalName(".CustomValues"));
       iserializable.Serialize(customStore);
       customStore.Finish();
     }
@@ -432,19 +629,19 @@ public static class Serializer
     store.WriteEndElement(); // finally, write the end element
   }
 
-  static void SerializeObjectFields(Type objectType, object instance, XmlWriter store)
+  static void SerializeSimpleObjectFields(Type objectType, object instance, XmlWriter store)
   {
     Dictionary<string,object> fieldNames = new Dictionary<string,object>();
-    List<Type> hierarchy = GetTypeHierarchy(objectType);
-
-    // first, write the non-simple fields as attributes
-    foreach(Type type in hierarchy)
+    foreach(Type type in GetTypeHierarchy(objectType))
     {
       SerializeSimpleObjectFields(type, instance, store, fieldNames);
     }
+  }
 
-    // then, write the non-simple ones as elements. this doesn't handle circular references.
-    foreach(Type type in hierarchy)
+  static void SerializeComplexObjectFields(Type objectType, object instance, XmlWriter store)
+  {
+    Dictionary<string,object> fieldNames = new Dictionary<string,object>();
+    foreach(Type type in GetTypeHierarchy(objectType))
     {
       SerializeComplexObjectFields(type, instance, store, fieldNames);
     }
@@ -524,8 +721,11 @@ public static class Serializer
         case TypeCode.Byte: return ((byte)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.Char: return ((int)(char)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.DateTime:
-          // using "u" format type loses sub-second accuracy, but is much more readable
-          return ((DateTime)value).ToString("u", CultureInfo.InvariantCulture);
+        {
+          // using "u" or "s" format type loses sub-second accuracy, but is much more readable
+          DateTime dt = (DateTime)value;
+          return dt.ToString(dt.Kind == DateTimeKind.Utc ? "u" : "s", CultureInfo.InvariantCulture);
+        }
         case TypeCode.Decimal: return ((decimal)value).ToString("R", CultureInfo.InvariantCulture);
         case TypeCode.Double: return ((double)value).ToString("R", CultureInfo.InvariantCulture);
         case TypeCode.Int16: return ((short)value).ToString(CultureInfo.InvariantCulture);
@@ -603,25 +803,43 @@ public static class Serializer
   #endregion
 
   #region Deserialization
+  public static XmlReader CreateXmlReader(Stream store, bool allowMultipleObjects)
+  {
+    return CreateXmlReader(new StreamReader(store), allowMultipleObjects);
+  }
+
+  public static XmlReader CreateXmlReader(TextReader store, bool allowMultipleObjects)
+  {
+    XmlReaderSettings settings = new XmlReaderSettings();
+    settings.CheckCharacters  = false;
+    settings.IgnoreComments   = true;
+    settings.IgnoreWhitespace = true;
+    if(allowMultipleObjects)
+    {
+      settings.ConformanceLevel = ConformanceLevel.Fragment;
+    }
+    return XmlReader.Create(store, settings);
+  }
+
   /// <summary>Deserializes an object from a <see cref="Stream"/>.</summary>
   public static object Deserialize(Stream store)
   {
-    return Deserialize(new StreamReader(store));
+    return Deserialize(CreateXmlReader(store, false));
   }
 
   /// <summary>Deserializes an object from a <see cref="TextReader"/>.</summary>
   public static object Deserialize(TextReader store)
   {
-    XmlReaderSettings settings = new XmlReaderSettings();
-    settings.CheckCharacters = false;
-    settings.IgnoreComments  = true;
-    return Deserialize(XmlReader.Create(store, settings));
+    return Deserialize(CreateXmlReader(store, false));
   }
 
   /// <summary>Deserializes an object from an <see cref="XmlReader"/>.</summary>
   public static object Deserialize(XmlReader store)
   {
-    store.Read(); // position the reader on the first node
+    if(store.NodeType == XmlNodeType.None) // if no data has been read yet...
+    {
+      store.Read(); // ... position the reader on the first node
+    }
     if(store.NodeType == XmlNodeType.XmlDeclaration) // if it's an xml declaration (<?xml ... ?>), skip it
     {
       store.Read();
@@ -652,6 +870,10 @@ public static class Serializer
     else if(IsSimpleType(type))
     {
       return ParseSimpleValue(store.ReadString(), type);
+    }
+    else if(type == typeof(string))
+    {
+      return store.ReadString();
     }
     else if(type.IsArray)
     {
@@ -713,14 +935,17 @@ public static class Serializer
   {
     IDictionary dict = (IDictionary)ConstructObject(type);
     
-    store.Read(); // advance to first item, or the end tag
-    while(store.NodeType == XmlNodeType.Element)
+    if(!store.IsEmptyElement)
     {
-      object key = InnerDeserialize(store);
-      store.Read(); // advance past key
-      object value = InnerDeserialize(store);
-      store.Read(); // advance past value to next item, or the end tag
-      dict.Add(key, value);
+      store.Read(); // advance to first item, or the end tag
+      while(store.NodeType == XmlNodeType.Element)
+      {
+        object key = InnerDeserialize(store);
+        store.Read(); // advance past key
+        object value = InnerDeserialize(store);
+        store.Read(); // advance past value to next item, or the end tag
+        dict.Add(key, value);
+      }
     }
     
     return dict;
@@ -730,11 +955,14 @@ public static class Serializer
   {
     IList list = (IList)ConstructObject(type);
     
-    store.Read(); // advance to first item, or the end tag
-    while(store.NodeType == XmlNodeType.Element)
+    if(!store.IsEmptyElement)
     {
-      list.Add(InnerDeserialize(store));
-      store.Read(); // advance to next item, or the end tag
+      store.Read(); // advance to first item, or the end tag
+      while(store.NodeType == XmlNodeType.Element)
+      {
+        list.Add(InnerDeserialize(store));
+        store.Read(); // advance to next item, or the end tag
+      }
     }
     
     return list;
@@ -743,54 +971,68 @@ public static class Serializer
   /// <summary>Deserializes a class or struct from the store.</summary>
   static object DeserializeObject(Type type, XmlReader store)
   {
-    object obj  = ConstructObject(type);
-    string attr = store.GetAttribute(XmlConvert.EncodeLocalName(".isProxy"));
+    object  obj  = ConstructObject(type);
+    string attr  = store.GetAttribute(XmlConvert.EncodeLocalName(".isProxy"));
     bool isProxy = !string.IsNullOrEmpty(attr) && XmlConvert.ToBoolean(attr);
+    ISerializable iserializable = obj as ISerializable;
 
     if(isProxy) // if it's a proxy, there won't be any fields to deserialize, although there may be custom values
     {
-      store.Read(); // advance to "CustomValues" or the end tag
+      if(!store.IsEmptyElement) store.Read(); // advance to "CustomValues" or the end tag
     }
-    else // otherwise, deserialize the fields
+    else // otherwise, deserialize the attribute fields
     {
-      DeserializeObjectFields(type, obj, store);
+      DeserializeSimpleObjectFields(type, obj, store);
     }
 
-    ISerializable iserializable = obj as ISerializable;
-    // if it implements ISerializable and we're not at the end yet
-    if(iserializable != null)
-    {
-      if(store.NodeType == XmlNodeType.Element &&
-         !string.Equals(store.LocalName, "CustomValues", StringComparison.Ordinal))
-      {
-        throw new ArgumentException("Unexpected element '"+store.LocalName+"' found in object of type: "+type.FullName);
-      }
-
-      DeserializationStore customStore = new DeserializationStore(store);
-      iserializable.Deserialize(customStore);
-      customStore.Finish();
-    }
+    CallDeserialize(iserializable, store, ".BeforeFields", true);
+    DeserializeComplexObjectFields(type, obj, store);
+    CallDeserialize(iserializable, store, ".CustomValues", false);
 
     // finally, return the object, unless it's an object reference, in which case we'll use it to get the real object
     IObjectReference objRef = obj as IObjectReference;
     return objRef != null ? objRef.GetRealObject() : obj;
   }
 
-  static void DeserializeObjectFields(Type objectType, object instance, XmlReader store)
+  static void CallDeserialize(ISerializable iserializable, XmlReader store, string fieldName, bool beforeDeserialize)
+  {
+    // call BeforeDeserialize or Deserialize if applicable
+    if(iserializable != null)
+    {
+      if(store.NodeType == XmlNodeType.Element &&
+         !string.Equals(XmlConvert.DecodeName(store.LocalName), fieldName, StringComparison.Ordinal))
+      {
+        throw new ArgumentException("Unexpected element '"+store.LocalName+"'");
+      }
+
+      DeserializationStore customStore = new DeserializationStore(store);
+      if(beforeDeserialize)
+      {
+        iserializable.BeforeDeserialize(customStore);
+      }
+      else
+      {
+        iserializable.Deserialize(customStore);
+      }
+      customStore.Finish();
+    }
+  }
+
+  static void DeserializeSimpleObjectFields(Type objectType, object instance, XmlReader store)
   {
     Dictionary<string, object> fieldNames = new Dictionary<string, object>();
-    List<Type> hierarchy = GetTypeHierarchy(objectType);
-
-    // first, write the non-simple fields as attributes
-    foreach(Type type in hierarchy)
+    foreach(Type type in GetTypeHierarchy(objectType))
     {
       DeserializeSimpleObjectFields(type, instance, store, fieldNames);
     }
 
     if(!store.IsEmptyElement) store.Read(); // read inside the open tag
+  }
 
-    // then, write the non-simple ones as elements. this doesn't handle circular references.
-    foreach(Type type in hierarchy)
+  static void DeserializeComplexObjectFields(Type objectType, object instance, XmlReader store)
+  {
+    Dictionary<string, object> fieldNames = new Dictionary<string, object>();
+    foreach(Type type in GetTypeHierarchy(objectType))
     {
       DeserializeComplexObjectFields(type, instance, store, fieldNames);
     }
@@ -882,6 +1124,8 @@ public static class Serializer
     }
     else if(type == typeof(System.Drawing.Color))
     {
+      // special casing colors this way loses a bit of information because the Color object stores the color's name
+      // as well. so Color.Red != Color.FromArgb(255, 0, 0), even though they'll render the same. this is acceptable.
       string[] values = text.Split(',');
       return System.Drawing.Color.FromArgb(values.Length == 4 ? int.Parse(values[3]) : 255,
                                            int.Parse(values[0]), int.Parse(values[1]), int.Parse(values[2]));
@@ -978,13 +1222,11 @@ public static class Serializer
   }
 
   /// <summary>Determines if a type is simple enough that it can be represented in an attribute string.</summary>
-  /// <param name="type"></param>
-  /// <returns></returns>
   static bool IsSimpleType(Type type)
   {
     if(type.IsPrimitive || type.IsEnum || type == typeof(DateTime) || type == typeof(System.Drawing.Color))
     {
-      return true; // numerics, chars, enums, and dates are simple.
+      return true; // numerics, chars, enums, dates, and colors are simple.
     }
     else if(type.IsArray && type.GetArrayRank() == 1) // if it's a one-dimensional array ...
     {

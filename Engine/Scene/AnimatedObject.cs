@@ -31,7 +31,7 @@ public struct AnimationData
 }
 
 #region Animation
-public abstract class Animation
+public abstract class Animation : UniqueObject
 {
   [Category("Behavior")]
   [Description("Determines how the animation interpolates between frames.")]

@@ -1170,33 +1170,9 @@ public abstract class SceneObject : GameObject, ISerializable
   #endregion
 
   #region Serialization
-  protected virtual Type TypeToSerialize
-  {
-    get { return GetType(); }
-  }
-  
-  protected virtual void Serialize(SerializationStore store)
-  {
-  }
-
-  protected virtual void Deserialize(DeserializationStore store)
+  protected override void Deserialize(DeserializationStore store)
   {
     InvalidateSpatialInfo(); // spatial information is not serialized, so we need to recalculate it
-  }
-
-  Type ISerializable.TypeToSerialize
-  {
-    get { return TypeToSerialize; }
-  }
-
-  void ISerializable.Serialize(SerializationStore store)
-  {
-    Serialize(store);
-  }
-
-  void ISerializable.Deserialize(DeserializationStore store)
-  {
-    Deserialize(store);
   }
   #endregion
 
