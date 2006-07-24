@@ -6,7 +6,7 @@ using System.Drawing;
 namespace RotationalForce.Engine
 {
 
-public abstract class GuiControl
+public abstract class GuiControl : UniqueObject
 {
   #region Color
   /// <summary>

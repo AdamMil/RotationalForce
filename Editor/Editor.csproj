@@ -50,6 +50,7 @@
     <Compile Include="MountDialog.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Project.cs" />
     <Compile Include="RenderPanel.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -68,6 +69,7 @@
     <Compile Include="VectorAnimationEditor.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Xml.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="MainForm.resx">

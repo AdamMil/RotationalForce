@@ -15,7 +15,7 @@ public class PickOptions
   public bool AllowInvisible, AllowUnpickable, RequireContainment, SortByLayer;
 }
 
-public class Scene : ITicker, IDisposable
+public class Scene : UniqueObject, ITicker, IDisposable
 {
   public Scene()
   {
@@ -472,6 +472,28 @@ public class Scene : ITicker, IDisposable
   }
   #endregion
 
+  #region Serialization
+  protected override void Serialize(SerializationStore store)
+  {
+    // saving the objects here instead of during the automatic serialization allows us to eliminate dead objects on
+    // load and restore the Scene pointers of the objects (SceneObjects don't serialize their Scene pointers)
+    store.AddValue("Scene.Objects", objects);
+  }
+
+  protected override void Deserialize(DeserializationStore store)
+  {
+    List<SceneObject> savedObjects = (List<SceneObject>)store.GetValue("Scene.Objects");
+
+    foreach(SceneObject obj in savedObjects) // re-add all non-dead objects using the normal API
+    {
+      if(!obj.Dead)
+      {
+        AddObject(obj);
+      }
+    }
+  }
+  #endregion
+
   protected internal virtual void Render(ref Rectangle viewArea, uint layerMask, uint groupMask, bool renderInvisible)
   {
     PickOptions options = new PickOptions();
@@ -564,11 +586,11 @@ public class Scene : ITicker, IDisposable
   /// <summary>The total elapsed simulation time for this scene, in seconds.</summary>
   double elapsedTime;
   
-  List<SceneObject> objects = new List<SceneObject>();
+  [NonSerialized] List<SceneObject> objects = new List<SceneObject>();
   /// <summary>Holds objects which are pending deletion.</summary>
-  List<SceneObject> deleted = new List<SceneObject>();
+  [NonSerialized] List<SceneObject> deleted = new List<SceneObject>();
   /// <summary>An array of list containing the objects to render.</summary>
-  List<SceneObject>[] layeredRenderObjects = new List<SceneObject>[NumberOfLayers];
+  [NonSerialized] List<SceneObject>[] layeredRenderObjects = new List<SceneObject>[NumberOfLayers];
 
   Flag flags;
 

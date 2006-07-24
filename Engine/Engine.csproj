@@ -52,9 +52,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Scene\Objects.cd" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Include="Engine.cs" />
     <Compile Include="GUI\DesktopControl.cs" />
     <Compile Include="GUI\GuiControl.cs" />

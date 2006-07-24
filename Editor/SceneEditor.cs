@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using RotationalForce.Engine;
 using GameLib.Interop.OpenGL;
@@ -14,7 +15,7 @@ using Vector  = GameLib.Mathematics.TwoD.Vector;
 namespace RotationalForce.Editor
 {
 
-public class SceneEditor : Form
+public class SceneEditor : Form, IEditorForm
 {
   const string TriggerName = "__trigger__";
   const int DecorationRadius = 8;
@@ -49,6 +50,15 @@ public class SceneEditor : Form
     toolBar.Items[2].Tag = Tools.Zoom;
 
     CurrentTool = Tools.Object;
+
+    sceneView = new SceneViewControl();
+    // use the minor camera axis so that we easily calculate the camera size needed to fully display a given object
+    sceneView.CameraAxis      = CameraAxis.Minor;
+    sceneView.CameraSize      = DefaultViewSize;
+    sceneView.RenderInvisible = true;
+
+    desktop = new DesktopControl();
+    desktop.AddChild(sceneView);
   }
 
   static SceneEditor()
@@ -56,20 +66,138 @@ public class SceneEditor : Form
     ToolboxItem.RegisterItem(TriggerName, new TriggerItem());
   }
 
+  #region IEditorForm
+  public bool HasUnsavedChanges
+  {
+    get { return isModified; }
+  }
+
+  public StatusStrip StatusBar
+  {
+    get { return statusBar; }
+  }
+
+  public string Title
+  {
+    get
+    {
+      string name = level.Name;
+      if(string.IsNullOrEmpty(name))
+      {
+        name = "Untitled";
+      }
+      return "Level - " + name;
+    }
+  }
+
   public void CreateNew()
   {
-    scene = new Scene();
-
-    sceneView = new SceneViewControl();
-    // use the minor camera axis so that we easily calculate the camera size needed to fully display a given object
-    sceneView.CameraAxis      = CameraAxis.Minor;
-    sceneView.CameraSize      = DefaultViewSize;
-    sceneView.Scene           = scene;
-    sceneView.RenderInvisible = true;
-
-    desktop = new DesktopControl();
-    desktop.AddChild(sceneView);
+    sceneView.Scene = scene = new Scene();
+    level = Project.CreateLevel();
+    InvalidateRender();
+    isModified = false;
   }
+  
+  public bool Open()
+  {
+    OpenFileDialog fd = new OpenFileDialog();
+    fd.DefaultExt       = "xml";
+    fd.InitialDirectory = Project.LevelsPath;
+    fd.Filter           = "Level files (.xml)|*.xml";
+    
+    if(fd.ShowDialog() == DialogResult.OK)
+    {
+      string levelPath = Path.Combine(Path.GetDirectoryName(fd.FileName),
+                                      Path.GetFileNameWithoutExtension(fd.FileName)) + ".scene";
+      if(!File.Exists(levelPath))
+      {
+        MessageBox.Show("Unable to find "+levelPath, "Scene not found", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        return false;
+      }
+      
+      StreamReader sr = new StreamReader(levelPath, System.Text.Encoding.UTF8);
+      try
+      {
+        Serializer.BeginBatch();
+        sceneView.Scene = scene = (Scene)Serializer.Deserialize(sr);
+        Serializer.EndBatch();
+      }
+      finally
+      {
+        sr.Close();
+      }
+
+      level = Project.LoadLevel(fd.FileName);
+      InvalidateRender();
+      isModified = false;
+      return true;
+    }
+
+    return false;
+  }
+
+  public bool Save(bool newFile)
+  {
+    string fileName = level.File;
+
+    if(string.IsNullOrEmpty(fileName))
+    {
+      newFile  = true;
+      fileName = level.Name;
+      if(string.IsNullOrEmpty(fileName))
+      {
+        fileName = "level 1";
+      }
+
+      fileName = Project.GetLevelPath(fileName+".xml");
+    }
+
+    if(newFile)
+    {
+      SaveFileDialog fd = new SaveFileDialog();
+      fd.DefaultExt = "xml";
+      fd.FileName   = Path.GetFileName(fileName);
+      fd.Filter     = "Levels (*.xml)|*.xml";
+      fd.InitialDirectory = Path.GetDirectoryName(fileName);
+      fd.OverwritePrompt  = true;
+      fd.Title = "Save level as...";
+
+      if(fd.ShowDialog() != DialogResult.OK)
+      {
+        return false;
+      }
+      
+      fileName = fd.FileName;
+    }
+
+    fileName = Path.GetFullPath(fileName);
+    level.Save(fileName);
+
+    fileName = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName)) + ".scene";
+    StreamWriter sw = new StreamWriter(fileName, false, System.Text.Encoding.UTF8);
+    try
+    {
+      Serializer.BeginBatch();
+      Serializer.Serialize(scene, sw);
+      Serializer.EndBatch();
+    }
+    finally
+    {
+      sw.Close();
+    }
+    
+    isModified = false;
+    return true;
+  }
+
+  public bool TryClose() { return TryClose(true); }
+
+  bool TryClose(bool doClose)
+  {
+    Close();
+    return isClosed;
+  }
+  #endregion
 
   #region Invalidation
   new void Invalidate(Rectangle rect, bool invalidateRender)
@@ -99,6 +227,7 @@ public class SceneEditor : Form
   {
     sceneView.Invalidate();
     renderPanel.InvalidateRender();
+    isModified = true;
   }
 
   void InvalidateRender(Rectangle rect)
@@ -106,6 +235,7 @@ public class SceneEditor : Form
     rect.Inflate(1, 1);
     sceneView.Invalidate(rect);
     renderPanel.InvalidateRender(rect);
+    isModified = true;
   }
 
   void InvalidateView()
@@ -197,14 +327,10 @@ public class SceneEditor : Form
   bool renderToCurrentLayer;
   #endregion
 
-  internal StatusStrip StatusBar
+  Project Project
   {
-    get { return statusBar; }
+    get { return EditorApp.MainForm.Project; }
   }
-
-  DesktopControl desktop;
-  SceneViewControl sceneView;
-  Scene scene;
 
   #region InitializeComponent
   private void InitializeComponent()
@@ -1948,7 +2074,16 @@ public class SceneEditor : Form
               TrySelectObjectAndPoint(SelectedObject, e.Location, SelectMode.Toggle);
             }
           }
-          // alt-click breaks/joins the shape at that point (spline shapes only)
+          // ctrl-click breaks/joins the shape at that point (spline shapes only)
+          else if(Control.ModifierKeys == Keys.Control)
+          {
+            if(SelectObject(e.Location, SelectMode.DeselectPoints) && selectedPoints.Count == 1)
+            {
+              VectorAnimation.Vertex vertex = SelectedPoly.Vertices[selectedPoints[0]];
+              vertex.Split = !vertex.Split;
+              ObjectTool.InvalidateSelectedBounds(true);
+            }
+          }
         }
         else if(e.Button == MouseButtons.Middle) // middle click swaps between object/vector mode
         {
@@ -1968,32 +2103,10 @@ public class SceneEditor : Form
 
             if(selectedPoints.Count != 0) // operations upon the selected vertices
             {
-              bool addSeparator = false;
-              // if there's only one selected point, and this is a spline shape, allow the shape to be broken/joined
-              // there
-              if(selectedPoints.Count == 1 && false)
-              {
-                if(false)
-                {
-                  menu.MenuItems.Add("Break spline at vertex");
-                }
-                else
-                {
-                  menu.MenuItems.Add("Join spline at vertex");
-                }
-
-                addSeparator = true;
-              }
-
               if(selectedPoints.Count != SelectedPoly.Vertices.Count)
               {
                 menu.MenuItems.Add("Delete selected vertices",
                                    delegate(object s, EventArgs a) { DeleteSelectedPoints(); });
-                addSeparator = true;
-              }
-
-              if(addSeparator)
-              {
                 menu.MenuItems.Add("-");
               }
             }
@@ -3333,6 +3446,37 @@ public class SceneEditor : Form
     options.SortByLayer     = true;
     return options;
   }
+
+  protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+  {
+    base.OnClosing(e);
+    if(HasUnsavedChanges)
+    {
+      DialogResult result = MessageBox.Show(Title+" has unsaved changes. Save changes?", "Save changes?",
+                                            MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning,
+                                            MessageBoxDefaultButton.Button1);
+      if(result == DialogResult.Cancel)
+      {
+        e.Cancel = true;
+      }
+      else if(result == DialogResult.Yes && !Save(false))
+      {
+        e.Cancel = true;
+      }
+    }
+  }
+
+  protected override void OnClosed(EventArgs e)
+  {
+    base.OnClosed(e);
+    isClosed = true;
+  }
+
+  DesktopControl desktop;
+  SceneViewControl sceneView;
+  Scene scene;
+  Project.Level level;
+  bool isModified, isClosed;
 }
 
 #region ToolboxList

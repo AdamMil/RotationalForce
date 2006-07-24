@@ -7,7 +7,7 @@ namespace RotationalForce.Engine
 public delegate void GameObjectEventHandler(GameObject obj);
 
 /// <summary>The base class of all game objects.</summary>
-public abstract class GameObject
+public abstract class GameObject : UniqueObject
 {
   public event GameObjectEventHandler Deleted;
 

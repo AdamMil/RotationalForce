@@ -71,7 +71,7 @@ public sealed class VectorAnimation : Animation
   #endregion
 
   #region Polygon
-  public sealed class Polygon : ISerializable
+  public sealed class Polygon : UniqueObject // polygons can be shared between animation frames
   {
     #region Blending
     /// <summary>Determines whether blending is explicitly enabled for this polygon.</summary>
@@ -303,16 +303,7 @@ public sealed class VectorAnimation : Animation
     #endregion
 
     #region ISerializable
-    Type ISerializable.TypeToSerialize
-    {
-      get { return GetType(); }
-    }
-
-    void ISerializable.Serialize(SerializationStore store)
-    {
-    }
-
-    void ISerializable.Deserialize(DeserializationStore store)
+    protected override void Deserialize(DeserializationStore store)
     {
       tessellationDirty = true; // we don't save subdivision or tessellation info, so they'll need to be recalculated
       
