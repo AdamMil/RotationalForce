@@ -15,6 +15,8 @@ public sealed class SerializationTests
   #region SimpleBase
   class SimpleBase
   {
+    protected const string StringValue = " \t hello<wo(rld,howare you?\ni'm f)ine\"tha+nks \t\t ";
+
     protected SimpleBase() { } // test non-public constructors
 
     // initialize variables in a special constructor so they definitely won't be initialized after the deserializer
@@ -34,7 +36,7 @@ public sealed class SerializationTests
       ulongValue = 50000;
       floatValue = -145.234f;
       doubleValue = 2452.257482334;
-      stringValue = "hello<world,howare you?\ni'm fine\"tha+nks";
+      stringValue = StringValue;
       colorValue = Color.FromArgb(128,255,0,82);
       dtValue = new DateTime(2005, 2, 4, 18, 4, 22);
       intArr = new int[] { 1,-1,54,1000,-23043 };
@@ -57,7 +59,7 @@ public sealed class SerializationTests
       Assert.AreEqual(ulongValue, 50000);
       Assert.AreEqual(floatValue, -145.234f, 0f);
       Assert.AreEqual(doubleValue, 2452.257482334, 0);
-      Assert.AreEqual(stringValue, "hello<world,howare you?\ni'm fine\"tha+nks");
+      Assert.AreEqual(stringValue, StringValue);
       Assert.AreEqual(colorValue, Color.FromArgb(128,255,0,82));
       Assert.AreEqual(dtValue, new DateTime(2005, 2, 4, 18, 4, 22));
       Assert.AreEqual(kind, DateTimeKind.Utc);
@@ -149,7 +151,7 @@ public sealed class SerializationTests
       // test storing extra values
       store.AddValue("x", 5);
       store.AddValue("y", 5.0);
-      store.AddValue("z+<", "hello<world,howare you?\ni'm fine\"tha+nks"); // test illegal XML characters in names
+      store.AddValue("z+< ()", StringValue); // test illegal Sexp characters in names
       store.AddValue("dummy1", null);
     }
 
@@ -159,7 +161,7 @@ public sealed class SerializationTests
       Assert.AreEqual(store.GetInt32("x"), 5);
       
       // make sure getting items out of order works
-      Assert.AreEqual(store.GetString("z+<"), "hello<world,howare you?\ni'm fine\"tha+nks");
+      Assert.AreEqual(store.GetString("z+< ()"), StringValue);
       
       Assert.IsTrue(store.GetValue("y") is double);
       Assert.AreEqual(store.GetDouble("y"), 5.0, 0);
@@ -183,7 +185,7 @@ public sealed class SerializationTests
                                 { { -1.1f, -2.2f }, { -3.3f, -4.4f }, { -5.5f, -6.6f } },
                                 { { 1.1f, -2.2f }, { 3.3f, -4.4f }, { 5.5f, -6.6f } },
                                 { { -1.1f, 2.2f }, { -3.3f, 4.4f }, { -5.5f, 6.6f } } };
-      short2d = new short[,] { {-1,-2,-3}, {3,2,1} };
+      short2d = new short[,] { {-1,-2,-3,3,2,1} };
       byte2d = new byte[,] { {1}, {2}, {5}, {255} };
     }
 
@@ -194,7 +196,7 @@ public sealed class SerializationTests
                                 { { -1.1f, -2.2f }, { -3.3f, -4.4f }, { -5.5f, -6.6f } },
                                 { { 1.1f, -2.2f }, { 3.3f, -4.4f }, { 5.5f, -6.6f } },
                                 { { -1.1f, 2.2f }, { -3.3f, 4.4f }, { -5.5f, 6.6f } } });
-      AssertArraysEqual(short2d, new short[,] { {-1,-2,-3}, {3,2,1} }); // test MD arrays with a dimension of length 1
+      AssertArraysEqual(short2d, new short[,] { {-1,-2,-3,3,2,1} }); // test MD arrays with a dimension of length 1
       AssertArraysEqual(byte2d, new byte[,] { {1}, {2}, {5}, {255} }); // test MD arrays with a different dimension of length 1
     }
 
@@ -380,31 +382,94 @@ public sealed class SerializationTests
   }
 
   [Test]
-  public void TestSimple()
+  public void Test01Sexps()
+  {
+    MemoryStream ms = new MemoryStream();
+    SexpWriter writer = new SexpWriter(ms);
+    writer.WriteElement("a"); // (a) (b hello) (c xxx(d foo)yyy(e))
+    writer.WriteElement("b", "hello");
+    writer.BeginElement("c");
+    writer.WriteContent("xxx");
+    writer.WriteElement("d", "foo");
+    writer.WriteContent("yyy");
+    writer.WriteElement("e");
+    writer.EndElement();
+    writer.Flush();
+    
+    ms.Position = 0;
+    SexpReader reader = new SexpReader(ms);
+    reader.Read();
+    reader.ReadBeginElement("a");
+    reader.ReadEndElement(); // end a
+    Assert.AreEqual(reader.ReadElement("b"), "hello");
+
+    reader.ReadBeginElement("c");
+    Assert.AreEqual(reader.ReadContent(), "xxx");
+    Assert.AreEqual(reader.ReadElement("d"), "foo");
+    Assert.AreEqual(reader.ReadContent(), "yyy");
+    reader.ReadBeginElement("e");
+    reader.ReadEndElement(); // end e
+    reader.ReadEndElement(); // end c
+    Assert.AreEqual(reader.NodeType, SexpNodeType.EOF);
+
+    // test skipping
+    ms.Position = 0;
+    reader = new SexpReader(ms);
+    reader.Read();
+    Assert.AreEqual(reader.TagName, "a");
+    Assert.AreEqual(reader.NodeType, SexpNodeType.Begin);
+    reader.Skip();
+    Assert.AreEqual(reader.TagName, "b");
+    Assert.AreEqual(reader.NodeType, SexpNodeType.Begin);
+    reader.Skip();
+    Assert.AreEqual(reader.TagName, "c");
+    Assert.AreEqual(reader.NodeType, SexpNodeType.Begin);
+    reader.Skip();
+    Assert.AreEqual(reader.NodeType, SexpNodeType.EOF);
+
+    ms.Position = 0;
+    reader = new SexpReader(ms);
+    reader.Read();
+    reader.Skip();
+    reader.Skip(); // skip to 'c'
+    reader.Read(); // read to 'xxx'
+    reader.Skip();
+    Assert.AreEqual(reader.NodeType, SexpNodeType.EOF);
+  }
+
+  [Test]
+  public void Test02VerySimple()
+  {
+    int i = RoundTrip(5);
+    Assert.AreEqual(i, 5);
+  }
+
+  [Test]
+  public void Test03Simple()
   {
     Test(new SimpleBase(1));
   }
 
   [Test]
-  public void TestDerived()
+  public void Test04Derived()
   {
     Test(new SimpleDerived(1));
   }
   
   [Test]
-  public void TestSimpleISerializable()
+  public void Test05SimpleISerializable()
   {
     Test(new DerivedWithISerializable(1));
   }
   
   [Test]
-  public void TestMultidimensionalArrays()
+  public void Test06MultidimensionalArrays()
   {
     Test(new DerivedWithISerializableAndMDArray(1));
   }
 
   [Test]
-  public void TestStruct()
+  public void Test07Struct()
   {
     Struct s = new Struct(1);
     s.Check();
@@ -413,14 +478,14 @@ public sealed class SerializationTests
   }
   
   [Test]
-  public void TestSingleton()
+  public void Test08Singleton()
   {
     Singleton s = RoundTrip(Singleton.Instance);
     Assert.AreSame(Singleton.Instance, s);
   }
   
   [Test]
-  public void TestList()
+  public void Test09List()
   {
     List<Struct> s = new List<Struct>();
     Assert.AreEqual(RoundTrip(s).Count, 0); // test empty list
@@ -450,7 +515,7 @@ public sealed class SerializationTests
   }
   
   [Test]
-  public void TestDict()
+  public void Test10Dict()
   {
     Dictionary<string,int> dsi = new Dictionary<string,int>();
     Assert.AreEqual(RoundTrip(dsi).Count, 0); // test empty dictionary
@@ -470,22 +535,23 @@ public sealed class SerializationTests
   }
   
   [Test]
-  public void TestComplexObjectRef()
+  public void Test11ComplexObjectRef()
   {
     DerivedForReferenceTest a, b, c, orig;
     orig = a = b = c = new DerivedForReferenceTest(1);
     
     objDict.Clear();
     MemoryStream stream = new MemoryStream(); // also test serializing multiple objects to a single stream
-    System.Xml.XmlWriter writer = Serializer.CreateXmlWriter(stream, true);
+    SexpWriter writer = new SexpWriter(stream);
     Serializer.Serialize(a, writer);
     Serializer.Serialize(b, writer);
     Serializer.Serialize(c, writer);
+    writer.Flush();
     Assert.AreEqual(objDict.Count, 1); // only one object should have been added
 
     objDict.Clear();
     stream.Position = 0;
-    System.Xml.XmlReader reader = Serializer.CreateXmlReader(stream, true);
+    SexpReader reader = new SexpReader(stream);
     a = (DerivedForReferenceTest)Serializer.Deserialize(reader);
     b = (DerivedForReferenceTest)Serializer.Deserialize(reader);
     c = (DerivedForReferenceTest)Serializer.Deserialize(reader);
@@ -496,7 +562,7 @@ public sealed class SerializationTests
   }
   
   [Test]
-  public void TestCircularReferences()
+  public void Test12CircularReferences()
   {
     objDict.Clear();
     Test(new DerivedForCircularReferenceTest(1));
@@ -519,6 +585,12 @@ public sealed class SerializationTests
   
   static void AssertAreEqual(Color a, Color b)
   {
+    Assert.AreEqual(a.IsNamedColor, b.IsNamedColor);
+    if(a.IsNamedColor)
+    {
+      Assert.AreEqual(a.Name, b.Name);
+    }
+
     Assert.AreEqual(a.R, b.R);
     Assert.AreEqual(a.G, b.G);
     Assert.AreEqual(a.B, b.B);

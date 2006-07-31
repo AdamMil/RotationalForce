@@ -1450,6 +1450,8 @@ public abstract class SceneObject : GameObject, ISerializable
         linkPoints[i].ScenePoint = new Point(linkPoints[i].ScenePoint.X*halfSize.X + position.X,
                                              linkPoints[i].ScenePoint.Y*halfSize.Y + position.Y);
       }
+      
+      SetFlag(Flag.LinkPointsDirty, false);
     }
   }
 

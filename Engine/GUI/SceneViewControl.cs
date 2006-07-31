@@ -780,7 +780,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   List<CameraView> viewStack;
 
   /// <summary>The scene that this control will render.</summary>
-  Scene scene;
+  [NonSerialized] Scene scene;
   
   /// <summary>The mask that controls which layers to draw.</summary>
   uint layerMask = 0xffffffff;

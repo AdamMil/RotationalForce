@@ -26,7 +26,6 @@ public class SceneEditor : Form, IEditorForm
   private SplitContainer rightPane;
   private ToolStrip objToolBar;
   private ToolboxList objectList;
-  private ToolStripButton newVectorAnim;
   private ImageList objectImgs;
   private System.ComponentModel.IContainer components;
   private PropertyGrid propertyGrid;
@@ -336,10 +335,6 @@ public class SceneEditor : Form, IEditorForm
   private void InitializeComponent()
   {
     this.components = new System.ComponentModel.Container();
-    System.Windows.Forms.ToolStripButton newStaticImg;
-    System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
-    System.Windows.Forms.ToolStripButton newAnimatedImg;
-    System.Windows.Forms.ToolStripButton deleteItem;
     System.Windows.Forms.ToolStripButton selectTool;
     System.Windows.Forms.ToolStripButton layerTool;
     System.Windows.Forms.ToolStripButton cameraTool;
@@ -348,11 +343,13 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
+    System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
+    System.Windows.Forms.ToolStripDropDownButton toolboxNewMenu;
+    System.Windows.Forms.ToolStripMenuItem newStaticImage;
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
     this.toolBar = new System.Windows.Forms.ToolStrip();
     this.rightPane = new System.Windows.Forms.SplitContainer();
     this.objToolBar = new System.Windows.Forms.ToolStrip();
-    this.newVectorAnim = new System.Windows.Forms.ToolStripButton();
     this.objectList = new RotationalForce.Editor.ToolboxList();
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
@@ -360,13 +357,12 @@ public class SceneEditor : Form, IEditorForm
     this.statusBar = new System.Windows.Forms.StatusStrip();
     this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
-    newStaticImg = new System.Windows.Forms.ToolStripButton();
-    newAnimatedImg = new System.Windows.Forms.ToolStripButton();
-    deleteItem = new System.Windows.Forms.ToolStripButton();
     selectTool = new System.Windows.Forms.ToolStripButton();
     layerTool = new System.Windows.Forms.ToolStripButton();
     cameraTool = new System.Windows.Forms.ToolStripButton();
     menuBar = new System.Windows.Forms.MenuStrip();
+    toolboxNewMenu = new System.Windows.Forms.ToolStripDropDownButton();
+    newStaticImage = new System.Windows.Forms.ToolStripMenuItem();
     menuBar.SuspendLayout();
     this.toolBar.SuspendLayout();
     this.rightPane.Panel1.SuspendLayout();
@@ -376,38 +372,6 @@ public class SceneEditor : Form, IEditorForm
     this.renderPanel.SuspendLayout();
     this.statusBar.SuspendLayout();
     this.SuspendLayout();
-    // 
-    // newStaticImg
-    // 
-    newStaticImg.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-    newStaticImg.Image = ((System.Drawing.Image)(resources.GetObject("newStaticImg.Image")));
-    newStaticImg.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
-    newStaticImg.ImageTransparentColor = System.Drawing.Color.Magenta;
-    newStaticImg.Name = "newStaticImg";
-    newStaticImg.Size = new System.Drawing.Size(23, 20);
-    newStaticImg.Text = "Import Static Image";
-    newStaticImg.ToolTipText = "Import a new static image.";
-    // 
-    // newAnimatedImg
-    // 
-    newAnimatedImg.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-    newAnimatedImg.Image = ((System.Drawing.Image)(resources.GetObject("newAnimatedImg.Image")));
-    newAnimatedImg.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
-    newAnimatedImg.ImageTransparentColor = System.Drawing.Color.Magenta;
-    newAnimatedImg.Name = "newAnimatedImg";
-    newAnimatedImg.Size = new System.Drawing.Size(23, 20);
-    newAnimatedImg.Text = "Import Animated Image";
-    newAnimatedImg.ToolTipText = "Import a new animated image.";
-    // 
-    // deleteItem
-    // 
-    deleteItem.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-    deleteItem.Image = ((System.Drawing.Image)(resources.GetObject("deleteItem.Image")));
-    deleteItem.ImageTransparentColor = System.Drawing.Color.Magenta;
-    deleteItem.Name = "deleteItem";
-    deleteItem.Size = new System.Drawing.Size(23, 20);
-    deleteItem.Text = "Delete Item";
-    deleteItem.ToolTipText = "Deletes the selected item.";
     // 
     // selectTool
     // 
@@ -506,27 +470,13 @@ public class SceneEditor : Form, IEditorForm
     this.objToolBar.AutoSize = false;
     this.objToolBar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
     this.objToolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            newStaticImg,
-            newAnimatedImg,
-            this.newVectorAnim,
-            deleteItem});
+            toolboxNewMenu});
     this.objToolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
     this.objToolBar.Location = new System.Drawing.Point(0, 0);
     this.objToolBar.Name = "objToolBar";
     this.objToolBar.RenderMode = System.Windows.Forms.ToolStripRenderMode.System;
     this.objToolBar.Size = new System.Drawing.Size(205, 24);
     this.objToolBar.TabIndex = 2;
-    // 
-    // newVectorAnim
-    // 
-    this.newVectorAnim.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-    this.newVectorAnim.Image = ((System.Drawing.Image)(resources.GetObject("newVectorAnim.Image")));
-    this.newVectorAnim.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
-    this.newVectorAnim.ImageTransparentColor = System.Drawing.Color.Magenta;
-    this.newVectorAnim.Name = "newVectorAnim";
-    this.newVectorAnim.Size = new System.Drawing.Size(23, 20);
-    this.newVectorAnim.Text = "Import Vector Animation";
-    this.newVectorAnim.ToolTipText = "Import a new vector animation.";
     // 
     // objectList
     // 
@@ -619,6 +569,22 @@ public class SceneEditor : Form, IEditorForm
     this.layerLabel.Name = "layerLabel";
     this.layerLabel.Size = new System.Drawing.Size(47, 17);
     this.layerLabel.Text = "Layer: 0";
+    // 
+    // toolboxNewMenu
+    // 
+    toolboxNewMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            newStaticImage});
+    toolboxNewMenu.Name = "toolboxNewMenu";
+    toolboxNewMenu.Size = new System.Drawing.Size(41, 17);
+    toolboxNewMenu.Text = "New";
+    toolboxNewMenu.ToolTipText = "Creates a toolbox item and adds it to the project and the level.";
+    // 
+    // newStaticImage
+    // 
+    newStaticImage.Name = "newStaticImage";
+    newStaticImage.Size = new System.Drawing.Size(155, 22);
+    newStaticImage.Text = "Static image map";
+    newStaticImage.Click += new System.EventHandler(this.newStaticImage_Click);
     // 
     // SceneEditor
     // 
@@ -3362,7 +3328,7 @@ public class SceneEditor : Form, IEditorForm
   bool dragScrolling;
   #endregion
 
-  #region Dragging items from the toolpane
+  #region Toolbox
   private void renderPanel_DragEnter(object sender, DragEventArgs e)
   {
     e.Effect = DragDropEffects.Copy;
@@ -3384,6 +3350,11 @@ public class SceneEditor : Form, IEditorForm
       Tools.Object.SubTool = Tools.Object.SpatialTool;
       Tools.Object.SelectObject(obj, true);
     }
+  }
+
+  private void newStaticImage_Click(object sender, EventArgs e)
+  {
+
   }
   #endregion
 
