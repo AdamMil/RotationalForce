@@ -79,6 +79,11 @@ sealed class Project
     get { return path; }
   }
 
+  public string EditorDataPath
+  {
+    get { return Path.Combine(path, EditorData); }
+  }
+
   public string LevelsPath
   {
     get { return Path.Combine(path, Levels); }

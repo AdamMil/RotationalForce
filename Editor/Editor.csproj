@@ -42,11 +42,15 @@
   -->
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.XML" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ImageMapDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="MountDialog.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -66,12 +70,13 @@
     <Compile Include="SceneEditor.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="VectorAnimationEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
     <Compile Include="Xml.cs" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="ImageMapDialog.resx">
+      <SubType>Designer</SubType>
+      <DependentUpon>ImageMapDialog.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="MainForm.resx">
       <SubType>Designer</SubType>
       <DependentUpon>MainForm.cs</DependentUpon>
@@ -88,10 +93,6 @@
     <EmbeddedResource Include="SceneEditor.resx">
       <SubType>Designer</SubType>
       <DependentUpon>SceneEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="VectorAnimationEditor.resx">
-      <SubType>Designer</SubType>
-      <DependentUpon>VectorAnimationEditor.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>

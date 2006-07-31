@@ -5,7 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text;
-using System.Xml;
+using System.Text.RegularExpressions;
 
 namespace RotationalForce.Engine
 {
@@ -45,13 +45,13 @@ public abstract class UniqueObject : ISerializable
   void ISerializable.BeforeSerialize(SerializationStore store)
   {
     store.AddValue("UniqueObject.ID", id);
-    AddToPool(id, this);
+    objectPool[id] = this;
   }
 
   void ISerializable.BeforeDeserialize(DeserializationStore store)
   {
     uint serializedId = store.GetUint32("UniqueObject.ID");
-    AddToPool(serializedId, this);
+    objectPool.Add(serializedId, this);
   }
 
   void ISerializable.Serialize(SerializationStore store)
@@ -83,14 +83,6 @@ public abstract class UniqueObject : ISerializable
   }
   
   static Dictionary<uint,UniqueObject> objectPool = new Dictionary<uint,UniqueObject>();
-
-  static void AddToPool(uint id, UniqueObject obj)
-  {
-    if(objectPool != null)
-    {
-      objectPool.Add(id, obj);
-    }
-  }
 
   static uint nextID = 1;
 }
@@ -130,15 +122,539 @@ sealed class UniqueObjectReference : ISerializable, IObjectReference
 }
 #endregion
 
+#region SexpNodeType
+/// <summary>An enum describing the type of the current node read from a <see cref="SexpReader"/>.</summary>
+public enum SexpNodeType
+{
+  /// <summary>No node has been read yet.</summary>
+  None,
+  /// <summary>The reader has just read the start of an element.</summary>
+  Begin,
+  /// <summary>The reader has just read some text content from the element.</summary>
+  Content,
+  /// <summary>The reader has just read the end of an element.</summary>
+  End,
+  /// <summary>The reader has consumed all available data.</summary>
+  EOF
+}
+#endregion
+
+#region SexpReader
+public sealed class SexpReader : IDisposable
+{
+  public SexpReader(Stream stream) : this(stream, Encoding.UTF8) { }
+
+  public SexpReader(Stream stream, Encoding encoding) : this(new StreamReader(stream, encoding)) { }
+
+  public SexpReader(TextReader reader)
+  {
+    if(reader == null) throw new ArgumentNullException();
+    this.reader = reader;
+    NextChar(); // read the first character, if there is one
+  }
+
+  public bool EOF
+  {
+    get { return nodeType == SexpNodeType.EOF; }
+  }
+
+  public SexpNodeType NodeType
+  {
+    get { return nodeType; }
+  }
+
+  public string TagName
+  {
+    get { return tagNames.Peek(); }
+  }
+
+  public void Close()
+  {
+    reader.Close();
+  }
+
+  public void Dispose()
+  {
+    reader.Dispose();
+  }
+
+  /// <summary>Asserts that the reader is positioned at text content, and returns the content.</summary>
+  public string GetContent()
+  {
+    if(nodeType != SexpNodeType.Content)
+    {
+      throw new InvalidOperationException("The reader is not positioned on any text content.");
+    }
+
+    return content;
+  }
+
+  /// <summary>Advances the reader to the next element or the next part of the current element.</summary>
+  public void Read()
+  {
+    SkipWhitespace();
+
+    switch(nodeType)
+    {
+      case SexpNodeType.None:
+        ReadFromBOF();
+        break;
+
+      case SexpNodeType.Begin:
+        ReadFromBegin();
+        break;
+
+      case SexpNodeType.Content:
+        ReadFromContent();
+        break;
+
+      case SexpNodeType.End:
+        ReadFromEnd();
+        break;
+
+      case SexpNodeType.EOF: // at EOF, we don't change state
+        break;
+    }
+
+    if(nodeType != SexpNodeType.Content) // clear the content if we're not on a content node
+    {
+      content = null;
+    }
+  }
+
+  /// <summary>Asserts that the reader is positioned at the beginning of an element and then calls <see cref="Read"/>.</summary>
+  public void ReadBeginElement()
+  {
+    if(nodeType != SexpNodeType.Begin)
+    {
+      throw new InvalidOperationException("The reader is not positioned at the beginning of an element.");
+    }
+    Read();
+  }
+
+  /// <summary>Asserts that the reader is positioned at the beginning of an element with the given name and then calls
+  /// <see cref="Read"/>.
+  /// </summary>
+  public void ReadBeginElement(string name)
+  {
+    if(nodeType != SexpNodeType.Begin || !string.Equals(TagName, name, StringComparison.Ordinal))
+    {
+      throw new InvalidOperationException("The reader is not positioned at a the beginning of an element named '"+
+                                          name+"'.");
+    }
+    Read();
+  }
+
+  /// <summary>Asserts that the reader is positioned at text content, returns the content, and then calls
+  /// <see cref="Read"/>.
+  /// </summary>
+  public string ReadContent()
+  {
+    string content = GetContent();
+    Read();
+    return content;
+  }
+
+  /// <summary>Asserts that the reader is positioned at the end of an element and then calls <see cref="Read"/>.</summary>
+  public void ReadEndElement()
+  {
+    if(nodeType != SexpNodeType.End)
+    {
+      throw new InvalidOperationException("The reader is not positioned and the end of an element.");
+    }
+    Read();
+  }
+
+  /// <summary>Asserts that the reader is positioned at the beginning of an element with the given name, calls
+  /// <see cref="Read"/>, gets the element content if any, and finally calls <see cref="ReadEndElement"/>.
+  /// </summary>
+  public string ReadElement(string name)
+  {
+    ReadBeginElement(name);
+    string content = nodeType == SexpNodeType.Content ? ReadContent() : string.Empty;
+    ReadEndElement();
+    return content;
+  }
+
+  /// <summary>Skips to the end of the current node (skipping over all subnodes).</summary>
+  public void Skip()
+  {
+    if(EOF) return;
+
+    if(tagNames.Count == 0) // if we're at the "root" node (outside any node), read to EOF
+    {
+      do Read(); while(!EOF);
+    }
+    else
+    {
+      string tag = TagName;
+      int  depth = tagNames.Count;
+
+      // read until the end of the current node
+      while(nodeType != SexpNodeType.End || tagNames.Count != depth ||
+            !string.Equals(TagName, tag, StringComparison.Ordinal))
+      {
+        Read();
+      }
+
+      Read(); // then read one more
+    }
+  }
+
+  public override string ToString()
+  {
+    return nodeType == SexpNodeType.None || nodeType == SexpNodeType.EOF ?
+      "[" + nodeType + "]" : string.Format("[{0} {1}]", TagName, nodeType);
+  }
+
+  bool ReaderAtEOF
+  {
+    get { return atEOF; }
+  }
+
+  // at the beginning of the data, we expect to see the beginning of a node or EOF
+  void ReadFromBOF()
+  {
+    if(ReaderAtEOF)
+    {
+      nodeType = SexpNodeType.EOF;
+    }
+    else
+    {
+      if(thisChar != '(') throw InvalidData("expected beginning of element");
+      ReadStartNode();
+    }
+  }
+
+  // after the beginning of a node, we may find content, a begin node, or the node end
+  void ReadFromBegin()
+  {
+    // we'll be positioned on the character immediately after the tag name, which should be a parethesis.
+    if(ReaderAtEOF) // if we're at EOF, throw an exception
+    {
+      throw UnexpectedEOF();
+    }
+    else if(thisChar == '(') // if we're at the beginning of a new element, read the new element
+    {
+      ReadStartNode();
+    }
+    else if(thisChar == ')') // if we're at the end of the current element, mark that we're at the end
+    {
+      nodeType = SexpNodeType.End;
+    }
+    else // otherwise, we're at some content. read it in
+    {
+      ReadTextContent();
+    }
+  }
+
+  // after content, we may find a begin node or the end of the current node
+  void ReadFromContent()
+  {
+    // we'll be positioned on the character immediately following the content, which should be a parenthesis.
+
+    if(ReaderAtEOF)
+    {
+      throw UnexpectedEOF();
+    }
+    else if(thisChar == '(') // if we're at the beginning of a new element, read the new element
+    {
+      ReadStartNode();
+    }
+    else if(thisChar == ')') // if we're at the end of the current element, mark that we're at the end
+    {
+      nodeType = SexpNodeType.End;
+    }
+    else
+    {
+      throw InvalidData("unexpected text content. Has the underlying stream been repositioned?");
+    }
+  }
+
+  // after a node end, we expect EOF (only at the root), more content (not at the root), or a begin node
+  void ReadFromEnd()
+  {
+    tagNames.Pop();
+    NextChar(); // advance past closing parenthesis
+
+    if(ReaderAtEOF) // if we're at EOF, it's an error if not all tags are closed
+    {
+      if(tagNames.Count == 0)
+      {
+        nodeType = SexpNodeType.EOF;
+      }
+      else
+      {
+        throw UnexpectedEOF();
+      }
+    }
+    else if(thisChar == '(') // if we're at a begin node, read it
+    {
+      ReadStartNode();
+    }
+    else if(thisChar == ')') // if we're at an end node, it's invalid unless there's another tag open
+    {
+      if(tagNames.Count == 0)
+      {
+        throw InvalidData("unexpected ')' [all tags have been closed already]");
+      }
+    }
+    else // if we're at some content, it's an error if all tags have been closed already
+    {
+      if(tagNames.Count == 0)
+      {
+        throw InvalidData("unexpected text content");
+      }
+      else
+      {
+        ReadTextContent();
+      }
+    }
+  }
+
+  void ReadStartNode()
+  {
+    NextChar(); // skip over the opening parethesis
+    SkipWhitespace(); // skip whitespace before the tag name
+    string tagName = ReadTagName(); // read the tag name
+    tagNames.Push(tagName); // add it to the stack
+    nodeType = SexpNodeType.Begin;
+  }
+
+  void ReadTextContent()
+  {
+    content  = ReadString(false);
+    nodeType = SexpNodeType.Content;
+  }
+
+  string ReadTagName()
+  {
+    return ReadString(true);
+  }
+
+  string ReadString(bool stopAtWhitespace)
+  {
+    StringBuilder sb = new StringBuilder();
+
+    while(thisChar != '(' && thisChar != ')' && (!stopAtWhitespace || !char.IsWhiteSpace(thisChar)) && !ReaderAtEOF)
+    {
+      if(thisChar == '\\')
+      {
+        NextChar();
+        if(ReaderAtEOF) throw new EndOfStreamException();
+      }
+      sb.Append(thisChar);
+      NextChar();
+    }
+
+    return sb.ToString();
+  }
+  
+  void SkipWhitespace()
+  {
+    while(char.IsWhiteSpace(thisChar))
+    {
+      NextChar();
+    }
+  }
+
+  void NextChar()
+  {
+    int c = reader.Read();
+    if(c == -1)
+    {
+      atEOF = true;
+      thisChar = '\0';
+    }
+    else
+    {
+      thisChar = (char)c;
+
+      if(thisChar == '\n')
+      {
+        line++;
+        column = 1;
+      }
+      else if(thisChar != '\r')
+      {
+        column++;
+      }
+    }
+  }
+
+  InvalidDataException InvalidData(string message)
+  {
+    return new InvalidDataException(string.Format("At {0}:{1}, {2}", line, column, message));
+  }
+  
+  EndOfStreamException UnexpectedEOF()
+  {
+    return new EndOfStreamException(string.Format("At {0}:{1}, unexpected EOF. element '{2}' was not closed.",
+                                                  line, column, TagName));
+  }
+
+  TextReader reader;
+  Stack<string> tagNames = new Stack<string>();
+  string content;
+  int line=1, column=1;
+  char thisChar;
+  SexpNodeType nodeType;
+  bool atEOF;
+}
+#endregion
+
+#region SexpWriter
+public sealed class SexpWriter : IDisposable
+{
+  public SexpWriter(Stream stream) : this(stream, Encoding.UTF8) { }
+
+  public SexpWriter(Stream stream, Encoding encoding) : this(new StreamWriter(stream, encoding)) { }
+
+  public SexpWriter(TextWriter writer)
+  {
+    if(writer == null) throw new ArgumentNullException();
+    this.writer = writer;
+  }
+
+  /// <summary>Begins an element with the given name. The element should be closed with <see cref="EndElement."/></summary>
+  public void BeginElement(string tagName)
+  {
+    if(string.IsNullOrEmpty(tagName)) throw new ArgumentException("Tag name cannot be empty.");
+
+    BeginContent();
+    writer.Write('(');
+    writer.Write(Encode(tagName, true));
+    depth++;
+    hasContent = false;
+  }
+
+  /// <summary>Ends an element previous started with <see cref="BeginElement"/>.</summary>
+  public void EndElement()
+  {
+    if(depth == 0) throw new InvalidOperationException("No tags are open.");
+
+    writer.Write(')');
+    depth--;
+    hasContent = true;
+  }
+
+  /// <summary>Writes text into the content area of the open element.</summary>
+  public void WriteContent(string text)
+  {
+    if(!string.IsNullOrEmpty(text))
+    {
+      BeginContent();
+      writer.Write(Encode(text, false));
+    }
+    else if(text == null)
+    {
+      throw new ArgumentNullException();
+    }
+  }
+  
+  /// <summary>Writes an empty element with the given name.</summary>
+  public void WriteElement(string tagName)
+  {
+    WriteElement(tagName, null);
+  }
+
+  /// <summary>Writes an element with the given name and content.</summary>
+  /// <param name="content">The element content. If null, an empty element will be written.</param>
+  public void WriteElement(string tagName, string content)
+  {
+    BeginElement(tagName);
+    if(content != null)
+    {
+      WriteContent(content);
+    }
+    EndElement();
+  }
+
+  public void Close()
+  {
+    writer.Close();
+  }
+
+  public void Dispose()
+  {
+    writer.Dispose();
+  }
+
+  public void Flush()
+  {
+    writer.Flush();
+  }
+
+  /// <summary>Adds the separator between the tag name and the content, if necessary.</summary>
+  void BeginContent()
+  {
+    if(!hasContent)
+    {
+      writer.Write(' ');
+      hasContent = true;
+    }
+  }
+
+  /// <summary>The output stream.</summary>
+  TextWriter writer;
+  /// <summary>The current node depth.</summary>
+  int depth;
+  /// <summary>Whether the current node has content.</summary>
+  /// <remarks>If false, a separator will be added before any content or nested tags are written.</remarks>
+  bool hasContent = true;
+
+  static string Encode(string str, bool encodeInnerSpaces)
+  {
+    StringBuilder sb = new StringBuilder(str.Length);
+    bool afterLeadingSpaces = false;
+    int numTrailingSpaces = 0;
+
+    for(int i=0; i<str.Length; i++)
+    {
+      char c = str[i];
+
+      // if it's a special character (a leading space, a backslash, or a parenthesis), escape it
+      if((!afterLeadingSpaces || encodeInnerSpaces) && char.IsWhiteSpace(c) || c=='(' || c==')' || c=='\\')
+      {
+        sb.Append('\\').Append(c);
+        numTrailingSpaces = 0;
+      }
+      else if(char.IsWhiteSpace(c)) // otherwise, if it's a potentially-trailing space, keep track of it
+      {
+        numTrailingSpaces++;
+      }
+      else // otherwise, it's a normal character, so append it as-is
+      {
+        if(numTrailingSpaces != 0) // if we were tracking any potentially-trailing spaces, write them out
+        {
+          sb.Append(str, i-numTrailingSpaces, numTrailingSpaces);
+          numTrailingSpaces = 0;
+        }
+
+        sb.Append(c);
+        afterLeadingSpaces = true;
+      }
+    }
+
+    // now add the trailing spaces, encoding them
+    for(int i=str.Length-numTrailingSpaces; i<str.Length; i++)
+    {
+      sb.Append('\\').Append(str[i]);
+    }
+    
+    return sb.ToString();
+  }
+}
+#endregion
 
 #region SerializationStore
 public class SerializationStore
 {
-  internal SerializationStore(XmlWriter writer, string defaultNamespace)
+  internal SerializationStore(SexpWriter writer, string namespaceName)
   {
     if(writer == null) throw new ArgumentNullException();
     this.writer = writer;
-    this.ns     = defaultNamespace;
+    this.ns     = namespaceName;
   }
 
   /// <summary>Adds an object to the serialization store.</summary>
@@ -151,9 +667,9 @@ public class SerializationStore
 
     if(!valueAdded)
     {
-      writer.WriteStartElement(ns);
+      writer.BeginElement(ns);
       valueAdded = true;
-      
+
       #if DEBUG
       addedNames = new List<string>();
       #endif
@@ -167,9 +683,9 @@ public class SerializationStore
     addedNames.Add(name);
     #endif
 
-    writer.WriteStartElement(XmlConvert.EncodeLocalName(name));
-    Serializer.InnerSerialize(value, writer);
-    writer.WriteEndElement();
+    writer.BeginElement(name);
+    Serializer.Serialize(value, writer);
+    writer.EndElement();
   }
 
   /// <summary>Finishes writing the value store.</summary>
@@ -177,11 +693,11 @@ public class SerializationStore
   {
     if(valueAdded)
     {
-      writer.WriteEndElement();
+      writer.EndElement();
     }
   }
 
-  XmlWriter writer;
+  SexpWriter writer;
   string ns;
   bool valueAdded;
   
@@ -194,15 +710,16 @@ public class SerializationStore
 #region DeserializationStore
 public class DeserializationStore
 {
-  internal DeserializationStore(XmlReader reader)
+  internal DeserializationStore(SexpReader reader, string namespaceName)
   {
     if(reader == null) throw new ArgumentNullException("reader");
     this.reader = reader;
-    this.ns     = reader.LocalName;
+    this.ns     = namespaceName;
 
     // it's possible that the reader has no namespace node, in which case, there are no values to read.
     // but if it does have a namespace node, move past it.
-    hasNamespaceNode = reader.NodeType == XmlNodeType.Element;
+    hasNamespaceNode = reader.NodeType == SexpNodeType.Begin &&
+                       string.Equals(reader.TagName, namespaceName, StringComparison.Ordinal);
     if(hasNamespaceNode)
     {
       reader.Read();
@@ -273,18 +790,16 @@ public class DeserializationStore
     }
 
     // otherwise, we haven't read it yet, so read until we find it.
-    while(reader.NodeType == XmlNodeType.Element) // while we're not at the end of the data yet
+    while(reader.NodeType == SexpNodeType.Begin) // while we're not at the end of the data yet
     {
-      string nodeName = XmlConvert.DecodeName(reader.LocalName);
+      string nodeName = reader.TagName;
 
-      reader.Read(); // read to the data element
+      reader.ReadBeginElement(); // read the opening variable name element
       value = Serializer.InnerDeserialize(reader);
-      Serializer.ReadEndElement(reader); // read the closing data element
+      reader.ReadEndElement(); // consume the closing variable name node
 
       // prepend the new object to the list (where it can be found quickest)
       values.AddFirst(new KeyValuePair<string,object>(nodeName, value));
-
-      reader.Read(); // consume the closing variable name node, advancing to the next node, or the end of the data
 
       if(string.Equals(nodeName, name, StringComparison.Ordinal)) // if this was the one we wanted, return success
       {
@@ -301,7 +816,7 @@ public class DeserializationStore
   {
     if(hasNamespaceNode)
     {
-      while(reader.NodeType == XmlNodeType.Element) // skip all data nodes
+      while(reader.NodeType == SexpNodeType.Begin) // skip all data nodes
       {
         reader.Skip();
       }
@@ -330,7 +845,7 @@ public class DeserializationStore
     }
   }
 
-  XmlReader reader;
+  SexpReader reader;
   string ns;
   LinkedList<KeyValuePair<string,object>> values;
   bool hasNamespaceNode;
@@ -460,62 +975,45 @@ public static class Serializer
   }
 
   #region Serialization
-  public static XmlWriter CreateXmlWriter(Stream store, bool allowMultipleObjects)
-  {
-    return CreateXmlWriter(new StreamWriter(store), allowMultipleObjects);
-  }
-
-  public static XmlWriter CreateXmlWriter(TextWriter store, bool allowMultipleObjects)
-  {
-    XmlWriterSettings settings = new XmlWriterSettings();
-    settings.CheckCharacters = false;
-    settings.NewLineHandling = NewLineHandling.Entitize;
-    if(allowMultipleObjects)
-    {
-      settings.ConformanceLevel = ConformanceLevel.Fragment;
-    }
-    return XmlWriter.Create(store, settings);
-  }
-
   /// <summary>Serializes an object into the given <see cref="Stream"/>. The object can be null.</summary>
+  /// <remarks>If you'll be serializing multiple objects to the stream, it's more efficient to create a
+  /// <see cref="SexpWriter"/> and call the overload that takes it.
+  /// </remarks>
   public static void Serialize(object obj, Stream store)
   {
-    Serialize(obj, CreateXmlWriter(store, false));
+    SexpWriter writer = new SexpWriter(store);
+    Serialize(obj, writer);
+    // make sure to flush the TextWriter inside the SexpWriter so that the content shows up in 'store' immediately
+    writer.Flush();
   }
 
   /// <summary>Serializes an object into the given <see cref="TextWriter"/>. The object can be null.</summary>
+  /// <remarks>If you'll be serializing multiple objects to the text writer, it's more efficient to create a
+  /// <see cref="SexpWriter"/> and call the overload that takes it.
+  /// </remarks>
   public static void Serialize(object obj, TextWriter store)
   {
-    Serialize(obj, CreateXmlWriter(store, false));
+    Serialize(obj, new SexpWriter(store));
   }
 
-  /// <summary>Serializes an object into the given <see cref="XmlWriter"/>. The object can be null.</summary>
-  public static void Serialize(object obj, XmlWriter store)
+  /// <summary>Serializes an object into the given <see cref="SexpWriter"/>. The object can be null.</summary>
+  public static void Serialize(object obj, SexpWriter store)
   {
     if(store == null) throw new ArgumentNullException("store");
-    InnerSerialize(obj, store);
-    store.Flush();
-  }
 
-  /// <summary>Serializes an object into the given <see cref="XmlWriter"/> but without flushing the written data to the
-  /// underlying store.
-  /// </summary>
-  internal static void InnerSerialize(object obj, XmlWriter store)
-  {
     Type type = obj == null ? null : obj.GetType(); // get the type of the object
 
-    if(obj == null) // if it's a null object, just write <null/>
+    if(obj == null) // if it's a null object, just write (null)
     {
-      store.WriteStartElement("null");
-      store.WriteEndElement();
+      store.WriteElement("null");
     }
-    else if(IsSimpleType(type)) // otherwise, if it's a simple type, write out the simple type (eg, <int>5</int>)
+    else if(IsSimpleType(type)) // otherwise, if it's a simple type, write out the simple type, eg (int 5)
     {
-      store.WriteElementString(XmlConvert.EncodeLocalName(GetTypeName(type)), GetSimpleValue(obj, type));
+      store.WriteElement(GetTypeName(type), GetSimpleValue(obj, type));
     }
     else if(type == typeof(string))
     {
-      store.WriteElementString(XmlConvert.EncodeLocalName(GetTypeName(type)), (string)obj);
+      store.WriteElement(GetTypeName(type), (string)obj);
     }
     else if(type.IsArray) // otherwise, if it's a complex array (simple arrays are handled by GetSimpleValue)
     {
@@ -535,13 +1033,13 @@ public static class Serializer
     }
   }
 
-  static void SerializeArray(Array array, Type type, XmlWriter store)
+  static void SerializeArray(Array array, Type type, SexpWriter store)
   {
-    store.WriteStartElement(XmlConvert.EncodeLocalName(type.FullName)); // write the array's typename
+    store.BeginElement(type.FullName); // write the array's typename
 
     // write the dimensions attribute (this doesn't handle non-zero-bounded arrays)
-    // a 2x5 array will have dimensions="2,5"
-    store.WriteStartAttribute("dimensions");
+    // a 2x5 array will have (@dimensions 2,5)
+    string dims = null;
     for(int i=0; i<array.Rank; i++)
     {
       if(array.GetLowerBound(i) != 0)
@@ -549,43 +1047,41 @@ public static class Serializer
         throw new NotImplementedException("Non-zero bound arrays are not implemented.");
       }
 
-      if(i != 0) store.WriteRaw(",");
-      store.WriteRaw(array.GetLength(i).ToString(CultureInfo.InvariantCulture));
+      if(i != 0) dims += ",";
+      dims += array.GetLength(i).ToString(CultureInfo.InvariantCulture);
     }
-    store.WriteEndAttribute();
+    store.WriteElement("@dimensions", dims);
 
     foreach(object element in array) // serialize the elements themselves
     {
-      InnerSerialize(element, store);
+      Serialize(element, store);
     }
 
-    store.WriteEndElement(); // close the array attribute
+    store.EndElement(); // close the array element
   }
   
-  static void SerializeDictionary(IDictionary dict, Type type, XmlWriter store)
+  static void SerializeDictionary(IDictionary dict, Type type, SexpWriter store)
   {
-    SerializeTypeTag(type, store);
-    
+    store.BeginElement(GetTypeName(type));
     foreach(DictionaryEntry de in dict)
     {
-      InnerSerialize(de.Key, store);
-      InnerSerialize(de.Value, store);
+      Serialize(de.Key, store);
+      Serialize(de.Value, store);
     }
-
-    store.WriteEndElement();
+    store.EndElement();
   }
   
-  static void SerializeIList(IList list, Type type, XmlWriter store)
+  static void SerializeIList(IList list, Type type, SexpWriter store)
   {
-    SerializeTypeTag(type, store);
+    store.BeginElement(GetTypeName(type));
     foreach(object o in list)
     {
-      InnerSerialize(o, store);
+      Serialize(o, store);
     }
-    store.WriteEndElement();
+    store.EndElement();
   }
 
-  static void SerializeObject(object obj, Type type, XmlWriter store)
+  static void SerializeObject(object obj, Type type, SexpWriter store)
   {
     ISerializable iserializable = obj as ISerializable;
 
@@ -593,62 +1089,46 @@ public static class Serializer
     Type typeToSerialize = iserializable == null ? type : iserializable.TypeToSerialize;
 
     // write the opening element with the type name of the object
-    SerializeTypeTag(typeToSerialize, store);
-
-    if(typeToSerialize != type) // if the type is different, add an attribute indicating that
-    {
-      store.WriteAttributeString(XmlConvert.EncodeLocalName(".isProxy"), "true");
-    }
-    else // otherwise, write out the fields. (if the type is different we can't write out the fields)
-    {
-      SerializeSimpleObjectFields(type, obj, store);
-    }
+    store.BeginElement(GetTypeName(typeToSerialize));
 
     // call .BeforeSerialize if applicable
     if(iserializable != null)
     {
-      SerializationStore customStore = new SerializationStore(store, XmlConvert.EncodeLocalName(".BeforeFields"));
+      SerializationStore customStore = new SerializationStore(store, "@beforeFields");
       iserializable.BeforeSerialize(customStore);
       customStore.Finish();
     }
 
-    // then serialize the complex fields
+    // then serialize the object fields
     if(typeToSerialize == type)
     {
-      SerializeComplexObjectFields(type, obj, store);
+      SerializeObjectFields(type, obj, store);
     }
 
     // then call .Serialize, if applicable.
     if(iserializable != null)
     {
-      SerializationStore customStore = new SerializationStore(store, XmlConvert.EncodeLocalName(".CustomValues"));
+      SerializationStore customStore = new SerializationStore(store, "@afterFields");
       iserializable.Serialize(customStore);
       customStore.Finish();
     }
 
-    store.WriteEndElement(); // finally, write the end element
+    store.EndElement(); // finally, write the end element
   }
 
-  static void SerializeSimpleObjectFields(Type objectType, object instance, XmlWriter store)
+  static void SerializeObjectFields(Type objectType, object instance, SexpWriter store)
   {
     Dictionary<string,object> fieldNames = new Dictionary<string,object>();
+    store.BeginElement("@fields");
     foreach(Type type in GetTypeHierarchy(objectType))
     {
-      SerializeSimpleObjectFields(type, instance, store, fieldNames);
+      SerializeObjectFields(type, instance, store, fieldNames);
     }
+    store.EndElement();
   }
 
-  static void SerializeComplexObjectFields(Type objectType, object instance, XmlWriter store)
-  {
-    Dictionary<string,object> fieldNames = new Dictionary<string,object>();
-    foreach(Type type in GetTypeHierarchy(objectType))
-    {
-      SerializeComplexObjectFields(type, instance, store, fieldNames);
-    }
-  }
-
-  static void SerializeComplexObjectFields(Type type, object instance, XmlWriter store,
-                                           Dictionary<string,object> fieldNames)
+  static void SerializeObjectFields(Type type, object instance, SexpWriter store,
+                                    Dictionary<string,object> fieldNames)
   {
     // get the instance fields (public and private)
     FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
@@ -656,37 +1136,25 @@ public static class Serializer
     for(int i=0; i<fields.Length; i++)
     {
       FieldInfo fi = fields[i];
-      if(!ShouldSkipField(fi) && !IsSimpleType(fi.FieldType))
-      {
-        store.WriteStartElement(GetFieldName(fi.Name, fieldNames));
-        InnerSerialize(fi.GetValue(instance), store);
-        store.WriteEndElement();
-      }
-    }
-  }
+      if(ShouldSkipField(fi)) continue;
 
-  static void SerializeSimpleObjectFields(Type type, object instance, XmlWriter store,
-                                          Dictionary<string,object> fieldNames)
-  {
-    // get the instance fields (public and private)
-    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
-                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
-    // loop through fields and write the simple ones as attributes.
-    for(int i=0; i<fields.Length; i++)
-    {
-      FieldInfo fi = fields[i];
-      if(!ShouldSkipField(fi) && IsSimpleType(fi.FieldType))
+      store.BeginElement(GetFieldName(fi.Name, fieldNames));
+      if(IsSimpleType(fi.FieldType))
       {
-        store.WriteAttributeString(GetFieldName(fi.Name, fieldNames),
-                                   GetSimpleValue(fi.GetValue(instance), fi.FieldType));
+        store.WriteContent(GetSimpleValue(fi.GetValue(instance), fi.FieldType));
       }
+      else
+      {
+        Serialize(fi.GetValue(instance), store);
+      }
+      store.EndElement();
     }
   }
 
   /// <summary>Gets a string representation of a simple object.</summary>
   static string GetSimpleValue(object value, Type type)
   {
-    if(type.IsArray) // if it's an array, represent it as a comma-separated list. it will be one-dimensional
+    if(type.IsArray) // if it's an array, represent it as a space-separated list. it will be one-dimensional
     {
       Array array = (Array)value; 
       if(array.Length == 0)
@@ -700,18 +1168,24 @@ public static class Serializer
         StringBuilder sb = new StringBuilder();
         for(int i=0; i<array.Length; i++)
         {
-          if(i != 0) sb.Append(',');
+          if(i != 0) sb.Append(' ');
           sb.Append(GetSimpleValue(array.GetValue(i), type));
         }
-
         return sb.ToString();
       }
     }
     else if(type == typeof(System.Drawing.Color))
     {
       System.Drawing.Color color = (System.Drawing.Color)value;
-      string rgb = color.R+","+color.G+","+color.B;
-      return color.A == 255 ? rgb : rgb+","+color.A.ToString();
+      if(color.IsNamedColor)
+      {
+        return color.Name;
+      }
+      else
+      {
+        string rgb = color.R+","+color.G+","+color.B;
+        return color.A == 255 ? rgb : rgb+","+color.A.ToString();
+      }
     }
     else // handle types representable by TypeCodes
     {
@@ -722,9 +1196,17 @@ public static class Serializer
         case TypeCode.Char: return ((int)(char)value).ToString(CultureInfo.InvariantCulture);
         case TypeCode.DateTime:
         {
-          // using "u" or "s" format type loses sub-second accuracy, but is much more readable
+          // using "u" or "s" format type loses sub-second accuracy, but is much more readable.
           DateTime dt = (DateTime)value;
-          return dt.ToString(dt.Kind == DateTimeKind.Utc ? "u" : "s", CultureInfo.InvariantCulture);
+          if(dt.Kind == DateTimeKind.Utc)
+          {
+            // we replace space with '@' because space is used as an array element separator
+            return dt.ToString("u", CultureInfo.InvariantCulture).Replace(' ', '@');
+          }
+          else
+          {
+            return dt.ToString("s", CultureInfo.InvariantCulture);
+          }
         }
         case TypeCode.Decimal: return ((decimal)value).ToString("R", CultureInfo.InvariantCulture);
         case TypeCode.Double: return ((double)value).ToString("R", CultureInfo.InvariantCulture);
@@ -741,16 +1223,9 @@ public static class Serializer
     }
   }
 
+  /// <summary>Given a type, gets its (possibly abbreviated) type name.</summary>
   static string GetTypeName(Type type)
   {
-    bool abbreviated;
-    return GetTypeName(type, out abbreviated);
-  }
-
-  /// <summary>Given a type, gets its (possibly abbreviated) type name.</summary>
-  static string GetTypeName(Type type, out bool abbreviated)
-  {
-    abbreviated = true;
     switch(Type.GetTypeCode(type))
     {
       case TypeCode.Boolean: return "bool";
@@ -773,7 +1248,6 @@ public static class Serializer
         }
         else
         {
-          abbreviated = false;
           return type.FullName;
         }
       case TypeCode.SByte:  return "sbyte";
@@ -785,119 +1259,84 @@ public static class Serializer
       default: throw new NotSupportedException("Unsupported type: "+type.FullName);
     }
   }
-  
-  static void SerializeTypeTag(Type type, XmlWriter store)
-  {
-    bool abbreviated;
-    string typeName = GetTypeName(type, out abbreviated);
-    if(abbreviated)
-    {
-      store.WriteStartElement(typeName);
-    }
-    else
-    {
-      store.WriteStartElement("object");
-      store.WriteAttributeString(XmlConvert.EncodeLocalName(".type"), typeName);
-    }
-  }
   #endregion
 
   #region Deserialization
-  public static XmlReader CreateXmlReader(Stream store, bool allowMultipleObjects)
-  {
-    return CreateXmlReader(new StreamReader(store), allowMultipleObjects);
-  }
-
-  public static XmlReader CreateXmlReader(TextReader store, bool allowMultipleObjects)
-  {
-    XmlReaderSettings settings = new XmlReaderSettings();
-    settings.CheckCharacters  = false;
-    settings.IgnoreComments   = true;
-    settings.IgnoreWhitespace = true;
-    if(allowMultipleObjects)
-    {
-      settings.ConformanceLevel = ConformanceLevel.Fragment;
-    }
-    return XmlReader.Create(store, settings);
-  }
-
   /// <summary>Deserializes an object from a <see cref="Stream"/>.</summary>
+  /// <remarks>If you'll be deserializing multiple objects from the stream, it's more efficient to create a
+  /// <see cref="SexpReader"/> and call the overload that takes it.
+  /// </remarks>
   public static object Deserialize(Stream store)
   {
-    return Deserialize(CreateXmlReader(store, false));
+    return Deserialize(new SexpReader(store));
   }
 
   /// <summary>Deserializes an object from a <see cref="TextReader"/>.</summary>
+  /// <remarks>If you'll be deserializing multiple objects from the text reader, it's more efficient to create a
+  /// <see cref="SexpReader"/> and call the overload that takes it.
+  /// </remarks>
   public static object Deserialize(TextReader store)
   {
-    return Deserialize(CreateXmlReader(store, false));
+    return Deserialize(new SexpReader(store));
   }
 
-  /// <summary>Deserializes an object from an <see cref="XmlReader"/>.</summary>
-  public static object Deserialize(XmlReader store)
+  /// <summary>Deserializes an object from an <see cref="SexpReader"/>.</summary>
+  public static object Deserialize(SexpReader store)
   {
-    if(store.NodeType == XmlNodeType.None) // if no data has been read yet...
+    if(store.NodeType == SexpNodeType.None) // if no data has been read yet...
     {
       store.Read(); // ... position the reader on the first node
     }
-    if(store.NodeType == XmlNodeType.XmlDeclaration) // if it's an xml declaration (<?xml ... ?>), skip it
-    {
-      store.Read();
-    }
-
-    object value = InnerDeserialize(store); // deserialize the root object
-    ReadEndElement(store); // and consume the end node
-    return value; // return the object
+    return InnerDeserialize(store); // deserialize the root object
   }
-  
-  /// <summary>Deserializes an object from an <see cref="XmlReader"/>, assuming that the reader is positioned at the
-  /// start node. The function will not consume the end node.
-  /// </summary>
-  internal static object InnerDeserialize(XmlReader store)
-  {
-    string typeName = store.LocalName;
-    if(string.Equals(typeName, "object", StringComparison.Ordinal))
-    {
-      typeName = store.GetAttribute(XmlConvert.EncodeLocalName(".type"));
-    }
 
-    Type type = GetTypeFromName(XmlConvert.DecodeName(typeName));
+  /// <summary>Deserializes an object from a <see cref="SexpReader"/>, assuming that the reader is positioned at the
+  /// start node.
+  /// </summary>
+  internal static object InnerDeserialize(SexpReader store)
+  {
+    Type type = GetTypeFromName(store.TagName);
+    object value;
+
+    store.ReadBeginElement();
 
     if(type == null)
     {
-      return null;
+      value = null;
     }
     else if(IsSimpleType(type))
     {
-      return ParseSimpleValue(store.ReadString(), type);
+      value = ParseSimpleValue(store.ReadContent(), type);
     }
     else if(type == typeof(string))
     {
-      return store.ReadString();
+      value = store.ReadContent();
     }
     else if(type.IsArray)
     {
-      return DeserializeArray(type, store);
+      value = DeserializeArray(type, store);
     }
     else if(typeof(IList).IsAssignableFrom(type))
     {
-      return DeserializeIList(type, store);
+      value = DeserializeIList(type, store);
     }
     else if(typeof(IDictionary).IsAssignableFrom(type))
     {
-      return DeserializeDictionary(type, store);
+      value = DeserializeDictionary(type, store);
     }
     else
     {
-      return DeserializeObject(type, store);
+      value = DeserializeObject(type, store);
     }
+
+    store.ReadEndElement();
+    return value;
   }
   
   /// <summary>Deserializes a complex array from the store.</summary>
-  static Array DeserializeArray(Type type, XmlReader store)
+  static Array DeserializeArray(Type type, SexpReader store)
   {
-    string[] dimString = store.GetAttribute("dimensions").Split(',');
-
+    string[] dimString = store.ReadElement("@dimensions").Split(',');
     int[] lengths = new int[dimString.Length];
     for(int i=0; i<lengths.Length; i++)
     {
@@ -906,11 +1345,11 @@ public static class Serializer
 
     Array array = Array.CreateInstance(type.GetElementType(), lengths);
 
-    if(!store.IsEmptyElement)
+    if(store.NodeType == SexpNodeType.Begin)
     {
       int[] indices = new int[lengths.Length];
 
-      while(store.Read() && store.NodeType == XmlNodeType.Element)
+      do
       {
         array.SetValue(InnerDeserialize(store), indices);
 
@@ -925,121 +1364,76 @@ public static class Serializer
             break;
           }
         }
-      }
+      } while(store.NodeType == SexpNodeType.Begin);
     }
 
     return array;
   }
 
-  static IDictionary DeserializeDictionary(Type type, XmlReader store)
+  static IDictionary DeserializeDictionary(Type type, SexpReader store)
   {
     IDictionary dict = (IDictionary)ConstructObject(type);
-    
-    if(!store.IsEmptyElement)
+    while(store.NodeType == SexpNodeType.Begin)
     {
-      store.Read(); // advance to first item, or the end tag
-      while(store.NodeType == XmlNodeType.Element)
-      {
-        object key = InnerDeserialize(store);
-        store.Read(); // advance past key
-        object value = InnerDeserialize(store);
-        store.Read(); // advance past value to next item, or the end tag
-        dict.Add(key, value);
-      }
+      object key   = InnerDeserialize(store);
+      object value = InnerDeserialize(store);
+      dict.Add(key, value);
     }
-    
     return dict;
   }
 
-  static IList DeserializeIList(Type type, XmlReader store)
+  static IList DeserializeIList(Type type, SexpReader store)
   {
     IList list = (IList)ConstructObject(type);
-    
-    if(!store.IsEmptyElement)
+    while(store.NodeType == SexpNodeType.Begin)
     {
-      store.Read(); // advance to first item, or the end tag
-      while(store.NodeType == XmlNodeType.Element)
-      {
-        list.Add(InnerDeserialize(store));
-        store.Read(); // advance to next item, or the end tag
-      }
+      list.Add(InnerDeserialize(store));
     }
-    
     return list;
   }
 
   /// <summary>Deserializes a class or struct from the store.</summary>
-  static object DeserializeObject(Type type, XmlReader store)
+  static object DeserializeObject(Type type, SexpReader store)
   {
-    object  obj  = ConstructObject(type);
-    string attr  = store.GetAttribute(XmlConvert.EncodeLocalName(".isProxy"));
-    bool isProxy = !string.IsNullOrEmpty(attr) && XmlConvert.ToBoolean(attr);
+    object obj = ConstructObject(type);
     ISerializable iserializable = obj as ISerializable;
 
-    if(isProxy) // if it's a proxy, there won't be any fields to deserialize, although there may be custom values
+    if(iserializable != null) // call BeforeDeserialize if appropriate
     {
-      if(!store.IsEmptyElement) store.Read(); // advance to "CustomValues" or the end tag
+      DeserializationStore customStore = new DeserializationStore(store, "@beforeFields");
+      iserializable.BeforeDeserialize(customStore);
+      customStore.Finish();
     }
-    else // otherwise, deserialize the attribute fields
+    // deserialize fields if there are any
+    if(store.NodeType == SexpNodeType.Begin && string.Equals(store.TagName, "@fields", StringComparison.Ordinal))
     {
-      DeserializeSimpleObjectFields(type, obj, store);
+      store.ReadBeginElement();
+      DeserializeObjectFields(type, obj, store);
+      store.ReadEndElement(); // read the end of the @fields node
     }
-
-    CallDeserialize(iserializable, store, ".BeforeFields", true);
-    DeserializeComplexObjectFields(type, obj, store);
-    CallDeserialize(iserializable, store, ".CustomValues", false);
+    if(iserializable != null) // call Deserialize if appropriate
+    {
+      DeserializationStore customStore = new DeserializationStore(store, "@afterFields");
+      iserializable.Deserialize(customStore);
+      customStore.Finish();
+    }
 
     // finally, return the object, unless it's an object reference, in which case we'll use it to get the real object
     IObjectReference objRef = obj as IObjectReference;
     return objRef != null ? objRef.GetRealObject() : obj;
   }
 
-  static void CallDeserialize(ISerializable iserializable, XmlReader store, string fieldName, bool beforeDeserialize)
-  {
-    // call BeforeDeserialize or Deserialize if applicable
-    if(iserializable != null)
-    {
-      if(store.NodeType == XmlNodeType.Element &&
-         !string.Equals(XmlConvert.DecodeName(store.LocalName), fieldName, StringComparison.Ordinal))
-      {
-        throw new ArgumentException("Unexpected element '"+store.LocalName+"'");
-      }
-
-      DeserializationStore customStore = new DeserializationStore(store);
-      if(beforeDeserialize)
-      {
-        iserializable.BeforeDeserialize(customStore);
-      }
-      else
-      {
-        iserializable.Deserialize(customStore);
-      }
-      customStore.Finish();
-    }
-  }
-
-  static void DeserializeSimpleObjectFields(Type objectType, object instance, XmlReader store)
+  static void DeserializeObjectFields(Type objectType, object instance, SexpReader store)
   {
     Dictionary<string, object> fieldNames = new Dictionary<string, object>();
     foreach(Type type in GetTypeHierarchy(objectType))
     {
-      DeserializeSimpleObjectFields(type, instance, store, fieldNames);
-    }
-
-    if(!store.IsEmptyElement) store.Read(); // read inside the open tag
-  }
-
-  static void DeserializeComplexObjectFields(Type objectType, object instance, XmlReader store)
-  {
-    Dictionary<string, object> fieldNames = new Dictionary<string, object>();
-    foreach(Type type in GetTypeHierarchy(objectType))
-    {
-      DeserializeComplexObjectFields(type, instance, store, fieldNames);
+      DeserializeObjectFields(type, instance, store, fieldNames);
     }
   }
 
-  static void DeserializeComplexObjectFields(Type type, object instance, XmlReader store,
-                                             Dictionary<string,object> fieldNames)
+  static void DeserializeObjectFields(Type type, object instance, SexpReader store,
+                                      Dictionary<string,object> fieldNames)
   {
     // get the instance fields (public and private)
     FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
@@ -1047,34 +1441,23 @@ public static class Serializer
     for(int i=0; i<fields.Length; i++)
     {
       FieldInfo fi = fields[i];
-      if(!ShouldSkipField(fi) && !IsSimpleType(fi.FieldType))
-      {
-        string fieldName = GetFieldName(fi.Name, fieldNames);
-        if(!string.Equals(store.LocalName, fieldName, StringComparison.Ordinal))
-        {
-          throw new ArgumentException("Expected node: " + fi.Name);
-        }
-        store.Read(); // read the data element
-        fi.SetValue(instance, InnerDeserialize(store));
-        ReadEndElement(store); // move past the the closing data element
-        ReadEndElement(store); // move past the the closing field name element
-      }
-    }
-  }
+      if(ShouldSkipField(fi)) continue;
 
-  static void DeserializeSimpleObjectFields(Type type, object instance, XmlReader store,
-                                            Dictionary<string,object> fieldNames)
-  {
-    // first, loop through fields and write the simple ones as attributes.
-    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
-                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
-    for(int i=0; i<fields.Length; i++)
-    {
-      FieldInfo fi = fields[i];
-      if(!ShouldSkipField(fi) && IsSimpleType(fi.FieldType))
+      string fieldName = GetFieldName(fi.Name, fieldNames);
+      object fieldValue;
+      store.ReadBeginElement(fieldName);
+
+      if(IsSimpleType(fi.FieldType))
       {
-        fi.SetValue(instance, ParseSimpleValue(store.GetAttribute(GetFieldName(fi.Name, fieldNames)), fi.FieldType));
+        fieldValue = ParseSimpleValue(store.ReadContent(), fi.FieldType);
       }
+      else
+      {
+        fieldValue = InnerDeserialize(store);
+      }
+
+      fi.SetValue(instance, fieldValue);
+      store.ReadEndElement();
     }
   }
 
@@ -1111,10 +1494,10 @@ public static class Serializer
   /// <summary>Parses a simple value from a string, given its type.</summary>
   static object ParseSimpleValue(string text, Type type)
   {
-    if(type.IsArray) // if it's an array, the text will be a comma separated list
+    if(type.IsArray) // if it's an array, the text will be a space separated list
     {
       Type elementType = type.GetElementType();
-      string[] values = text.Split(',');
+      string[] values = text.Split(' ');
       Array array = Array.CreateInstance(elementType, values.Length);
       for(int i=0; i<values.Length; i++)
       {
@@ -1126,18 +1509,28 @@ public static class Serializer
     {
       // special casing colors this way loses a bit of information because the Color object stores the color's name
       // as well. so Color.Red != Color.FromArgb(255, 0, 0), even though they'll render the same. this is acceptable.
-      string[] values = text.Split(',');
-      return System.Drawing.Color.FromArgb(values.Length == 4 ? int.Parse(values[3]) : 255,
-                                           int.Parse(values[0]), int.Parse(values[1]), int.Parse(values[2]));
+      if(text.IndexOf(',') == -1)
+      {
+        return System.Drawing.Color.FromName(text);
+      }
+      else
+      {
+        string[] values = text.Split(',');
+        return System.Drawing.Color.FromArgb(values.Length == 4 ? int.Parse(values[3]) : 255,
+                                             int.Parse(values[0]), int.Parse(values[1]), int.Parse(values[2]));
+      }
     }
     else
     {
       switch(Type.GetTypeCode(type))
       {
-        case TypeCode.Boolean: return XmlConvert.ToBoolean(text);
+        case TypeCode.Boolean: return text.ToLower() == "true";
         case TypeCode.Byte: return byte.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.Char: return (char)int.Parse(text, CultureInfo.InvariantCulture);
-        case TypeCode.DateTime: return DateTime.Parse(text, CultureInfo.InvariantCulture);
+        case TypeCode.DateTime:
+          // spaces were converted to '@' in GetSimpleValue because spaces are used to separate array elements.
+          // convert them back here.
+          return DateTime.Parse(text.Replace('@', ' '), CultureInfo.InvariantCulture);
         case TypeCode.Decimal: return decimal.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.Double: return double.Parse(text, CultureInfo.InvariantCulture);
         case TypeCode.Int16: return short.Parse(text, CultureInfo.InvariantCulture);
@@ -1180,24 +1573,12 @@ public static class Serializer
 
     throw new TypeLoadException("Unable to find type: "+name);
   }
-  
-  internal static void ReadEndElement(XmlReader store)
-  {
-    if(store.IsEmptyElement)
-    {
-      store.Read();
-    }
-    else
-    {
-      store.ReadEndElement();
-    }
-  }
   #endregion
 
   static string GetFieldName(string name, Dictionary<string,object> fieldNames)
   {
     string testName = name;
-    int which = 2;
+    int which = 2; // start disambiguation by appending "2" to the name, then proceed to "3", etc.
 
     while(fieldNames.ContainsKey(testName))
     {
@@ -1230,8 +1611,8 @@ public static class Serializer
     }
     else if(type.IsArray && type.GetArrayRank() == 1) // if it's a one-dimensional array ...
     {
-      Type subType = type.GetElementType(); // ... of a non-array, non-color simple type, then it's simple
-      return !subType.IsArray && subType != typeof(System.Drawing.Color) && IsSimpleType(subType);
+      Type subType = type.GetElementType(); // ... of a non-array simple type, then it's simple
+      return !subType.IsArray && IsSimpleType(subType);
     }
     else // otherwise, it's not simple
     {

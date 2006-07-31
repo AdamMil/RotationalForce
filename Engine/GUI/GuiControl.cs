@@ -392,7 +392,7 @@ public abstract class GuiControl : UniqueObject
   }
 
   /// <summary>The object in which this GUI control is contained, or NULL if it is the root of a control hierarchy.</summary>
-  GuiControl parent;
+  [NonSerialized] GuiControl parent;
 
   /// <summary>The position and size of the control within its parent, in pixels.</summary>
   Rectangle bounds = new Rectangle(0, 0, 100, 100);
