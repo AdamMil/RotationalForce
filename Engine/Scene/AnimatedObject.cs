@@ -70,7 +70,8 @@ public abstract class AnimationFrame
     get { return frameTime; }
     set
     {
-      if(value < 0) throw new ArgumentOutOfRangeException("FrameTime", value, "FrameTime cannot be negative.");
+      EngineMath.AssertValidFloat(value);
+      if(value < 0) throw new ArgumentOutOfRangeException("FrameTime", "FrameTime cannot be negative.");
       frameTime = value;
     }
   }

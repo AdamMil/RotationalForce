@@ -161,10 +161,9 @@ public abstract class SceneObject : GameObject, ISerializable
 
   public void SetBlendAlpha(double alpha)
   {
-    int intAlpha = (int)(alpha * 255);
-    if(intAlpha < 0 || intAlpha > 255)
-      throw new ArgumentOutOfRangeException("alpha", alpha, "Alpha value must be from 0 to 1");
-    blendColor = Color.FromArgb(intAlpha, blendColor.R, blendColor.G, blendColor.B);
+    EngineMath.AssertValidFloat(alpha);
+    if(alpha < 0 || alpha > 1) throw new ArgumentOutOfRangeException("alpha", "Alpha value must be from 0 to 1");
+    blendColor = Color.FromArgb((int)(alpha * 255), blendColor.R, blendColor.G, blendColor.B);
   }
 
   public void SetBlendingMode(SourceBlend source, DestinationBlend destination)
@@ -282,11 +281,9 @@ public abstract class SceneObject : GameObject, ISerializable
   
   public void SetCircularCollisionArea(double centerX, double centerY, double radius)
   {
-    EngineMath.AssertValidFloat(centerX);
-    EngineMath.AssertValidFloat(centerY);
-    EngineMath.AssertValidFloat(radius);
+    EngineMath.AssertValidFloats(centerX, centerY, radius);
 
-    if(radius < 0) throw new ArgumentOutOfRangeException("radius", radius, "Radius cannot be negative");
+    if(radius < 0) throw new ArgumentOutOfRangeException("radius", "Radius cannot be negative");
 
     collisionX         = centerX;
     collisionY         = centerY;
@@ -296,27 +293,31 @@ public abstract class SceneObject : GameObject, ISerializable
     flags = (flags & ~Flag.CollisionMask) | Flag.CircleCollision;
   }
   
-  public void SetRectangularCollisionArea(double left, double top, double right, double bottom)
+  public void SetRectangularCollisionArea(double x1, double y1, double x2, double y2)
   {
-    EngineMath.AssertValidFloat(left);
-    EngineMath.AssertValidFloat(top);
-    EngineMath.AssertValidFloat(right);
-    EngineMath.AssertValidFloat(bottom);
+    EngineMath.AssertValidFloats(x1, y1, x2, y2);
     
     // swap values as necessary to ensure that collisionX < collisionRight, etc.
-    if(right < left) EngineMath.Swap(ref left, ref right);
-    if(bottom < top) EngineMath.Swap(ref top, ref bottom);
+    if(x2 < x1) EngineMath.Swap(ref x1, ref x2);
+    if(y2 < y1) EngineMath.Swap(ref y1, ref y2);
 
-    collisionX = left;
-    collisionY = top;
-    collisionRight  = right;
-    collisionBottom = bottom;    
+    collisionX = x1;
+    collisionY = y1;
+    collisionRight  = x2;
+    collisionBottom = y2;    
 
     flags = (flags & ~Flag.CollisionMask) | Flag.RectangleCollision;
   }
 
   public void SetPolygonalCollisionArea(params Point[] points)
   {
+    #if DEBUG
+    foreach(Point point in points)
+    {
+      EngineMath.AssertValidFloats(point.X, point.Y);
+    }
+    #endif
+
     throw new NotImplementedException();
   }
 
@@ -336,6 +337,8 @@ public abstract class SceneObject : GameObject, ISerializable
 
   public Point LocalToScene(double localX, double localY)
   {
+    EngineMath.AssertValidFloats(localX, localY);
+
     // orient the point with our rotation
     Vector offset   = new Vector(localX, localY);
     double rotation = EffectiveRotation;
@@ -347,6 +350,7 @@ public abstract class SceneObject : GameObject, ISerializable
   
   public Vector LocalToScene(Vector localSize)
   {
+    EngineMath.AssertValidFloats(localSize.X, localSize.Y);
     return new Vector(localSize.X*0.5*Width, localSize.Y*0.5*Height);
   }
 
@@ -354,6 +358,8 @@ public abstract class SceneObject : GameObject, ISerializable
 
   public Point SceneToLocal(double sceneX, double sceneY)
   {
+    EngineMath.AssertValidFloats(sceneX, sceneY);
+
     // center the point around our origin, and scale it down by half our size (so it ends up between -1 and 1)
     Point localPoint = new Point((sceneX - position.X)*2/Width, (sceneY - position.Y)*2/Height);
     // then rotate it if necessary
@@ -367,6 +373,7 @@ public abstract class SceneObject : GameObject, ISerializable
   
   public Vector SceneToLocal(Vector sceneSize)
   {
+    EngineMath.AssertValidFloats(sceneSize.X, sceneSize.Y);
     return new Vector(sceneSize.X*2/Width, sceneSize.Y*2/Height);
   }
   #endregion
@@ -421,7 +428,7 @@ public abstract class SceneObject : GameObject, ISerializable
   /// <summary>Throws an exception if the group number is out of range.</summary>
   static void ValidateGroup(int group)
   {
-    if(group < 0 || group > 31) throw new ArgumentOutOfRangeException("group", group, "Group must be from 0 to 31.");
+    if(group < 0 || group > 31) throw new ArgumentOutOfRangeException("group", "Group must be from 0 to 31.");
   }
   #endregion
 
@@ -574,6 +581,8 @@ public abstract class SceneObject : GameObject, ISerializable
 
   public void UpdateLinkPoint(int linkID, double localX, double localY)
   {
+    EngineMath.AssertValidFloats(localX, localY);
+
     int index = FindLinkPoint(linkID);
     if(index == -1) throw new ArgumentException("The link with linkID "+linkID+" could not be found.");
     linkPoints[index].Offset     = new Vector(localX, localY);
@@ -582,6 +591,8 @@ public abstract class SceneObject : GameObject, ISerializable
 
   int AddLinkPoint(double localX, double localY, SceneObject child, bool owned)
   {
+    EngineMath.AssertValidFloats(localX, localY);
+
     int linkID = 0;
     for(int i=0; i<numLinkPoints; i++) // find the next link ID
     {
@@ -646,6 +657,8 @@ public abstract class SceneObject : GameObject, ISerializable
   public int Mount(SceneObject mountTo, double localX, double localY,
                    bool owned, bool trackRotation, bool inheritProperties)
   {
+    EngineMath.AssertValidFloats(localX, localY);
+
     if(mountTo == null) throw new ArgumentNullException("Parent object is null.");
 
     if(Scene != null && Scene != mountTo.Scene)
@@ -758,8 +771,7 @@ public abstract class SceneObject : GameObject, ISerializable
     { 
       if(value != position)
       {
-        EngineMath.AssertValidFloat(value.X);
-        EngineMath.AssertValidFloat(value.Y);
+        EngineMath.AssertValidFloats(value.X, value.Y);
         position = value;
         InvalidateSpatialInfo();
       }
@@ -775,8 +787,7 @@ public abstract class SceneObject : GameObject, ISerializable
     {
       if(value != size)
       {
-        EngineMath.AssertValidFloat(value.X);
-        EngineMath.AssertValidFloat(value.Y);
+        EngineMath.AssertValidFloats(value.X, value.Y);
         if(value.X < 0 || value.Y < 0)
         {
           throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
@@ -791,62 +802,28 @@ public abstract class SceneObject : GameObject, ISerializable
   public double X
   {
     get { return position.X; }
-    set
-    {
-      if(value != position.X)
-      {
-        EngineMath.AssertValidFloat(value);
-        position.X = value;
-        InvalidateSpatialInfo();
-      }
-    }
+    set { Position = new Point(value, Y); }
   }
   
   [Browsable(false)]
   public double Y
   {
     get { return position.Y; }
-    set
-    {
-      if(value != position.Y)
-      {
-        EngineMath.AssertValidFloat(value);
-        position.Y = value;
-        InvalidateSpatialInfo();
-      }
-    }
+    set { Position = new Point(X, value); }
   }
 
   [Browsable(false)]
   public double Width
   {
     get { return size.X; }
-    set
-    {
-      if(value != size.X)
-      {
-        EngineMath.AssertValidFloat(value);
-        if(value < 0) throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
-        size.X = value;
-        InvalidateSpatialInfo();
-      }
-    }
+    set { Size = new Vector(value, Height); }
   }
   
   [Browsable(false)]
   public double Height
   {
     get { return size.Y; }
-    set
-    {
-      if(value != size.Y)
-      {
-        EngineMath.AssertValidFloat(value);
-        if(value < 0) throw new ArgumentOutOfRangeException("Scene objects cannot have a negative size.");
-        size.Y = value;
-        InvalidateSpatialInfo();
-      }
-    }
+    set { Size = new Vector(Width, value); }
   }
 
   [Category("Spatial")]
@@ -905,8 +882,7 @@ public abstract class SceneObject : GameObject, ISerializable
     get { return acceleration; }
     set
     {
-      EngineMath.AssertValidFloat(value.X);
-      EngineMath.AssertValidFloat(value.Y);
+      EngineMath.AssertValidFloats(value.X, value.Y);
       acceleration = value;
     }
   }
@@ -924,8 +900,7 @@ public abstract class SceneObject : GameObject, ISerializable
     get { return velocity; }
     set
     {
-      EngineMath.AssertValidFloat(value.X);
-      EngineMath.AssertValidFloat(value.Y);
+      EngineMath.AssertValidFloats(value.X, value.Y);
       velocity = value;
     }
   }
@@ -934,32 +909,29 @@ public abstract class SceneObject : GameObject, ISerializable
   public double VelocityX
   {
     get { return velocity.X; }
-    set
-    {
-      EngineMath.AssertValidFloat(value);
-      velocity.X = value;
-    } 
+    set { Velocity = new Vector(value, VelocityY); } 
   }
 
   [Browsable(false)]
   public double VelocityY
   {
     get { return velocity.Y; }
-    set
-    {
-      EngineMath.AssertValidFloat(value);
-      velocity.Y = value;
-    } 
+    set { Velocity = new Vector(VelocityX, value); } 
   }
 
-  public void AddVelocity(double xv, double yv) { Velocity += new Vector(xv, yv); }
-  public void AddVelocity(Vector v) { Velocity += v; }
+  public void AddVelocity(double xv, double yv)
+  {
+    Velocity += new Vector(xv, yv);
+  }
+
+  public void AddVelocity(Vector v)
+  {
+    Velocity += v;
+  }
 
   public void AddVelocityPolar(double angle, double magnitude)
   {
-    EngineMath.AssertValidFloat(angle);
-    EngineMath.AssertValidFloat(magnitude);
-
+    EngineMath.AssertValidFloats(angle, magnitude);
     if(magnitude != 0.0)
     {
       Velocity += new Vector(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
@@ -973,8 +945,7 @@ public abstract class SceneObject : GameObject, ISerializable
 
   public void SetAccelerationPolar(double angle, double magnitude)
   {
-    EngineMath.AssertValidFloat(angle);
-    EngineMath.AssertValidFloat(magnitude);
+    EngineMath.AssertValidFloats(angle, magnitude);
 
     Acceleration = magnitude == 0.0 ?
       new Vector() : new Vector(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
@@ -989,8 +960,7 @@ public abstract class SceneObject : GameObject, ISerializable
 
   public void SetVelocityPolar(double angle, double magnitude)
   {
-    EngineMath.AssertValidFloat(angle);
-    EngineMath.AssertValidFloat(magnitude);
+    EngineMath.AssertValidFloats(angle, magnitude);
 
     if(magnitude == 0.0)
     {
@@ -1059,7 +1029,7 @@ public abstract class SceneObject : GameObject, ISerializable
     set
     {
       EngineMath.AssertValidFloat(lifetime);
-      if(lifetime < 0) throw new ArgumentOutOfRangeException("Lifetime", value, "Lifetime cannot be negative");
+      if(lifetime < 0) throw new ArgumentOutOfRangeException("Lifetime", "Lifetime cannot be negative");
       lifetime = value;
     }
   }

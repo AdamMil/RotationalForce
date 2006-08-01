@@ -140,7 +140,7 @@ public sealed class VectorAnimation : Animation
       set
       {
         if(strokeWidth < 0)
-          throw new ArgumentOutOfRangeException("StrokeWidth", value, "The stroke width cannot be negative.");
+          throw new ArgumentOutOfRangeException("StrokeWidth", "The stroke width cannot be negative.");
         strokeWidth = value;
       }
     }
@@ -223,6 +223,7 @@ public sealed class VectorAnimation : Animation
       {
         if(value != textureRotation)
         {
+          EngineMath.AssertValidFloat(value);
           textureRotation = value;
           InvalidateGeometry();
         }
@@ -268,7 +269,8 @@ public sealed class VectorAnimation : Animation
       {
         if(value != lodThreshold)
         {
-          if(value < 0) throw new ArgumentOutOfRangeException("LOD", value, "LOD cannot be negative.");
+          EngineMath.AssertValidFloat(value);
+          if(value < 0) throw new ArgumentOutOfRangeException("LOD", "LOD cannot be negative.");
           lodThreshold = value;
           InvalidateGeometry();
         }
@@ -293,7 +295,7 @@ public sealed class VectorAnimation : Animation
         {
           if(subdivisions < 1)
           {
-            throw new ArgumentOutOfRangeException("Subdivisions", value, "Subdivisions must be greater than or equal to 1.");
+            throw new ArgumentOutOfRangeException("Subdivisions", "Subdivisions must be greater than or equal to 1.");
           }
           subdivisions = value;
           InvalidateGeometry();
@@ -929,6 +931,7 @@ public sealed class VectorAnimation : Animation
       {
         if(value != position)
         {
+          EngineMath.AssertValidFloats(value.X, value.Y);
           position = value;
           InvalidateGeometry();
         }
@@ -959,6 +962,11 @@ public sealed class VectorAnimation : Animation
       {
         if(value != textureCoord)
         {
+          EngineMath.AssertValidFloats(value.X, value.Y);
+          if(value.X < 0 || value.X > 1 || value.Y < 0 || value.Y > 1)
+          {
+            throw new ArgumentOutOfRangeException("Texture coordinates must be from 0 to 1.");
+          }
           textureCoord = value;
           InvalidateGeometry();
         }

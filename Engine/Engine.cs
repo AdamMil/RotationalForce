@@ -26,42 +26,22 @@ public interface ITicker
 
 public static class Engine
 {
-  #region Tickers
-  public static void AddTicker(ITicker ticker)
+  public static IFileSystem FileSystem
   {
-    if(ticker == null) throw new ArgumentNullException("ticker");
-    if(!tickers.Contains(ticker)) tickers.Add(ticker);
+    get { return fileSystem; }
   }
 
-  public static void ClearTickers() { tickers.Clear(); }
-
-  public static void RemoveTicker(ITicker ticker)
+  public static void Initialize(IFileSystem fileSystem)
   {
-    if(ticker == null) throw new ArgumentNullException("ticker");
-    tickers.Remove(ticker);
-  }
-
-  public static void Simulate(double timeDelta)
-  {
-    for(int i=0; i<tickers.Count; i++)
-    {
-      tickers[i].Tick(timeDelta);
-    }
-  }
-  #endregion
-
-  #region Initialize and Deinitialize
-  public static void Initialize()
-  {
+    if(fileSystem == null) throw new ArgumentNullException();
     GLVideo.Initialize();
   }
 
   public static void Deinitialize()
   {
-    ClearTickers();
     GLVideo.Deinitialize();
+    fileSystem = null;
   }
-  #endregion
 
   public static void CreateWindow(int width, int height, string windowTitle, ScreenFlag flags)
   {
@@ -73,6 +53,13 @@ public static class Engine
     GameLib.Video.WM.WindowTitle = windowTitle;
 
     ResetOpenGL();
+  }
+
+  public static void Render(DesktopControl desktop)
+  {
+    desktop.Invalidate();
+    desktop.Render();
+    GLVideo.Flip();
   }
 
   public static void ResetOpenGL() { ResetOpenGL(GLVideo.Width, GLVideo.Height, GLVideo.DisplaySurface.Bounds); }
@@ -105,19 +92,36 @@ public static class Engine
 
     GL.glMatrixMode(GL.GL_MODELVIEW);
     GL.glLoadIdentity();
-    GL.glTranslated(0.375, 0.375, 0); // opengl "exact pixelization" hack described in Redbook appendix H
+    GL.glTranslated(0.375, 0.375, 0); // opengl "exact pixelization" hack described in OpenGL Redbook appendix H
 
     Video.SetViewport(screenHeight, viewport);
   }
-  
-  public static void Render(DesktopControl desktop)
+
+  public static void Simulate(double timeDelta)
   {
-    desktop.Invalidate();
-    desktop.Render();
-    GLVideo.Flip();
+    EngineMath.AssertValidFloat(timeDelta);
+    if(timeDelta < 0) throw new ArgumentOutOfRangeException("timeDelta", "Time delta cannot be negative.");
+
+    for(int i=0; i<tickers.Count; i++)
+    {
+      tickers[i].Tick(timeDelta);
+    }
+  }
+
+  internal static void AddTicker(ITicker ticker)
+  {
+    if(ticker == null) throw new ArgumentNullException("ticker");
+    if(!tickers.Contains(ticker)) tickers.Add(ticker);
+  }
+
+  internal static void RemoveTicker(ITicker ticker)
+  {
+    if(ticker == null) throw new ArgumentNullException("ticker");
+    tickers.Remove(ticker);
   }
   
   static List<ITicker> tickers = new List<ITicker>();
+  static IFileSystem fileSystem;
 }
 
 } // namespace RotationalForce.Engine
