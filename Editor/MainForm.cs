@@ -82,6 +82,14 @@ sealed class MainForm : Form
   {
     UpdateTitle();
     UpdateFileMenu();
+    if(project == null)
+    {
+      Engine.Engine.Deinitialize();
+    }
+    else
+    {
+      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.BasePath, project.EditorDataPath));
+    }
   }
 
   void OpenLevel()

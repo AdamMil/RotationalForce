@@ -104,6 +104,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return currentCamera.Center; }
     set
     {
+      EngineMath.AssertValidFloats(value.X, value.Y);
       StopCameraMove();
       currentCamera.Center = value;
       OnCameraChanged();
@@ -139,6 +140,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return currentCamera.Size; }
     set
     {
+      EngineMath.AssertValidFloat(value);
       currentCamera.Size = value;
       SetFlag(Flag.CameraMoving, false); // can't use StopCameraMove() because we want this to work with mounting, too.
       OnCameraChanged();
@@ -161,7 +163,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return currentCamera.CameraZoom; }
     set
     {
-      if(value <= 0) throw new ArgumentOutOfRangeException("CameraZoom", value, "Camera zoom cannot be negative.");
+      EngineMath.AssertValidFloat(value);
+      if(value <= 0) throw new ArgumentOutOfRangeException("CameraZoom", "Camera zoom cannot be negative.");
       currentCamera.CameraZoom = value;
       SetFlag(Flag.CameraMoving, false); // can't use StopCameraMove() because we want this to work with mounting, too.
       OnCameraChanged();
@@ -173,7 +176,11 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public Point TargetCameraPosition
   {
     get { return targetCamera.Center; }
-    set { targetCamera.Center = value; }
+    set
+    {
+      EngineMath.AssertValidFloats(value.X, value.Y);
+      targetCamera.Center = value;
+    }
   }
 
   /// <summary>Gets/sets the size of the target camera view within the scene, in scene units.</summary>
@@ -182,7 +189,11 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public double TargetCameraSize
   {
     get { return targetCamera.Size; }
-    set { targetCamera.Size = value; }
+    set
+    {
+      EngineMath.AssertValidFloat(value);
+      targetCamera.Size = value;
+    }
   }
 
   /// <summary>Gets/sets the target camera zoom factor.</summary>
@@ -196,7 +207,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return targetCamera.CameraZoom; }
     set
     {
-      if(value<0) throw new ArgumentOutOfRangeException("TargetCameraZoom", value, "Camera zoom cannot be negative.");
+      EngineMath.AssertValidFloat(value);
+      if(value < 0) throw new ArgumentOutOfRangeException("TargetCameraZoom", "Camera zoom cannot be negative.");
       targetCamera.CameraZoom = value;
     }
   }
@@ -217,6 +229,12 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// </param>
   public void StartCameraMove(double interpolationTime)
   {
+    EngineMath.AssertValidFloat(interpolationTime);
+    if(interpolationTime < 0)
+    {
+      throw new ArgumentOutOfRangeException("interpolationTime", "Interpolation time cannot be negative.");
+    }
+
     AssertNotMounted();
     SetInterpolationTime(interpolationTime);
     InternalStartCameraMove(true);
@@ -366,7 +384,11 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public double MountLookahead
   {
     get { return mountLookahead; }
-    set { mountLookahead = value; }
+    set
+    {
+      EngineMath.AssertValidFloat(value);
+      mountLookahead = value;
+    }
   }
 
   /// <summary>Gets/sets an arbitrary offset applied to the camera's mount target.</summary>
@@ -378,7 +400,11 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public Vector MountOffset
   {
     get { return mountOffset; }
-    set { mountOffset = value; }
+    set
+    {
+      EngineMath.AssertValidFloats(value.X, value.Y);
+      mountOffset = value;
+    }
   }
 
   /// <summary>Gets/sets the maximum distance the camera can be from its mount point, in scene units.</summary>
@@ -390,8 +416,9 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return mountRadius; }
     set
     {
+      EngineMath.AssertValidFloat(value);
       if(mountRadius < 0)
-        throw new ArgumentOutOfRangeException("MountRadius", value, "Mount radius cannot be negative.");
+        throw new ArgumentOutOfRangeException("MountRadius", "Mount radius cannot be negative.");
       mountRadius = value;
     }
   }
@@ -407,8 +434,9 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get { return mountRigidity; }
     set
     {
+      EngineMath.AssertValidFloat(value);
       if(mountRigidity < 0)
-        throw new ArgumentOutOfRangeException("MountRigidity", value, "Mount rigidity cannot be negative.");
+        throw new ArgumentOutOfRangeException("MountRigidity", "Mount rigidity cannot be negative.");
       mountRigidity = value;
     }
   }
@@ -429,6 +457,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// </remarks>
   public void MountCamera(SceneObject mountTo, double offsetX, double offsetY, bool snapToMount)
   {
+    EngineMath.AssertValidFloats(offsetX, offsetY);
     if(mountTo == null) throw new ArgumentNullException("mountTo", "Can't mount the camera to a null object.");
 
     if(CameraMounted) DismountCamera();
@@ -508,6 +537,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// <returns>The point relative to the client area of the scene view, in pixels.</returns>
   public SPoint SceneToClient(Point scenePoint)
   {
+    EngineMath.AssertValidFloats(scenePoint.X, scenePoint.Y);
     CalculateCameraView();
     return new SPoint((int)Math.Round((scenePoint.X-ZoomedArea.X) / UnitsPerPixel),
                       (int)Math.Round((scenePoint.Y-ZoomedArea.Y) / UnitsPerPixel));
@@ -518,6 +548,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// <returns>The rectangle relative to the client area of the scene view, in pixels.</returns>
   public SRectangle SceneToClient(Rectangle sceneRect)
   {
+    EngineMath.AssertValidFloats(sceneRect.Width, sceneRect.Height);
     return new SRectangle(SceneToClient(sceneRect.Location), // SceneToClient will call CalculateCameraView
                           new Size((int)Math.Round(sceneRect.Width  / UnitsPerPixel),
                                    (int)Math.Round(sceneRect.Height / UnitsPerPixel)));
@@ -526,6 +557,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// <summary>Converts a distance in scene coordinates to a distance in client coordinates.</summary>
   public Size SceneToClient(Vector sceneSize)
   {
+    EngineMath.AssertValidFloats(sceneSize.X, sceneSize.Y);
     CalculateCameraView();
     return new Size((int)Math.Round(sceneSize.X/UnitsPerPixel), (int)Math.Round(sceneSize.Y/UnitsPerPixel));
   }
