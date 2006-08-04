@@ -10,19 +10,46 @@ using GLPoint = GameLib.Mathematics.TwoD.Point;
 namespace RotationalForce.Engine
 {
 
-public enum FilterMode
+#region Texture enums
+/// <summary>The type of texture filtering that will be performed.</summary>
+public enum FilterMode : byte
 {
-  NearestNeighbor, Bilinear
+  /// <summary>No filtering will be done for either magnification or minification. This is the default.</summary>
+  None,
+  /// <summary>Bilinear filtering will be done for magnification and minification.</summary>
+  Smooth,
 }
 
+/// <summary>Determines how texture coordinates outside the range of 0 to 1 will be handled.</summary>
+/// <remarks>Note that this only applies to the final OpenGL coordinates, not the coordinates within a single frame
+/// (frame coordinates). See <see cref="ImageMap.TextureWrap"/> for more information.
+/// </remarks>
+public enum TextureWrap : byte
+{
+  /// <summary>Texture coordinates will be clamped to the range of 0 to 1. This is the default.</summary>
+  Clamp,
+  /// <summary>Texture the integral part of the texture coordinate will be ignored, so texture values will be wrapped
+  /// around (eg, 1.6 becomes 0.6).
+  /// </summary>
+  Repeat
+}
+#endregion
+
 #region ImageMap
-public abstract class ImageMap : IDisposable
+/// <summary>The base class for image maps, which represent one or more image frames within a single OpenGL texture.</summary>
+public abstract class ImageMap : UniqueObject, IDisposable
 {
   protected ImageMap(string imageFile)
   {
     if(string.IsNullOrEmpty(imageFile)) throw new ArgumentException("Image file path cannot be empty.");
     this.imageFile = imageFile;
   }
+  
+  /// <summary>Initializes the image map when it's being deserialized.</summary>
+  /// <remarks>Derived classes should provide a constructor with the same signature (it can be private). This is
+  /// necessary to allow the ImageMap to be deserialized, because it does not have a default constructor.
+  /// </remarks>
+  protected ImageMap(ISerializable dummy) { }
 
   ~ImageMap()
   {
@@ -32,18 +59,23 @@ public abstract class ImageMap : IDisposable
   #region Frame
   public sealed class Frame
   {
-    internal Frame(uint textureID, double x, double y, double width, double height)
+    internal Frame(uint textureID, Rectangle imageArea, Size textureSize)
     {
       this.textureID = textureID;
-      this.x         = x;
-      this.y         = y;
-      this.width     = width;
-      this.height    = height;
+      this.x         = (double)imageArea.X / textureSize.Width;
+      this.y         = (double)imageArea.Y / textureSize.Height;
+      this.width     = (double)imageArea.Width  / textureSize.Width;
+      this.height    = (double)imageArea.Height / textureSize.Height;
     }
 
-    public GLPoint GetTextureCoord(GLPoint localCoord)
+    public Size Size
     {
-      return new GLPoint(x + localCoord.X*width, y + localCoord.Y*height);
+      get { return imageSize; }
+    }
+
+    public GLPoint GetTextureCoord(GLPoint frameCoord)
+    {
+      return new GLPoint(x + frameCoord.X*width, y + frameCoord.Y*height);
     }
 
     internal void Bind()
@@ -53,9 +85,16 @@ public abstract class ImageMap : IDisposable
 
     double x, y, width, height;
     uint textureID;
+    Size imageSize;
   }
   #endregion
 
+  /// <summary>Gets or sets the type of texture filtering that will be performed.</summary>
+  /// <remarks>Texture filtering can increase the quality of the image when it's being rendered at a size larger or
+  /// smaller than its usual size, but it also blurs the image slightly, reduces rendering performance, and can
+  /// increase memory usage due to additional padding that needs to be added between frames in an image (possibly
+  /// bumping the texture size up to the next power of two). The default is <see cref="FilterMode.None"/>.
+  /// </remarks>
   public FilterMode FilterMode
   {
     get { return filterMode; }
@@ -63,13 +102,14 @@ public abstract class ImageMap : IDisposable
     {
       if(value != filterMode)
       {
-        FilterMode oldMode = filterMode;
         filterMode = value;
-        OnFilterModeChanged(oldMode);
+        OnFilterModeChanged();
+        modeDirty = true;
       }
     }
   }
 
+  /// <summary>Gets a collection of <see cref="Frame">Frames</see> in the image map.</summary>
   public ReadOnlyCollection<Frame> Frames
   {
     get
@@ -79,25 +119,113 @@ public abstract class ImageMap : IDisposable
     }
   }
 
+  /// <summary>Gets the path of the image file providing the data for this image map. This is the same as the path
+  /// passed to the constructor.
+  /// </summary>
   public string ImageFile
   {
     get { return imageFile; }
   }
 
+  /// <summary>Gets or sets how texture coordinates outside the range of 0 to 1 will be handled.</summary>
+  /// <remarks>Note that this only applies to the final OpenGL coordinates, not the coordinates within a single frame
+  /// (frame coordinates). This essentially means that you cannot safely use frame coordinates outside the range
+  /// 0 to 1, unless you know that frame coordinates correspond directly to OpenGL texture coordinates. This is
+  /// guaranteed in only one case -- when using a <see cref="FullImageMap"/> with an image that has dimensions that are
+  /// powers of two in length. The default is <see cref="TextureWrap.Clamp"/>.
+  /// </remarks>
+  public TextureWrap TextureWrap
+  {
+    get { return textureWrap; }
+    set
+    {
+      if(value != textureWrap)
+      {
+        textureWrap = value;
+        modeDirty = true;
+      }
+    }
+  }
+
+  /// <summary>Gets or sets the OpenGL texture priority for this image map, as a value from 0 to 1.</summary>
+  /// <remarks>The texture priority determines how OpenGL's memory manager will determine the set of textures to keep
+  /// in texture memory. Textures kept in texture memory are much more efficient than those not, so you should set the
+  /// priority of important and commonly-used textures higher than less important or more rarely-used textures. The
+  /// default is 0.5.
+  /// </remarks>
+  public float Priority
+  {
+    get { return priority; }
+    set
+    {
+      if(value != priority)
+      {
+        if(value < 0 || value > 1)
+        {
+          throw new ArgumentOutOfRangeException("Priority", "Texture priority must be from 0 to 1");
+        }
+
+        priority = value;
+
+        if(textureID != 0) // if the texture is already allocated, set its priority immediately
+        {
+          GL.glPrioritizeTexture(textureID, priority);
+        }
+      }
+    }
+  }
+
+  /// <summary>Binds a frame from this image map as the current OpenGL texture.</summary>
+  /// <param name="frame">The index of the <see cref="Frame"/> to bind.</param>
   public void BindFrame(int frame)
   {
     EnsureFrames();
     frames[frame].Bind();
+
+    if(modeDirty) // if the texture mode has changed, tell GL about it
+    {
+      uint textureWrap = TextureWrap == TextureWrap.Clamp ? GL.GL_CLAMP_TO_EDGE : GL.GL_REPEAT;
+      GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, textureWrap);
+      GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, textureWrap);
+
+      bool nearestNeighbor = FilterMode == FilterMode.None;
+      GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, nearestNeighbor ? GL.GL_NEAREST : GL.GL_LINEAR);
+      GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, nearestNeighbor ? GL.GL_NEAREST : GL.GL_LINEAR);
+      modeDirty = false;
+    }
   }
 
+  /// <summary>Converts a point from frame coordinates to texture coordinates.</summary>
+  /// <param name="frame">The index of the <see cref="Frame"/>.</param>
+  /// <param name="frameCoord">The frame coordinates. This should be from 0 to 1, unless you know that texture wrapping
+  /// will work for this texture. See <see cref="TextureWrap"/> for more details about texture wrapping.
+  /// </param>
+  /// <returns>Returns the OpenGL texture coordinates corresponding to the coordinates within the frame.</returns>
+  public GLPoint GetTextureCoord(int frame, GLPoint frameCoord)
+  {
+    EnsureFrames();
+    return frames[frame].GetTextureCoord(frameCoord);
+  }
+
+  /// <summary>Releases the OpenGL resources held by this image map.</summary>
   public void Dispose()
   {
     GC.SuppressFinalize(this);
     Dispose(false);
   }
 
+  /// <summary>Called when the frames and texture data need to be calculated.</summary>
+  /// <remarks>When called, the <see cref="textureID"/> field will name a valid OpenGL texture and the
+  /// <see cref="frames"/> collection will be empty.
+  /// The base class does not require the texture data to be loaded any time except the first. (The base class
+  /// will not free the texture data until the class is disposed.), so if derived classes can avoid reloading the
+  /// texture data, they should.
+  /// </remarks>
   protected abstract void CalculateFrames();
 
+  /// <summary>Called when the image map is being disposed.</summary>
+  /// <param name="finalizing">True if the object is being finalized.</param>
+  /// <remarks>Derived classes can override this to release additional resources, but should always call the base.</remarks>
   protected virtual void Dispose(bool finalizing)
   {
     if(textureID != 0)
@@ -107,71 +235,115 @@ public abstract class ImageMap : IDisposable
     }
   }
 
+  /// <summary>Called to ensure that the frames and texture data are recalculated if necessary.</summary>
+  /// <remarks>Note that if OpenGL cannot allocate the texture, the frames collection will not be populated!</remarks>
   protected void EnsureFrames()
   {
     if(framesDirty)
     {
-      if(textureID == 0)
+      // clear the 'framesDirty' flag immediately so that if something fails, we don't keep retrying 100 times per
+      // frame.
+      // TODO: think about how to communicate texture loading failure to the user of the engine
+      framesDirty = false;
+
+      if(textureID == 0) // try to allocate the texture if that hasn't been done yet
       {
         GL.glGenTexture(out textureID);
       }
 
-      if(textureID != 0)
+      if(textureID != 0) // if the texture was allocated
       {
-        CalculateFrames();
-        framesDirty = false;
+        uint oldTextureID;
+        GL.glGetIntegerv(GL.GL_TEXTURE_BINDING_2D, out oldTextureID);
+
+        try
+        {
+          GL.glBindTexture(GL.GL_TEXTURE_2D, textureID); // bind our texture
+          CalculateFrames();
+          GL.glPrioritizeTexture(textureID, priority); // set the priority
+        }
+        finally
+        {
+          GL.glBindTexture(GL.GL_TEXTURE_2D, oldTextureID); // and restore the old texture when we're done
+        }
       }
     }
   }
 
+  /// <summary>Given a surface without an alpha channel, guesses the appropriate color key.</summary>
+  /// <returns>A raw color that can be passed to <see cref="Surface.SetColorKey(uint)"/>.</returns>
+  protected uint GetColorKey(Surface surface)
+  {
+    // uses palette entry 0 for 8-bit images and the color of the top-left pixel for other images
+    return surface.Format.Depth == 8 ? 0 : surface.GetPixelRaw(0, 0);
+  }
+
+  /// <summary>Returns a <see cref="Stream"/> containing the image data. This stream should be closed when the derived
+  /// class is done with it.
+  /// </summary>
   protected Stream GetImageStream()
   {
     return Engine.FileSystem.OpenForRead(imageFile);
   }
 
+  /// <summary>Invalidates the <see cref="Frames"/> so that <see cref="CalculateFrames"/> will be called the next time
+  /// the frames are accessed.
+  /// </summary>
   protected void Invalidate()
   {
-    if(frames != null)
-    {
-      frames.Clear();
-    }
-
+    frames.Clear();
     framesDirty = true;
   }
 
-  protected virtual void OnFilterModeChanged(FilterMode oldMode) { }
+  /// <summary>Called when the <see cref="FilterMode"/> is changed. Derived classes can handle this to invalidate the
+  /// frame data (by calling <see cref="Invalidate"/>) if necessary.
+  /// </summary>
+  protected virtual void OnFilterModeChanged() { }
 
-  [NonSerialized] protected List<Frame> frames;
+  [NonSerialized] protected List<Frame> frames = new List<Frame>();
   [NonSerialized] protected uint textureID;
   string imageFile;
   FilterMode filterMode;
-  bool framesDirty;
+  TextureWrap textureWrap = TextureWrap.Clamp;
+  float priority = 0.5f;
+  [NonSerialized] bool framesDirty = true, modeDirty = true;
 }
 #endregion
 
 #region FullImageMap
+/// <summary>Loads an entire image as a single frame.</summary>
 public sealed class FullImageMap : ImageMap
 {
   public FullImageMap(string imageFile) : base(imageFile) { }
+  
+  FullImageMap(ISerializable dummy) : base(dummy) { }
 
   protected override void CalculateFrames()
   {
     using(Surface surface = new Surface(GetImageStream()))
     {
+      // if the surface doesn't have an alpha channel, we'll use the color key
+      if(surface.Format.AlphaMask == 0 && surface.Width > 0 && surface.Height > 0)
+      {
+        surface.SetColorKey(GetColorKey(surface));
+      }
+
       Size textureSize;
       OpenGL.TexImage2D(surface, out textureSize);
-      frames.Add(new Frame(textureID, 0, 0, (double)surface.Width/textureSize.Width,
-                           (double)surface.Height/textureSize.Height));
+      frames.Add(new Frame(textureID, new Rectangle(0, 0, surface.Width, surface.Height), textureSize));
     }
   }
 }
 #endregion
 
 #region TiledImageMap
+/// <summary>Loads an image as a set of tiles, creating multiple frames in a single texture.</summary>
 public sealed class TiledImageMap : ImageMap
 {
   public TiledImageMap(string imageFile) : base(imageFile) { }
-  
+
+  TiledImageMap(ISerializable dummy) : base(dummy) { }
+
   /// <summary>Gets or sets the maximum number of tiles in the image, or can be set to 0 (the default) to have no
   /// limit.
   /// </summary>
@@ -266,15 +438,136 @@ public sealed class TiledImageMap : ImageMap
       throw new InvalidOperationException("Tile stride cannot have any dimensions smaller "+
                                           "in magnitude than the tile size.");
     }
+    
+    using(Surface surface = new Surface(GetImageStream()))
+    {
+      // find how much space we have available to retrieve tiles from. if the stride is negative, we'll move from the
+      // start point (plus the first tile's size) towards the left/top. otherwise, we'll move from the start point
+      // towards the right/bottom.
+      Size availableSpace =
+        new Size(tileStride.Width  > 0 ? surface.Width  - tileStart.X : tileStart.X + tileSize.Width,
+                 tileStride.Height > 0 ? surface.Height - tileStart.Y : tileStart.Y + tileSize.Height);
 
-    throw new NotImplementedException();
+      int numTiles;
+
+      // if the space isn't enough to get any tiles from, return immediately.
+      if(availableSpace.Width < tileSize.Width || availableSpace.Height < tileSize.Height)
+      {
+        return;
+      }
+      // otherwise, make sure there's enough room to read the first tile
+      else if(tileStart.X + tileSize.Width > surface.Width || tileStart.Y + tileSize.Height > surface.Height)
+      {
+        throw new InvalidOperationException("The start point must be positioned such that there is enough room for a "+
+                                            "tile of size TileSize with its top-left pixel at the start point.");
+      }
+      else
+      {
+        // calculate the number of tiles. the first tile retrieved is not affected by the stride, only subsequent ones,
+        // so we subtract the tile size, divide by the stride, and add one (for the first tile that was subtracted out)
+        int horzTiles = (availableSpace.Width  - tileSize.Width)  / Math.Abs(tileStride.Width)  + 1;
+        int vertTiles = (availableSpace.Height - tileSize.Height) / Math.Abs(tileStride.Height) + 1;
+        numTiles = horzTiles * vertTiles; // calculate the total number of tiles
+        if(tileLimit != 0 && numTiles > tileLimit) numTiles = tileLimit; // and apply the tile limit if there is one
+      }
+
+      Size textureSize = new Size();
+
+      // use a simple, brute force algorithm to calculate the optimum texture size given filter padding and OpenGL
+      // texture size limitations. for 10 tiles, it will try 10x1, 5x2, 4x3, 3x4, 2x5, and 1x10
+      for(int texturePixels=int.MaxValue, numRows=1; numRows <= numTiles; ) // numRows is incremented at the bottom
+      {
+        int numCols = (numTiles + numRows-1) / numRows;
+        Size pixelDimensions = new Size(numCols*tileSize.Width, numRows*tileSize.Height);
+
+        // if we're using filtering, we'll need filter padding. there will be (numCols-1)*2 pixels added to the width
+        // and (numRows-1)*2 pixels added to the height
+        if(FilterMode != FilterMode.None)
+        {
+          pixelDimensions.Width  += (numCols-1)*2;
+          pixelDimensions.Height += (numRows-1)*2;
+        }
+        
+        // now get the smallest texture that can hold an image of this size. this depends on the OpenGL implementation
+        pixelDimensions = OpenGL.GetTextureSize(pixelDimensions);
+
+        // calculate the number of pixels in this texture, and if it's less than the smallest we've found so far, set
+        // this as the new optimum size.
+        int numPixels = pixelDimensions.Width * pixelDimensions.Height;
+        if(numPixels < texturePixels)
+        {
+          textureSize   = pixelDimensions;
+          texturePixels = numPixels;
+        }
+
+        do // after trying, say, 2x5, it doesn't make sense to try 2x6, 2x7, 2x8, or 2x9, which can never be more
+        {  // efficient than 2x5. so, we always increment numRows until the number of columns changes. this allows
+          numRows++; // us to skip directly from 2x5 to 1x10, for instance.
+        } while((numTiles + numRows-1) / numRows == numCols);
+      }
+
+      // now that we have the optimum texture size, create a surface of that size and pack the textures into it.
+      // we don't need to use the same number of rows and columns as above, and won't bother trying.
+      using(Surface newSurface = new Surface(textureSize.Width, textureSize.Height, surface.Format))
+      {
+        // if the surface doesn't have an alpha channel, we'll use the color key
+        if(surface.Format.AlphaMask == 0)
+        {
+          newSurface.SetColorKey(GetColorKey(surface));
+          // but we don't use the key on the source because we want the transparent pixels to be copied, not skipped
+          surface.UsingKey = false;
+        }
+
+        // now, copy the tiles from one surface to the other
+        Point srcPoint = tileStart, destPoint = new Point();
+        for(int i=0; i<numTiles; i++)
+        {
+          surface.Blit(newSurface, new Rectangle(srcPoint, tileSize), destPoint); // copy the tile over to the texture
+          
+          // now add a frame based on where the tile is
+          frames.Add(new Frame(textureID, new Rectangle(destPoint, tileSize), newSurface.Size));
+
+          // now update the source X by adding the stride width. (note that stride can be negative)
+          srcPoint.X += tileStride.Width;
+
+          // if we have consumed all the tiles in this row, reset the source X and add the stride height
+          if(tileStride.Width > 0 && surface.Width - srcPoint.X < tileSize.Width ||
+             tileStride.Width < 0 && srcPoint.X < 0)
+          {
+            srcPoint.X  = tileStart.X;
+            srcPoint.Y += tileStride.Height;
+          }
+
+          if(FilterMode != FilterMode.None) // if we need texture padding, add it
+          {
+            OpenGL.AddTextureBorder(newSurface, new Rectangle(destPoint, tileSize));
+          }
+
+          // now update the destination X by adding the tile size (and filter padding if we need it)
+          destPoint.X += (FilterMode == FilterMode.None ? tileSize.Width : tileSize.Width+2);
+          
+          // if we can't fit any more tiles in this row, reset the destination X and add the tile height
+          if(newSurface.Width - destPoint.X < tileSize.Width)
+          {
+            destPoint.X  = 0;
+            destPoint.Y += (FilterMode == FilterMode.None ? tileSize.Height : tileSize.Height+2);
+          }
+        }
+
+        // now upload the texture into the video card
+        OpenGL.TexImage2D(newSurface);
+
+        // finally, set 'tilesPadded' to indicate whether we added any padding
+        // (so that we can avoid invalidating the texture unnecessarily)
+        tilesPadded = FilterMode != FilterMode.None;
+      }
+    }
   }
 
-  protected override void OnFilterModeChanged(FilterMode oldMode)
+  protected override void OnFilterModeChanged()
   {
-    // if the old filter mode was nearest neighbor (and the new filter mode is not), and the image doesn't have padded
-    // tiles, then padding needs to be added
-    if(oldMode == FilterMode.NearestNeighbor && !tilesPadded)
+    // if the new filter mode needs padding, but the image doesn't have padded tiles, then padding needs to be added
+    if(FilterMode != FilterMode.None && !tilesPadded)
     {
       Invalidate();
     }
@@ -283,7 +576,7 @@ public sealed class TiledImageMap : ImageMap
   Size tileSize = new Size(32, 32), tileStride = new Size(32, 32);
   Point tileStart;
   int tileLimit;
-  bool tilesPadded;
+  [NonSerialized] bool tilesPadded;
 }
 #endregion
 

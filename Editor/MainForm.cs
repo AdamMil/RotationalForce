@@ -88,7 +88,7 @@ sealed class MainForm : Form
     }
     else
     {
-      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.BasePath, project.EditorDataPath));
+      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EditorDataPath));
     }
   }
 
@@ -156,6 +156,7 @@ sealed class MainForm : Form
     {
       if(TryCloseAllWindows())
       {
+        project.Dispose();
         project = null;
         OnProjectChanged();
       }

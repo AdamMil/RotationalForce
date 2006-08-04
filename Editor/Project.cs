@@ -1,14 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Xml;
 using System.Text;
+using RotationalForce.Engine;
 
 namespace RotationalForce.Editor
 {
 
-sealed class Project
+sealed class Project : IDisposable
 {
-  const string Images = "data/images", Audio = "data/audio", Levels = "data/levels", EditorData = "editorData";
+  const string Images = "images", Audio = "audio", Levels = "levels", EditorData = "editorData";
 
   Project(string basePath)
   {
@@ -22,6 +24,19 @@ sealed class Project
 
     path        = Path.GetFullPath(basePath);
     projectNode = doc.DocumentElement;
+    
+    if(!path.EndsWith(Path.DirectorySeparatorChar.ToString()))
+    {
+      path += Path.DirectorySeparatorChar;
+    }
+  }
+
+  public void Dispose()
+  {
+    foreach(ImageMap map in imageMaps.Values)
+    {
+      map.Dispose();
+    }
   }
 
   #region Level
@@ -84,9 +99,19 @@ sealed class Project
     get { return Path.Combine(path, EditorData); }
   }
 
+  public string EngineDataPath
+  {
+    get { return Path.Combine(path, "data"); }
+  }
+
+  public string ImagesPath
+  {
+    get { return Path.Combine(EngineDataPath, Images); }
+  }
+
   public string LevelsPath
   {
-    get { return Path.Combine(path, Levels); }
+    get { return Path.Combine(EngineDataPath, Levels); }
   }
 
   public Level CreateLevel()
@@ -103,9 +128,64 @@ sealed class Project
     return level;
   }
 
+  public string GetEnginePath(string filename)
+  {
+    if(!IsUnderDataPath(filename)) throw new ArgumentException("Filename is not under the base path.");
+    return NormalizePath(Path.GetFullPath(filename).Remove(0, path.Length+5)); // remove path + data/
+  }
+
+  public void AddImageMapNode(string imgPath)
+  {
+    XmlNode imageMaps = projectNode.SelectSingleNode("imageMaps");
+    if(imageMaps == null)
+    {
+      imageMaps = projectNode.OwnerDocument.CreateElement("imageMaps");
+      projectNode.AppendChild(imageMaps);
+    }
+    
+    XmlElement imageMap = projectNode.OwnerDocument.CreateElement("imageMap");
+    imageMap.SetAttribute("src", imgPath);
+
+    projectModified = true;
+  }
+
+  public ImageMap GetImageMap(string enginePath)
+  {
+    ImageMap map;
+    imageMaps.TryGetValue(enginePath.ToLowerInvariant(), out map);
+    return map;
+  }
+  
+  public void SetImageMap(string enginePath, ImageMap map)
+  {
+    if(enginePath == null || map == null) throw new ArgumentNullException();
+    enginePath = enginePath.ToLowerInvariant();
+
+    if(!imageMaps.ContainsKey(enginePath))
+    {
+      AddImageMapNode(enginePath);
+    }
+    else
+    {
+      // dispose of the old map if it's a different object
+      ImageMap oldMap = imageMaps[enginePath];
+      if(oldMap != map)
+      {
+        oldMap.Dispose();
+      }
+    }
+
+    imageMaps[enginePath] = map;
+  }
+
   public string GetLevelPath(string filename)
   {
     return Path.Combine(LevelsPath, filename);
+  }
+
+  public bool IsUnderDataPath(string filename)
+  {
+    return NormalizePath(Path.GetFullPath(filename)).StartsWith(NormalizePath(path)+"data/");
   }
 
   public static Project Create(string basePath)
@@ -115,10 +195,11 @@ sealed class Project
       throw new DirectoryNotFoundException();
     }
 
-    Directory.CreateDirectory(Path.Combine(basePath, Images));
-    Directory.CreateDirectory(Path.Combine(basePath, Audio));
-    Directory.CreateDirectory(Path.Combine(basePath, Levels));
-    Directory.CreateDirectory(Path.Combine(basePath, EditorData));
+    string engineDataPath = Path.Combine(basePath, "data");
+    Directory.CreateDirectory(Path.Combine(engineDataPath, Images));
+    Directory.CreateDirectory(Path.Combine(engineDataPath, Audio));
+    Directory.CreateDirectory(Path.Combine(engineDataPath, Levels));
+    Directory.CreateDirectory(Path.Combine(engineDataPath, EditorData));
 
     StreamWriter projectFile = new StreamWriter(Path.Combine(basePath, "rfproject.xml"), false, Encoding.UTF8);
     projectFile.WriteLine(@"<?xml version=""1.0"" encoding=""utf-8"" ?>");
@@ -133,8 +214,32 @@ sealed class Project
     return new Project(basePath);
   }
 
+  public static string DenormalizePath(string enginePath)
+  {
+    if(Path.DirectorySeparatorChar != '/' && Path.AltDirectorySeparatorChar != '/')
+    {
+      enginePath = enginePath.Replace('/', Path.DirectorySeparatorChar);
+    }
+    return enginePath;
+  }
+
+  public static string NormalizePath(string path)
+  {
+    if(Path.DirectorySeparatorChar != '/')
+    {
+      path = path.Replace(Path.DirectorySeparatorChar, '/');
+    }
+    if(Path.AltDirectorySeparatorChar != '/')
+    {
+      path = path.Replace(Path.AltDirectorySeparatorChar, '/');
+    }
+    return path.ToLowerInvariant();
+  }
+
   XmlElement projectNode;
   string path;
+  Dictionary<string,ImageMap> imageMaps = new Dictionary<string,ImageMap>();
+  bool projectModified;
 }
 
 } // namespace RotationalForce.Editor
