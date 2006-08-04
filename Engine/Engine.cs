@@ -34,6 +34,7 @@ public static class Engine
   public static void Initialize(IFileSystem fileSystem)
   {
     if(fileSystem == null) throw new ArgumentNullException();
+    Engine.fileSystem = fileSystem;
     GLVideo.Initialize();
   }
 
@@ -85,7 +86,9 @@ public static class Engine
     GL.glPointSize(1);               // pixels, too.
     GL.glShadeModel(GL.GL_FLAT);     // use flat shading by default
     GL.glBlendFunc(GL.GL_ONE, GL.GL_ZERO); // use the default blend mode
-    
+
+    GL.glBindTexture(GL.GL_TEXTURE_2D, 0); // unbind any bound texture
+
     GL.glMatrixMode(GL.GL_PROJECTION);
     GL.glLoadIdentity();
     GLU.gluOrtho2D(0, viewport.Width, viewport.Height, 0);

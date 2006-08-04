@@ -262,6 +262,7 @@ class RenderPanel : Control
       needRender = false;
 
       GLBuffer.SetCurrent(GetBuffer());
+      Engine.Engine.ResetOpenGL(Width, Height, ClientRectangle);
       RenderBackground(this, EventArgs.Empty);
       GL.glFlush();
 

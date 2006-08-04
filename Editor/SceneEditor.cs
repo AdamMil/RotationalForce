@@ -3354,7 +3354,72 @@ public class SceneEditor : Form, IEditorForm
 
   private void newStaticImage_Click(object sender, EventArgs e)
   {
+    OpenFileDialog ofd = new OpenFileDialog();
+    ofd.Filter = "Image files (png;jpeg;pcx;bmp)|*.png;*.jpg;*.jpeg;*.pcx;*.bmp|All files (*.*)|*.*";
+    ofd.Title  = "Select an image to import";
+    ofd.InitialDirectory = Project.ImagesPath;
+    if(ofd.ShowDialog() != DialogResult.OK) return;
+    
+    string fileName = ofd.FileName;
+    if(!Project.IsUnderDataPath(fileName))
+    {
+      do
+      {
+        if(MessageBox.Show("This file is not under the project's data path. You'll need to copy it there to continue.",
+                           "Copy file?", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.Cancel)
+        {
+          return;
+        }
 
+        SaveFileDialog sfd = new SaveFileDialog();
+        sfd.FileName = Path.GetFileName(ofd.FileName);
+        sfd.Filter   = "All files (*.*)|*.*";
+        sfd.Title    = "Select the path to which the image will be copied";
+        sfd.InitialDirectory = Project.ImagesPath;
+        if(sfd.ShowDialog() != DialogResult.OK)
+        {
+          return;
+        }
+
+        fileName = sfd.FileName;
+      } while(!Project.IsUnderDataPath(fileName));
+      
+      File.Copy(ofd.FileName, fileName, true);
+    }
+
+    string mapFile = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName)+".map");
+    string imgFile = Project.GetEnginePath(fileName);
+
+    ImageMap imap = Project.GetImageMap(imgFile);
+    if(imap != null)
+    {
+      MessageBox.Show("An image map for this image has already been loaded into the project. In the future, use the "+
+                      "'Import' command to load this image map into a level.", "Image map already exists",
+                      MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    ImageMapDialog md = new ImageMapDialog();
+    if(imap == null)
+    {
+      md.CreateNew(imgFile);
+    }
+    else
+    {
+      md.Open(imap);
+    }
+
+    if(md.ShowDialog() == DialogResult.OK)
+    {
+      Serializer.BeginBatch();
+      Serializer.Serialize(md.ImageMap, File.Open(mapFile, FileMode.Create, FileAccess.Write));
+      Serializer.EndBatch();
+
+      Project.SetImageMap(imgFile, md.ImageMap);
+    }
+    else if(md.ImageMap != imap) // dispose the image map if it's not the one we gave it, and we're not going to use it
+    {
+      md.ImageMap.Dispose();
+    }
   }
   #endregion
 
@@ -3367,7 +3432,6 @@ public class SceneEditor : Form, IEditorForm
   #region Painting, rendering, and layout
   private void renderPanel_RenderBackground(object sender, EventArgs e)
   {
-    Engine.Engine.ResetOpenGL(renderPanel.Width, renderPanel.Height, renderPanel.ClientRectangle);
     sceneView.Invalidate();
     desktop.Render();
   }
