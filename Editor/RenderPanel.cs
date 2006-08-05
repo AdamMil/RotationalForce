@@ -63,6 +63,11 @@ sealed class GLBuffer : IDisposable
       throw new ApplicationException("Failure in wglCreateContext");
     }
     
+    if(globalBuffer != null)
+    {
+      wglShareLists(globalBuffer.hglrc, hglrc);
+    }
+
     this.width  = width;
     this.height = height;
   }
@@ -135,6 +140,8 @@ sealed class GLBuffer : IDisposable
 
   [ThreadStatic] static WeakReference currentBuffer;
 
+  static GLBuffer globalBuffer = new GLBuffer(1, 1);
+
   [Flags]
   enum PFlag : uint
   {
@@ -198,6 +205,8 @@ sealed class GLBuffer : IDisposable
   static extern int wglDeleteContext(IntPtr hglrc);
   [DllImport("opengl32.dll")]
   static extern int wglMakeCurrent(IntPtr hdc, IntPtr hglrc);
+  [DllImport("opengl32.dll")]
+  static extern int wglShareLists(IntPtr hglrcSrc, IntPtr hglrcDest);
   [DllImport("kernel32.dll")]
   static extern uint GetLastError();
 }

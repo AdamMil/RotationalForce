@@ -44,8 +44,9 @@ public interface IFileSystem
   /// <param name="pattern">A pattern to use to match filenames. The pattern is a standard filename except that the
   /// '*' character should match arbitrary substrings.
   /// </param>
+  /// <param name="recurse">If true the search will recurse into subdirectories.</param>
   /// <returns>An array of fully-qualified paths to files that matched the given pattern.</returns>
-  string[] GetFiles(string directory, string pattern);
+  string[] GetFiles(string directory, string pattern, bool recurse);
   /// <summary>Opens a file for reading.</summary>
   /// <param name="path">
   /// A relative path naming a file within the filesystem. The directory separator character should be '/'.
@@ -90,13 +91,14 @@ public class StandardFileSystem : IFileSystem
 
   public virtual bool Exists(string path) { return File.Exists(GetRealPath(path)); }
 
-  public virtual string[] GetFiles(string directory, string pattern)
+  public virtual string[] GetFiles(string directory, string pattern, bool recurse)
   {
     if(directory == null || pattern == null) throw new ArgumentNullException();
     string realDirectory = GetRealPath(directory);
     if(!Directory.Exists(realDirectory)) return new string[0];
     if(!directory.EndsWith("/")) directory += "/";
-    string[] files = Directory.GetFiles(realDirectory, pattern);
+    string[] files = Directory.GetFiles(realDirectory, pattern,
+                                        recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
     for(int i=0; i<files.Length; i++)
     {
       files[i] = directory + Path.GetFileName(files[i]);
