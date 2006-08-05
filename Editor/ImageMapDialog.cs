@@ -40,8 +40,8 @@ namespace RotationalForce.Editor
 
     public void CreateNew(string imageFile)
     {
-      imageMap = new FullImageMap(imageFile);
       imageName.Text = Path.GetFileNameWithoutExtension(Project.DenormalizePath(imageFile)).Replace(" ", "");
+      imageMap = new FullImageMap(imageName.Text, imageFile);
       OnTypeChanged();
       LoadImageSize();
     }
@@ -49,6 +49,7 @@ namespace RotationalForce.Editor
     public void Open(ImageMap map)
     {
       imageMap = map;
+      imageName.Text = map.Name;
       OnTypeChanged();
       LoadImageSize();
     }
@@ -80,8 +81,8 @@ namespace RotationalForce.Editor
       this.tileStartX = new System.Windows.Forms.TextBox();
       this.tileHeight = new System.Windows.Forms.TextBox();
       this.tileWidth = new System.Windows.Forms.TextBox();
-      this.renderPanel = new RenderPanel();
       this.lblImageSize = new System.Windows.Forms.Label();
+      this.renderPanel = new RotationalForce.Editor.RenderPanel();
       label1 = new System.Windows.Forms.Label();
       lblImageMode = new System.Windows.Forms.Label();
       lblImageName = new System.Windows.Forms.Label();
@@ -187,17 +188,6 @@ namespace RotationalForce.Editor
       lblTileWidth.Text = "Tile width";
       lblTileWidth.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
       // 
-      // btnSave
-      // 
-      this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-      this.btnSave.DialogResult = System.Windows.Forms.DialogResult.OK;
-      this.btnSave.Location = new System.Drawing.Point(5, 251);
-      this.btnSave.Name = "btnSave";
-      this.btnSave.Size = new System.Drawing.Size(75, 23);
-      this.btnSave.TabIndex = 12;
-      this.btnSave.Text = "&Save";
-      this.btnSave.UseVisualStyleBackColor = true;
-      // 
       // btnCancel
       // 
       btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
@@ -208,6 +198,17 @@ namespace RotationalForce.Editor
       btnCancel.TabIndex = 13;
       btnCancel.Text = "Cancel";
       btnCancel.UseVisualStyleBackColor = true;
+      // 
+      // btnSave
+      // 
+      this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+      this.btnSave.DialogResult = System.Windows.Forms.DialogResult.OK;
+      this.btnSave.Location = new System.Drawing.Point(5, 251);
+      this.btnSave.Name = "btnSave";
+      this.btnSave.Size = new System.Drawing.Size(75, 23);
+      this.btnSave.TabIndex = 12;
+      this.btnSave.Text = "&Save";
+      this.btnSave.UseVisualStyleBackColor = true;
       // 
       // grpImage
       // 
@@ -235,6 +236,7 @@ namespace RotationalForce.Editor
       this.filterMode.Name = "filterMode";
       this.filterMode.Size = new System.Drawing.Size(120, 21);
       this.filterMode.TabIndex = 3;
+      this.filterMode.SelectedIndexChanged += new System.EventHandler(this.filterMode_SelectedIndexChanged);
       // 
       // imageMode
       // 
@@ -247,6 +249,7 @@ namespace RotationalForce.Editor
       this.imageMode.Name = "imageMode";
       this.imageMode.Size = new System.Drawing.Size(120, 21);
       this.imageMode.TabIndex = 2;
+      this.imageMode.SelectedIndexChanged += new System.EventHandler(this.imageMode_SelectedIndexChanged);
       // 
       // imageName
       // 
@@ -254,6 +257,7 @@ namespace RotationalForce.Editor
       this.imageName.Name = "imageName";
       this.imageName.Size = new System.Drawing.Size(194, 20);
       this.imageName.TabIndex = 1;
+      this.imageName.LostFocus += new System.EventHandler(this.imageName_LostFocus);
       // 
       // grpTile
       // 
@@ -335,6 +339,15 @@ namespace RotationalForce.Editor
       this.tileWidth.TabIndex = 5;
       this.tileWidth.Text = "32";
       // 
+      // lblImageSize
+      // 
+      this.lblImageSize.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+      this.lblImageSize.Location = new System.Drawing.Point(294, 251);
+      this.lblImageSize.Name = "lblImageSize";
+      this.lblImageSize.Size = new System.Drawing.Size(200, 20);
+      this.lblImageSize.TabIndex = 14;
+      this.lblImageSize.Text = "Image size: ";
+      // 
       // renderPanel
       // 
       this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
@@ -345,16 +358,7 @@ namespace RotationalForce.Editor
       this.renderPanel.Size = new System.Drawing.Size(263, 237);
       this.renderPanel.TabIndex = 20;
       this.renderPanel.TabStop = false;
-      this.renderPanel.RenderBackground += new EventHandler(renderPanel_RenderBackground);
-      // 
-      // lblImageSize
-      // 
-      this.lblImageSize.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-      this.lblImageSize.Location = new System.Drawing.Point(294, 251);
-      this.lblImageSize.Name = "lblImageSize";
-      this.lblImageSize.Size = new System.Drawing.Size(200, 20);
-      this.lblImageSize.TabIndex = 14;
-      this.lblImageSize.Text = "Image size: ";
+      this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
       // 
       // ImageMapDialog
       // 
@@ -398,28 +402,78 @@ namespace RotationalForce.Editor
       imageMode.SelectedItem = imageMap is FullImageMap ? "Full" : "Tiled";
       filterMode.SelectedItem = imageMap.FilterMode.ToString();
       grpTile.Enabled = !(imageMap is FullImageMap);
+      renderPanel.InvalidateRender();
     }
 
     void renderPanel_RenderBackground(object sender, EventArgs e)
     {
+      GL.glClear(GL.GL_COLOR_BUFFER_BIT);
       GL.glEnable(GL.GL_TEXTURE_2D);
+
+      if(imageMap is FullImageMap)
+      {
+        RenderFullImage();
+      }
+      
+      GL.glDisable(GL.GL_TEXTURE_2D);
+    }
+    
+    void RenderFullImage()
+    {
+      Size frameSize = imageMap.Frames[0].Size; // get the size of the frame in pixels
+
+      Rectangle displayArea = new Rectangle();
+      // given the frame size, see how high it would be if scaled to the full width of the renderpanel
+      displayArea.Width  = renderPanel.Width;
+      displayArea.Height = (int)Math.Round(renderPanel.Width * frameSize.Height / (double)frameSize.Width);
+
+      // if it would be too high, then do it the other way, scaling it to the full height of the renderpanel
+      if(displayArea.Height > renderPanel.Height)
+      {
+        displayArea.Width  = (int)Math.Round(renderPanel.Height * frameSize.Width / (double)frameSize.Height);
+        displayArea.Height = renderPanel.Height;
+      }
+
+      // now center the display area within the render panel
+      displayArea.X = (renderPanel.Width  - displayArea.Width)  / 2;
+      displayArea.Y = (renderPanel.Height - displayArea.Height) / 2;
+
       imageMap.BindFrame(0);
 
       GL.glBegin(GL.GL_QUADS);
         GL.glTexCoord2d(imageMap.GetTextureCoord(0, new GLPoint(0, 0)));
-        GL.glVertex2i(0, 0);
+        GL.glVertex2i(displayArea.Left, displayArea.Top);
 
         GL.glTexCoord2d(imageMap.GetTextureCoord(0, new GLPoint(1, 0)));
-        GL.glVertex2i(renderPanel.Width, 0);
+        GL.glVertex2i(displayArea.Right, displayArea.Top);
 
         GL.glTexCoord2d(imageMap.GetTextureCoord(0, new GLPoint(1, 1)));
-        GL.glVertex2i(renderPanel.Width, renderPanel.Height);
+        GL.glVertex2i(displayArea.Right, displayArea.Bottom);
 
         GL.glTexCoord2d(imageMap.GetTextureCoord(0, new GLPoint(0, 1)));
-        GL.glVertex2i(0, renderPanel.Height);
+        GL.glVertex2i(displayArea.Left, displayArea.Bottom);
       GL.glEnd();
-      
-      GL.glDisable(GL.GL_TEXTURE_2D);
+    }
+
+    void imageName_LostFocus(object sender, EventArgs e)
+    {
+      imageMap.Name = imageName.Text;
+    }
+
+    void imageMode_SelectedIndexChanged(object sender, EventArgs e)
+    {
+      ImageMap newMap = (string)imageMode.SelectedItem == "Full" ? new FullImageMap(imageMap.Name, imageMap.ImageFile)
+        : (ImageMap)new TiledImageMap(imageMap.Name, imageMap.ImageFile);
+      newMap.FilterMode = imageMap.FilterMode;
+      imageMap.Dispose();
+      imageMap = newMap;
+      OnTypeChanged();
+    }
+
+    void filterMode_SelectedIndexChanged(object sender, EventArgs e)
+    {
+      imageMap.FilterMode = (FilterMode)Enum.Parse(typeof(FilterMode), (string)filterMode.SelectedItem);
+      renderPanel.InvalidateRender();
     }
 
     ImageMap imageMap;

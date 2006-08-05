@@ -39,10 +39,11 @@ public enum TextureWrap : byte
 /// <summary>The base class for image maps, which represent one or more image frames within a single OpenGL texture.</summary>
 public abstract class ImageMap : UniqueObject, IDisposable
 {
-  protected ImageMap(string imageFile)
+  protected ImageMap(string mapName, string imageFile)
   {
     if(string.IsNullOrEmpty(imageFile)) throw new ArgumentException("Image file path cannot be empty.");
     this.imageFile = imageFile;
+    this.Name = mapName;
   }
   
   /// <summary>Initializes the image map when it's being deserialized.</summary>
@@ -66,6 +67,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
       this.y         = (double)imageArea.Y / textureSize.Height;
       this.width     = (double)imageArea.Width  / textureSize.Width;
       this.height    = (double)imageArea.Height / textureSize.Height;
+      this.imageSize = imageArea.Size;
     }
 
     public Size Size
@@ -127,6 +129,23 @@ public abstract class ImageMap : UniqueObject, IDisposable
     get { return imageFile; }
   }
 
+  /// <summary>Gets or sets the friendly name of this image map. This is the name by which objects will reference the
+  /// image map.
+  /// </summary>
+  public string Name
+  {
+    get { return name; }
+    set
+    {
+      if(string.IsNullOrEmpty(value))
+      {
+        throw new ArgumentException("Image map name cannot be null or empty.");
+      }
+      name = value;
+      Engine.OnImageMapNameChanged(this);
+    }
+  }
+
   /// <summary>Gets or sets how texture coordinates outside the range of 0 to 1 will be handled.</summary>
   /// <remarks>Note that this only applies to the final OpenGL coordinates, not the coordinates within a single frame
   /// (frame coordinates). This essentially means that you cannot safely use frame coordinates outside the range
@@ -184,7 +203,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
 
     if(modeDirty) // if the texture mode has changed, tell GL about it
     {
-      uint textureWrap = TextureWrap == TextureWrap.Clamp ? GL.GL_CLAMP_TO_EDGE : GL.GL_REPEAT;
+      uint textureWrap = TextureWrap == TextureWrap.Clamp ? GL.GL_CLAMP : GL.GL_REPEAT;
       GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, textureWrap);
       GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, textureWrap);
 
@@ -228,6 +247,8 @@ public abstract class ImageMap : UniqueObject, IDisposable
   /// <remarks>Derived classes can override this to release additional resources, but should always call the base.</remarks>
   protected virtual void Dispose(bool finalizing)
   {
+    Engine.OnImageMapDisposed(this);
+
     if(textureID != 0)
     {
       GL.glDeleteTexture(textureID);
@@ -302,7 +323,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
 
   [NonSerialized] protected List<Frame> frames = new List<Frame>();
   [NonSerialized] protected uint textureID;
-  string imageFile;
+  string imageFile, name;
   FilterMode filterMode;
   TextureWrap textureWrap = TextureWrap.Clamp;
   float priority = 0.5f;
@@ -314,7 +335,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
 /// <summary>Loads an entire image as a single frame.</summary>
 public sealed class FullImageMap : ImageMap
 {
-  public FullImageMap(string imageFile) : base(imageFile) { }
+  public FullImageMap(string mapName, string imageFile) : base(mapName, imageFile) { }
   
   FullImageMap(ISerializable dummy) : base(dummy) { }
 
@@ -340,7 +361,7 @@ public sealed class FullImageMap : ImageMap
 /// <summary>Loads an image as a set of tiles, creating multiple frames in a single texture.</summary>
 public sealed class TiledImageMap : ImageMap
 {
-  public TiledImageMap(string imageFile) : base(imageFile) { }
+  public TiledImageMap(string mapName, string imageFile) : base(mapName, imageFile) { }
 
   TiledImageMap(ISerializable dummy) : base(dummy) { }
 
@@ -491,10 +512,12 @@ public sealed class TiledImageMap : ImageMap
         // now get the smallest texture that can hold an image of this size. this depends on the OpenGL implementation
         pixelDimensions = OpenGL.GetTextureSize(pixelDimensions);
 
-        // calculate the number of pixels in this texture, and if it's less than the smallest we've found so far, set
-        // this as the new optimum size.
+        // calculate the number of pixels in this texture, and if it's less than the smallest we've found so far, or
+        // it's more square, set it as the new optimum size.
         int numPixels = pixelDimensions.Width * pixelDimensions.Height;
-        if(numPixels < texturePixels)
+        if(numPixels < texturePixels ||
+           (numPixels == texturePixels &&
+            pixelDimensions.Width+pixelDimensions.Height < textureSize.Width+textureSize.Height))
         {
           textureSize   = pixelDimensions;
           texturePixels = numPixels;
@@ -502,8 +525,8 @@ public sealed class TiledImageMap : ImageMap
 
         do // after trying, say, 2x5, it doesn't make sense to try 2x6, 2x7, 2x8, or 2x9, which can never be more
         {  // efficient than 2x5. so, we always increment numRows until the number of columns changes. this allows
-          numRows++; // us to skip directly from 2x5 to 1x10, for instance.
-        } while((numTiles + numRows-1) / numRows == numCols);
+          numRows++; // us to skip directly from 2x5 to 1x10, for instance. also, we break when numCols == 1 to avoid
+        } while(numCols != 1 && (numTiles + numRows-1) / numRows == numCols); // an infinite loop.
       }
 
       // now that we have the optimum texture size, create a surface of that size and pack the textures into it.
@@ -516,6 +539,11 @@ public sealed class TiledImageMap : ImageMap
           newSurface.SetColorKey(GetColorKey(surface));
           // but we don't use the key on the source because we want the transparent pixels to be copied, not skipped
           surface.UsingKey = false;
+        }
+
+        if(surface.Format.Depth == 8) // if the image is palettized, copy the palette
+        {
+          newSurface.SetPalette(surface.GetPalette());
         }
 
         // now, copy the tiles from one surface to the other

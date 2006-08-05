@@ -122,7 +122,17 @@ public static class Engine
     if(ticker == null) throw new ArgumentNullException("ticker");
     tickers.Remove(ticker);
   }
-  
+
+  internal static void OnImageMapDisposed(ImageMap map)
+  {
+    // TODO: implement once we have image map handling
+  }
+
+  internal static void OnImageMapNameChanged(ImageMap map)
+  {
+    // TODO: implement once we have image map handling
+  }
+
   static List<ITicker> tickers = new List<ITicker>();
   static IFileSystem fileSystem;
 }
