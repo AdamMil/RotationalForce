@@ -668,7 +668,7 @@ namespace RotationalForce.Editor
 
     void wrapMode_SelectedIndexChanged(object sender, EventArgs e)
     {
-      imageMap.TextureWrap = (TextureWrap)Enum.Parse(typeof(TextureWrap), (string)filterMode.SelectedItem);
+      imageMap.TextureWrap = (TextureWrap)Enum.Parse(typeof(TextureWrap), (string)wrapMode.SelectedItem);
       renderPanel.InvalidateRender();
     }
 

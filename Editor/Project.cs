@@ -8,7 +8,7 @@ using RotationalForce.Engine;
 namespace RotationalForce.Editor
 {
 
-sealed class Project : IDisposable
+sealed class Project
 {
   const string Images = "images", Audio = "audio", Levels = "levels", EditorData = "editorData";
 
@@ -28,14 +28,6 @@ sealed class Project : IDisposable
     if(!path.EndsWith(Path.DirectorySeparatorChar.ToString()))
     {
       path += Path.DirectorySeparatorChar;
-    }
-  }
-
-  public void Dispose()
-  {
-    foreach(ImageMap map in imageMaps.Values)
-    {
-      map.Dispose();
     }
   }
 
@@ -134,53 +126,22 @@ sealed class Project : IDisposable
     return NormalizePath(Path.GetFullPath(filename).Remove(0, path.Length+5)); // remove path + data/
   }
 
-  public void AddImageMapNode(string imgPath)
+  public string GetLevelPath(string filename)
   {
-    XmlNode imageMaps = projectNode.SelectSingleNode("imageMaps");
-    if(imageMaps == null)
-    {
-      imageMaps = projectNode.OwnerDocument.CreateElement("imageMaps");
-      projectNode.AppendChild(imageMaps);
-    }
-    
-    XmlElement imageMap = projectNode.OwnerDocument.CreateElement("imageMap");
-    imageMap.SetAttribute("src", imgPath);
-
-    projectModified = true;
+    return Path.Combine(LevelsPath, filename);
   }
 
   public ImageMap GetImageMap(string enginePath)
   {
-    ImageMap map;
-    imageMaps.TryGetValue(enginePath.ToLowerInvariant(), out map);
-    return map;
-  }
-  
-  public void SetImageMap(string enginePath, ImageMap map)
-  {
-    if(enginePath == null || map == null) throw new ArgumentNullException();
-    enginePath = enginePath.ToLowerInvariant();
-
-    if(!imageMaps.ContainsKey(enginePath))
+    foreach(ImageMap map in Engine.Engine.GetImageMaps())
     {
-      AddImageMapNode(enginePath);
-    }
-    else
-    {
-      // dispose of the old map if it's a different object
-      ImageMap oldMap = imageMaps[enginePath];
-      if(oldMap != map)
+      if(string.Equals(enginePath, map.ImageFile, StringComparison.OrdinalIgnoreCase))
       {
-        oldMap.Dispose();
+        return map;
       }
     }
 
-    imageMaps[enginePath] = map;
-  }
-
-  public string GetLevelPath(string filename)
-  {
-    return Path.Combine(LevelsPath, filename);
+    return null;
   }
 
   public bool IsUnderDataPath(string filename)
@@ -238,7 +199,6 @@ sealed class Project : IDisposable
 
   XmlElement projectNode;
   string path;
-  Dictionary<string,ImageMap> imageMaps = new Dictionary<string,ImageMap>();
   bool projectModified;
 }
 

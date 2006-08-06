@@ -17,7 +17,6 @@ namespace RotationalForce.Editor
 
 public class SceneEditor : Form, IEditorForm
 {
-  const string TriggerName = "__trigger__";
   const int DecorationRadius = 8;
   const double DefaultViewSize = 100;
   
@@ -40,10 +39,11 @@ public class SceneEditor : Form, IEditorForm
 
     InitializeComponent();
 
-    ListViewItem triggerItem = new ListViewItem("Trigger", 0, objectList.Groups[3]);
-    triggerItem.Tag = TriggerName;
-    objectList.Items.Add(triggerItem);
-    
+    foreach(ToolboxItem item in ToolboxItem.GetItems())
+    {
+      AddToolboxItem(item);
+    }
+
     toolBar.Items[0].Tag = Tools.Object;
     toolBar.Items[1].Tag = Tools.Layers;
     toolBar.Items[2].Tag = Tools.Zoom;
@@ -58,11 +58,6 @@ public class SceneEditor : Form, IEditorForm
 
     desktop = new DesktopControl();
     desktop.AddChild(sceneView);
-  }
-
-  static SceneEditor()
-  {
-    ToolboxItem.RegisterItem(TriggerName, new TriggerItem());
   }
 
   #region IEditorForm
@@ -320,7 +315,7 @@ public class SceneEditor : Form, IEditorForm
       }
     }
   }
-  
+
   int currentLayer = 0;
   uint visibleLayerMask = 0xffffffff;
   bool renderToCurrentLayer;
@@ -332,7 +327,7 @@ public class SceneEditor : Form, IEditorForm
   }
 
   #region InitializeComponent
-  private void InitializeComponent()
+  void InitializeComponent()
   {
     this.components = new System.ComponentModel.Container();
     System.Windows.Forms.ToolStripButton selectTool;
@@ -613,9 +608,9 @@ public class SceneEditor : Form, IEditorForm
     this.statusBar.PerformLayout();
     this.ResumeLayout(false);
     this.PerformLayout();
-
+ 
   }
-
+ 
   #endregion
 
   #region Tools
@@ -3211,6 +3206,122 @@ public class SceneEditor : Form, IEditorForm
   Toolbox toolbox;
   #endregion
 
+  #region Toolbox
+  void AddToolboxItem(ToolboxItem item)
+  {
+    ListViewItem lvItem = new ListViewItem(item.DisplayName, 0, objectList.Groups[(int)item.Category]);
+    lvItem.Tag = item;
+    objectList.Items.Add(lvItem);
+  }
+  
+  void SetToolboxItem(ToolboxItem item)
+  {
+    foreach(ListViewItem lvItem in objectList.Items)
+    {
+      if(string.Equals(item.Name, ((ToolboxItem)lvItem.Tag).Name, StringComparison.Ordinal))
+      {
+        lvItem.Tag = item;
+        return;
+      }
+    }
+    
+    AddToolboxItem(item);
+  }
+
+  void renderPanel_DragEnter(object sender, DragEventArgs e)
+  {
+    e.Effect = DragDropEffects.Copy;
+  }
+
+  void renderPanel_DragDrop(object sender, DragEventArgs e)
+  {
+    string itemName = (string)e.Data.GetData(DataFormats.StringFormat);
+    ToolboxItem item = ToolboxItem.GetItem(itemName);
+    if(item != null)
+    {
+      SceneObject obj = item.CreateSceneObject(sceneView);
+      obj.Position = sceneView.ClientToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
+      obj.Layer    = CurrentLayer;
+      scene.AddObject(obj);
+      InvalidateRender();
+
+      CurrentTool = Tools.Object;
+      Tools.Object.SubTool = Tools.Object.SpatialTool;
+      Tools.Object.SelectObject(obj, true);
+    }
+  }
+
+  void newStaticImage_Click(object sender, EventArgs e)
+  {
+    OpenFileDialog ofd = new OpenFileDialog();
+    ofd.Filter = "Image files (png;jpeg;pcx;bmp)|*.png;*.jpg;*.jpeg;*.pcx;*.bmp|All files (*.*)|*.*";
+    ofd.Title  = "Select an image to import";
+    ofd.InitialDirectory = Project.ImagesPath;
+    if(ofd.ShowDialog() != DialogResult.OK) return;
+    
+    string fileName = ofd.FileName;
+    if(!Project.IsUnderDataPath(fileName))
+    {
+      do
+      {
+        if(MessageBox.Show("This file is not under the project's data path. You'll need to copy it there to continue.",
+                           "Copy file?", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.Cancel)
+        {
+          return;
+        }
+
+        SaveFileDialog sfd = new SaveFileDialog();
+        sfd.FileName = Path.GetFileName(ofd.FileName);
+        sfd.Filter   = "All files (*.*)|*.*";
+        sfd.Title    = "Select the path to which the image will be copied";
+        sfd.InitialDirectory = Project.ImagesPath;
+        if(sfd.ShowDialog() != DialogResult.OK)
+        {
+          return;
+        }
+
+        fileName = sfd.FileName;
+      } while(!Project.IsUnderDataPath(fileName));
+      
+      File.Copy(ofd.FileName, fileName, true);
+    }
+
+    string mapFile = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName)+".map");
+    string imgFile = Project.GetEnginePath(fileName);
+
+    ImageMap imap = Project.GetImageMap(imgFile);
+    if(imap != null)
+    {
+      MessageBox.Show("An image map for this image has already been loaded into the project. The existing map will "+
+                      "edited.", "Image map already exists", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    ImageMapDialog md = new ImageMapDialog();
+    if(imap == null)
+    {
+      md.CreateNew(imgFile);
+    }
+    else
+    {
+      md.Open(imap);
+    }
+
+    if(md.ShowDialog() == DialogResult.OK)
+    {
+      Serializer.BeginBatch();
+      Serializer.Serialize(md.ImageMap, File.Open(mapFile, FileMode.Create, FileAccess.Write));
+      Serializer.EndBatch();
+
+      Engine.Engine.AddImageMap(md.ImageMap);
+      SetToolboxItem(new StaticImageItem(md.ImageMap));
+    }
+    else if(md.ImageMap != imap) // dispose the image map if it's not the one we gave it, and we're not going to use it
+    {
+      md.ImageMap.Dispose();
+    }
+  }
+  #endregion
+ 
   #region RenderPanel UI events
   void renderPanel_KeyDown(object sender, KeyEventArgs e)
   {
@@ -3236,7 +3347,7 @@ public class SceneEditor : Form, IEditorForm
       }
     }
   }
-
+ 
   void renderPanel_KeyUp(object sender, KeyEventArgs e)
   {
     if(!renderPanel.Focused) return;
@@ -3326,118 +3437,22 @@ public class SceneEditor : Form, IEditorForm
   
   GLPoint dragStart;
   bool dragScrolling;
-  #endregion
 
-  #region Toolbox
-  private void renderPanel_DragEnter(object sender, DragEventArgs e)
-  {
-    e.Effect = DragDropEffects.Copy;
-  }
-
-  private void renderPanel_DragDrop(object sender, DragEventArgs e)
-  {
-    string itemName = (string)e.Data.GetData(DataFormats.StringFormat);
-    ToolboxItem item = ToolboxItem.GetItem(itemName);
-    if(item != null)
-    {
-      SceneObject obj = item.CreateSceneObject();
-      obj.Position = sceneView.ClientToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
-      obj.Layer    = CurrentLayer;
-      scene.AddObject(obj);
-      InvalidateRender();
-
-      CurrentTool = Tools.Object;
-      Tools.Object.SubTool = Tools.Object.SpatialTool;
-      Tools.Object.SelectObject(obj, true);
-    }
-  }
-
-  private void newStaticImage_Click(object sender, EventArgs e)
-  {
-    OpenFileDialog ofd = new OpenFileDialog();
-    ofd.Filter = "Image files (png;jpeg;pcx;bmp)|*.png;*.jpg;*.jpeg;*.pcx;*.bmp|All files (*.*)|*.*";
-    ofd.Title  = "Select an image to import";
-    ofd.InitialDirectory = Project.ImagesPath;
-    if(ofd.ShowDialog() != DialogResult.OK) return;
-    
-    string fileName = ofd.FileName;
-    if(!Project.IsUnderDataPath(fileName))
-    {
-      do
-      {
-        if(MessageBox.Show("This file is not under the project's data path. You'll need to copy it there to continue.",
-                           "Copy file?", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.Cancel)
-        {
-          return;
-        }
-
-        SaveFileDialog sfd = new SaveFileDialog();
-        sfd.FileName = Path.GetFileName(ofd.FileName);
-        sfd.Filter   = "All files (*.*)|*.*";
-        sfd.Title    = "Select the path to which the image will be copied";
-        sfd.InitialDirectory = Project.ImagesPath;
-        if(sfd.ShowDialog() != DialogResult.OK)
-        {
-          return;
-        }
-
-        fileName = sfd.FileName;
-      } while(!Project.IsUnderDataPath(fileName));
-      
-      File.Copy(ofd.FileName, fileName, true);
-    }
-
-    string mapFile = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName)+".map");
-    string imgFile = Project.GetEnginePath(fileName);
-
-    ImageMap imap = Project.GetImageMap(imgFile);
-    if(imap != null)
-    {
-      MessageBox.Show("An image map for this image has already been loaded into the project. The existing map will "+
-                      "edited. If you wanted to import the image map into the level, use the 'Import' command rather "+
-                      "than the 'New' command.", "Image map already exists",
-                      MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-
-    ImageMapDialog md = new ImageMapDialog();
-    if(imap == null)
-    {
-      md.CreateNew(imgFile);
-    }
-    else
-    {
-      md.Open(imap);
-    }
-
-    if(md.ShowDialog() == DialogResult.OK)
-    {
-      Serializer.BeginBatch();
-      Serializer.Serialize(md.ImageMap, File.Open(mapFile, FileMode.Create, FileAccess.Write));
-      Serializer.EndBatch();
-
-      Project.SetImageMap(imgFile, md.ImageMap);
-    }
-    else if(md.ImageMap != imap) // dispose the image map if it's not the one we gave it, and we're not going to use it
-    {
-      md.ImageMap.Dispose();
-    }
-  }
-  #endregion
-
-  private void renderPanel_Resize(object sender, EventArgs e)
+  void renderPanel_Resize(object sender, EventArgs e)
   {
     sceneView.Bounds = desktop.Bounds = renderPanel.ClientRectangle;
     currentTool.PanelResized();
   }
-
+  #endregion
+ 
   #region Painting, rendering, and layout
-  private void renderPanel_RenderBackground(object sender, EventArgs e)
+  void renderPanel_RenderBackground(object sender, EventArgs e)
   {
     sceneView.Invalidate();
     desktop.Render();
   }
-
-  private void renderPanel_Paint(object sender, PaintEventArgs e)
+ 
+  void renderPanel_Paint(object sender, PaintEventArgs e)
   {
     currentTool.PaintDecoration(e.Graphics);
   }
@@ -3471,7 +3486,7 @@ public class SceneEditor : Form, IEditorForm
     rightPane.Panel2Collapsed = false;
   }
   #endregion
-
+ 
   PickOptions GetPickerOptions()
   {
     PickOptions options = new PickOptions();
@@ -3515,6 +3530,8 @@ public class SceneEditor : Form, IEditorForm
   bool isModified, isClosed;
 }
 
+enum ToolboxCategory { StaticImages, AnimatedImages, VectorAnimations, Miscellaneous }
+
 #region ToolboxList
 public class ToolboxList : ListView
 {
@@ -3546,7 +3563,7 @@ public class ToolboxList : ListView
         ListViewItem item = GetItemAt(pressPoint.X, pressPoint.Y);
         if(item != null)
         {
-          DoDragDrop((string)item.Tag, DragDropEffects.Link|DragDropEffects.Copy);
+          DoDragDrop(((ToolboxItem)item.Tag).Name, DragDropEffects.Link|DragDropEffects.Copy);
         }
       }
 
@@ -3559,10 +3576,28 @@ public class ToolboxList : ListView
 #endregion
 
 #region ToolboxItem
-public abstract class ToolboxItem
+abstract class ToolboxItem
 {
-  public abstract SceneObject CreateSceneObject();
+  public ToolboxItem(string name)
+  {
+    this.name = name;
+  }
+
+  public abstract ToolboxCategory Category { get; }
+  public abstract string DisplayName { get; }
+
+  public string Name
+  {
+    get { return name; }
+  }
   
+  public abstract SceneObject CreateSceneObject(SceneViewControl sceneView);
+
+  public static void ClearItems()
+  {
+    items.Clear();
+  }
+
   public static ToolboxItem GetItem(string name)
   {
     ToolboxItem item;
@@ -3570,22 +3605,86 @@ public abstract class ToolboxItem
     return item;
   }
 
-  public static void RegisterItem(string name, ToolboxItem item)
+  public static ICollection<ToolboxItem> GetItems()
   {
-    if(name == null || items == null) throw new ArgumentNullException();
-    items.Add(name, item);
+    return items.Values;
   }
+
+  public static void SetItem(ToolboxItem item)
+  {
+    if(item == null) throw new ArgumentNullException();
+    items[item.Name] = item;
+  }
+  
+  public static void RemoveItem(string itemName)
+  {
+    items.Remove(itemName);
+  }
+
+  string name;
 
   static Dictionary<string,ToolboxItem> items = new Dictionary<string,ToolboxItem>();
 }
 
-public class TriggerItem : ToolboxItem
+#region TriggerItem
+sealed class TriggerItem : ToolboxItem
 {
-  public override SceneObject CreateSceneObject()
+  public TriggerItem() : base("misc:__trigger__") { }
+
+  public override ToolboxCategory Category
+  {
+    get { return ToolboxCategory.Miscellaneous; }
+  }
+
+  public override string DisplayName
+  {
+    get { return "Trigger"; }
+  }
+
+  public override SceneObject CreateSceneObject(SceneViewControl sceneView)
   {
     return new TriggerObject();
   }
 }
+#endregion
+
+#region StaticImageItem
+sealed class StaticImageItem : ToolboxItem
+{
+  public StaticImageItem(ImageMap map) : base("static:"+map.Name)
+  {
+    this.imageMapName = map.Name;
+  }
+
+  public override ToolboxCategory Category
+  {
+    get { return ToolboxCategory.StaticImages; }
+  }
+
+  public override string DisplayName
+  {
+    get { return imageMapName; }
+  }
+
+  public override SceneObject CreateSceneObject(SceneViewControl sceneView)
+  {
+    ImageMap map = Engine.Engine.GetImageMap(imageMapName);
+    if(map.Frames.Count == 0)
+    {
+      MessageBox.Show("This image map has no frames. Try editing the map.", "Uh oh.",
+                      MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+      return null;
+    }
+
+    StaticImageObject obj = new StaticImageObject();
+    obj.Size = sceneView.ClientToScene(map.Frames[0].Size);
+    obj.ImageMap = map.Name;
+    return obj;
+  }
+
+  string imageMapName;
+}
+#endregion
 #endregion
 
 } // namespace RotationalForce.Editor
