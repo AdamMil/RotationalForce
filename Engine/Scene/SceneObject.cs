@@ -132,14 +132,6 @@ public abstract class SceneObject : GameObject, ISerializable
   }
 
   [Category("Rendering")]
-  [Description("Gets/sets the blending color of the object. Some objects simply use this as their color.")]
-  public Color BlendColor
-  {
-    get { return blendColor; }
-    set { blendColor = value; }
-  }
-
-  [Category("Rendering")]
   [Description("Gets/sets the source blending mode of the object, if blending is enabled.")]
   [DefaultValue(SourceBlend.Default)]
   public SourceBlend SourceBlendMode
@@ -157,13 +149,13 @@ public abstract class SceneObject : GameObject, ISerializable
     set { destBlend = value; }
   }
 
-  public double GetBlendAlpha() { return blendColor.A / 255.0; }
+  public double GetBlendAlpha() { return color.A / 255.0; }
 
   public void SetBlendAlpha(double alpha)
   {
     EngineMath.AssertValidFloat(alpha);
     if(alpha < 0 || alpha > 1) throw new ArgumentOutOfRangeException("alpha", "Alpha value must be from 0 to 1");
-    blendColor = Color.FromArgb((int)(alpha * 255), blendColor.R, blendColor.G, blendColor.B);
+    color = Color.FromArgb((int)(alpha * 255), color.R, color.G, color.B);
   }
 
   public void SetBlendingMode(SourceBlend source, DestinationBlend destination)
@@ -973,7 +965,15 @@ public abstract class SceneObject : GameObject, ISerializable
   }
   #endregion
 
-  #region Lifetime, visibility, flipping, mobility, pickability
+  #region Lifetime, visibility, flipping, mobility, pickability, color...
+  [Category("Rendering")]
+  [Description("Gets/sets the base color of the object.")]
+  public Color Color
+  {
+    get { return color; }
+    set { color = value; }
+  }
+
   /// <summary>Gets/sets whether the object will be flipped horizontally.</summary>
   /// <remarks>Flipping affects both the physics and the rendering of an object. If the object is mounted and set to
   /// inherit properties from the parent, the value of this property will mean that the object is flipped relative to
@@ -1187,7 +1187,7 @@ public abstract class SceneObject : GameObject, ISerializable
                      (uint)(destBlend == DestinationBlend.Default ? DestinationBlend.Zero : destBlend));
     }
 
-    GL.glColor(blendColor); // we'll always set the blendColor, because some objects just use it as their color
+    GL.glColor(color); // we'll always set the blendColor, because some objects just use it as their color
 
     GL.glPushMatrix(); // we should be in ModelView mode
     GL.glTranslated(X, Y, 0); // translate us to the origin
@@ -1448,9 +1448,8 @@ public abstract class SceneObject : GameObject, ISerializable
   /// </summary>
   double lifetime;
 
-  /// <summary>The object's blending color.</summary>
-  /// <remarks>The default color is white.</remarks>
-  Color blendColor = Color.White;
+  /// <summary>The object's color.</summary>
+  Color color = Color.White;
   /// <summary>The position of the object, in world units, within the parent object.</summary>
   Point position;
   /// <summary>The size of the object, in world units.</summary>

@@ -137,18 +137,25 @@ public static class Engine
       throw new ArgumentException("The image map must have a name before it can be added.");
     }
 
-    ImageMap oldMap;
-    imageMaps.TryGetValue(map.Name, out oldMap);
-    imageMaps[map.Name] = map;
+    ImageMapHandle handle;
+    imageMaps.TryGetValue(map.Name, out handle);
+    if(handle != null)
+    {
+      handle.ReplaceMap(map);
+    }
+    else
+    {
+      imageMaps[map.Name] = new ImageMapHandle(map);
+    }
   }
 
-  public static ImageMap GetImageMap(string mapName)
+  public static ImageMapHandle GetImageMap(string mapName)
   {
     int dummy;
     return GetImageMap(mapName, out dummy);
   }
 
-  public static ImageMap GetImageMap(string mapName, out int frameNumber)
+  public static ImageMapHandle GetImageMap(string mapName, out int frameNumber)
   {
     if(string.IsNullOrEmpty(mapName))
     {
@@ -166,9 +173,9 @@ public static class Engine
       mapName = mapName.Substring(0, hashPos);
     }
 
-    ImageMap map = imageMaps[mapName];
+    ImageMapHandle map = imageMaps[mapName];
 
-    if(hashPos != -1 && (frameNumber < 0 || frameNumber >= map.Frames.Count))
+    if(hashPos != -1 && (frameNumber < 0 || frameNumber >= map.ImageMap.Frames.Count))
     {
       throw new ArgumentException("Image map '"+mapName+"' does not have a frame numbered "+frameNumber);
     }
@@ -176,7 +183,7 @@ public static class Engine
     return map;    
   }
 
-  public static ICollection<ImageMap> GetImageMaps()
+  public static ICollection<ImageMapHandle> GetImageMaps()
   {
     return imageMaps.Values;
   }
@@ -209,45 +216,43 @@ public static class Engine
 
   internal static void OnImageMapDisposed(ImageMap map)
   {
-    ImageMap oldMap;
-    if(!string.IsNullOrEmpty(map.Name) && imageMaps.TryGetValue(map.Name, out oldMap) && oldMap == map)
+    ImageMapHandle handle;
+    if(!string.IsNullOrEmpty(map.Name) && imageMaps.TryGetValue(map.Name, out handle) && handle.ImageMap == map)
     {
-      imageMaps.Remove(map.Name);
+      handle.ReplaceMap(null);
     }
   }
 
   internal static void OnImageMapNameChanged(ImageMap map, string oldName)
   {
-    ImageMap oldMap;
-    if(!string.IsNullOrEmpty(oldName) && imageMaps.TryGetValue(oldName, out oldMap) && map == oldMap)
+    ImageMapHandle handle;
+    if(!string.IsNullOrEmpty(oldName) && imageMaps.TryGetValue(oldName, out handle) && handle.ImageMap == map)
     {
       imageMaps.Remove(oldName);
-      imageMaps.Add(map.Name, map);
+      imageMaps.Add(map.Name, handle);
     }
-
     #if DEBUG
-    foreach(KeyValuePair<string, ImageMap> de in imageMaps)
+    else
     {
-      if(de.Value == map) throw new ArgumentException("Old image map name doesn't match old image map.");
+      foreach(KeyValuePair<string, ImageMapHandle> de in imageMaps)
+      {
+        if(de.Value.ImageMap == map) throw new ArgumentException("Old image map name doesn't match old image map.");
+      }
     }
     #endif
   }
 
   static void UnloadImageMaps()
   {
-    // since disposing a map automatically removes it from the imageMaps collection, we make a copy of the values.
-    // if we didn't the loop would throw an exception because the dictionary would be modified when we called .Dispose
-    List<ImageMap> maps = new List<ImageMap>(imageMaps.Values);
-    imageMaps.Clear();
-
-    foreach(ImageMap map in maps)
+    foreach(ImageMapHandle handle in imageMaps.Values)
     {
-      map.Dispose();
+      // calling dispose will automatically clear the handle's pointer
+      if(handle.ImageMap != null) handle.ImageMap.Dispose();
     }
   }
   #endregion
 
-  static Dictionary<string,ImageMap> imageMaps = new Dictionary<string,ImageMap>();
+  static Dictionary<string,ImageMapHandle> imageMaps = new Dictionary<string,ImageMapHandle>();
   static List<ITicker> tickers = new List<ITicker>();
   static IFileSystem fileSystem;
 }

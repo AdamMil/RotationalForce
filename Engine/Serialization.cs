@@ -10,6 +10,32 @@ using System.Text.RegularExpressions;
 namespace RotationalForce.Engine
 {
 
+#region NonSerializableObject
+public abstract class NonSerializableObject : ISerializable
+{
+  Type ISerializable.TypeToSerialize
+  {
+    get { throw new NotSupportedException("Objects of type "+GetType().FullName+" cannot be serialized."); }
+  }
+
+  void ISerializable.BeforeSerialize(SerializationStore store)
+  {
+  }
+
+  void ISerializable.BeforeDeserialize(DeserializationStore store)
+  {
+  }
+
+  void ISerializable.Serialize(SerializationStore store)
+  {
+  }
+
+  void ISerializable.Deserialize(DeserializationStore store)
+  {
+  }
+}
+#endregion
+
 #region UniqueObject
 /// <summary>Provides a way that identical objects in the object graph can be pooled. This also works around the
 /// problem of id</summary>

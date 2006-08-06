@@ -19,7 +19,7 @@ public class TriggerObject : SceneObject
 
     // draw the trigger (in an editor, say) as a reddish, translucent area
     BlendingEnabled = true;
-    BlendColor      = Color.FromArgb(128, 255, 32, 32);
+    Color      = Color.FromArgb(128, 255, 32, 32);
     SetBlendingMode(SourceBlend.SrcAlpha, DestinationBlend.OneMinusSrcAlpha);
 
     // a trigger receives collisions, but does not respond to them

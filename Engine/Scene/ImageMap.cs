@@ -35,6 +35,37 @@ public enum TextureWrap : byte
 }
 #endregion
 
+#region ImageMapHandle
+/// <summary>Represents a handle to a named image map.</summary>
+/// <remarks>The purpose of this class is to allow the engine to change the ImageMap and have objects update
+/// automatically. The objects hold a reference to the <see cref="ImageMapHandle"/> rather than the image map, and
+/// the engine will take care of updating the handles.
+/// </remarks>
+public sealed class ImageMapHandle : NonSerializableObject
+{
+  internal ImageMapHandle(ImageMap map)
+  {
+    if(map == null) throw new ArgumentNullException();
+    ReplaceMap(map);
+  }
+  
+  /// <summary>Gets the <see cref="ImageMap"/> referenced by the handle. This will be null if the image map associated
+  /// with the name was deleted.
+  /// </summary>
+  public ImageMap ImageMap
+  {
+    get { return map; }
+  }
+
+  internal void ReplaceMap(ImageMap map)
+  {
+    this.map = map;
+  }
+
+  ImageMap map;
+}
+#endregion
+
 #region ImageMap
 /// <summary>The base class for image maps, which represent one or more image frames within a single OpenGL texture.</summary>
 public abstract class ImageMap : UniqueObject, IDisposable
@@ -148,9 +179,12 @@ public abstract class ImageMap : UniqueObject, IDisposable
       {
         throw new ArgumentException("Image map name cannot be null or empty.");
       }
-      string oldName = name;
-      name = value;
-      Engine.OnImageMapNameChanged(this, oldName);
+      if(!string.Equals(name, value, StringComparison.Ordinal))
+      {
+        string oldName = name;
+        name = value;
+        Engine.OnImageMapNameChanged(this, oldName);
+      }
     }
   }
 
@@ -250,6 +284,20 @@ public abstract class ImageMap : UniqueObject, IDisposable
   {
     GC.SuppressFinalize(this);
     Dispose(false);
+  }
+
+  /// <summary>Informs the image map that the contents of the image file have changed and should be reloaded.</summary>
+  public virtual void InvalidateImage()
+  {
+    Invalidate();
+  }
+
+  /// <summary>
+  /// Informs the image map that the OpenGL rendering context has changed, and the texture mode needs to be reset.
+  /// </summary>
+  public void InvalidateMode()
+  {
+    modeDirty = true;
   }
 
   /// <summary>Called when the frames and texture data need to be calculated.</summary>
