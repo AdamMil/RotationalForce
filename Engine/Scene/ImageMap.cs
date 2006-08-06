@@ -68,6 +68,12 @@ public abstract class ImageMap : UniqueObject, IDisposable
       this.width     = (double)imageArea.Width  / textureSize.Width;
       this.height    = (double)imageArea.Height / textureSize.Height;
       this.imageSize = imageArea.Size;
+      
+      // determine which parts of this image need edge clamping
+      this.clampLeft   = imageArea.X == 0;
+      this.clampTop    = imageArea.Y == 0;
+      this.clampRight  = imageArea.Right  == textureSize.Width;
+      this.clampBottom = imageArea.Bottom == textureSize.Height;
     }
 
     public Size Size
@@ -75,7 +81,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
       get { return imageSize; }
     }
 
-    public GLPoint GetTextureCoord(GLPoint frameCoord)
+    internal GLPoint GetTextureCoord(GLPoint frameCoord)
     {
       return new GLPoint(x + frameCoord.X*width, y + frameCoord.Y*height);
     }
@@ -85,9 +91,10 @@ public abstract class ImageMap : UniqueObject, IDisposable
       GL.glBindTexture(GL.GL_TEXTURE_2D, textureID);
     }
 
-    double x, y, width, height;
+    internal double x, y, width, height;
     uint textureID;
     Size imageSize;
+    internal bool clampLeft, clampRight, clampTop, clampBottom;
   }
   #endregion
 
@@ -196,10 +203,10 @@ public abstract class ImageMap : UniqueObject, IDisposable
 
   /// <summary>Binds a frame from this image map as the current OpenGL texture.</summary>
   /// <param name="frame">The index of the <see cref="Frame"/> to bind.</param>
-  public void BindFrame(int frame)
+  public void BindFrame(int frameIndex)
   {
     EnsureFrames();
-    frames[frame].Bind();
+    frames[frameIndex].Bind();
 
     if(modeDirty) // if the texture mode has changed, tell GL about it
     {
@@ -220,10 +227,21 @@ public abstract class ImageMap : UniqueObject, IDisposable
   /// will work for this texture. See <see cref="TextureWrap"/> for more details about texture wrapping.
   /// </param>
   /// <returns>Returns the OpenGL texture coordinates corresponding to the coordinates within the frame.</returns>
-  public GLPoint GetTextureCoord(int frame, GLPoint frameCoord)
+  public GLPoint GetTextureCoord(int frameIndex, GLPoint frameCoord)
   {
     EnsureFrames();
-    return frames[frame].GetTextureCoord(frameCoord);
+    Frame frame = frames[frameIndex];
+    GLPoint pt = frame.GetTextureCoord(frameCoord);
+
+    if(filterMode == FilterMode.Smooth && textureWrap == TextureWrap.Clamp) // if we need edge clamping
+    {
+      if(frame.clampLeft && pt.X < leftEdge) pt.X = leftEdge;
+      else if(frame.clampRight && pt.X > rightEdge) pt.X = rightEdge;
+      if(frame.clampTop && pt.Y < topEdge) pt.Y = topEdge;
+      else if(frame.clampBottom && pt.Y > bottomEdge) pt.Y = bottomEdge;
+    }
+    
+    return pt;
   }
 
   /// <summary>Releases the OpenGL resources held by this image map.</summary>
@@ -234,13 +252,17 @@ public abstract class ImageMap : UniqueObject, IDisposable
   }
 
   /// <summary>Called when the frames and texture data need to be calculated.</summary>
+  /// <param name="textureSize">A return value that should be set to the size of the texture used.</param>
+  /// <returns>Returns true if the operation was successful and <paramref name="textureSize"/> is valid, or false if
+  /// <paramref name="textureSize"/> is not valid (eg, because there are no frames in the image map).
+  /// </returns>
   /// <remarks>When called, the <see cref="textureID"/> field will name a valid OpenGL texture and the
   /// <see cref="frames"/> collection will be empty.
   /// The base class does not require the texture data to be loaded any time except the first. (The base class
   /// will not free the texture data until the class is disposed.), so if derived classes can avoid reloading the
   /// texture data, they should.
   /// </remarks>
-  protected abstract void CalculateFrames();
+  protected abstract bool CalculateFrames(out Size textureSize);
 
   /// <summary>Called when the image map is being disposed.</summary>
   /// <param name="finalizing">True if the object is being finalized.</param>
@@ -280,8 +302,23 @@ public abstract class ImageMap : UniqueObject, IDisposable
         try
         {
           GL.glBindTexture(GL.GL_TEXTURE_2D, textureID); // bind our texture
-          CalculateFrames();
-          GL.glPrioritizeTexture(textureID, priority); // set the priority
+
+          Size textureSize;
+          if(CalculateFrames(out textureSize))
+          {
+            // get the size of half a texel. when edge clamping (performed when clamping and filtering), we'll need to
+            // clamp X to the range [xHalfTexel, 1-xHalfTexel] instead of [0,1] and similar for Y. this prevents the
+            // filter from spilling over the edge of the texture, causing ugly artifacts. this can be done by using
+            // GL_CLAMP_EDGE instead of GL_CLAMP, but not all GL implementations support it.
+            double xHalfTexel = 0.5 / textureSize.Width, yHalfTexel = 0.5 / textureSize.Height;
+
+            this.leftEdge   = xHalfTexel;
+            this.topEdge    = yHalfTexel;
+            this.rightEdge  = 1 - xHalfTexel;
+            this.bottomEdge = 1 - yHalfTexel;
+          }
+
+          GL.glPrioritizeTexture(textureID, priority); // set the texture priority
         }
         finally
         {
@@ -323,10 +360,12 @@ public abstract class ImageMap : UniqueObject, IDisposable
 
   [NonSerialized] protected List<Frame> frames = new List<Frame>();
   [NonSerialized] protected uint textureID;
+
+  double leftEdge, rightEdge, topEdge, bottomEdge;
   string imageFile, name;
+  float priority = 0.5f;
   FilterMode filterMode;
   TextureWrap textureWrap = TextureWrap.Clamp;
-  float priority = 0.5f;
   [NonSerialized] bool framesDirty = true, modeDirty = true;
 }
 #endregion
@@ -339,7 +378,7 @@ public sealed class FullImageMap : ImageMap
   
   FullImageMap(ISerializable dummy) : base(dummy) { }
 
-  protected override void CalculateFrames()
+  protected override bool CalculateFrames(out Size textureSize)
   {
     using(Surface surface = new Surface(GetImageStream()))
     {
@@ -349,9 +388,9 @@ public sealed class FullImageMap : ImageMap
         surface.SetColorKey(GetColorKey(surface));
       }
 
-      Size textureSize;
       OpenGL.TexImage2D(surface, out textureSize);
       frames.Add(new Frame(textureID, new Rectangle(0, 0, surface.Width, surface.Height), textureSize));
+      return true;
     }
   }
 }
@@ -452,7 +491,7 @@ public sealed class TiledImageMap : ImageMap
     }
   }
 
-  protected override void CalculateFrames()
+  protected override bool CalculateFrames(out Size textureSize)
   {
     if(Math.Abs(tileStride.Width) < tileSize.Width || Math.Abs(tileStride.Height) < tileSize.Height)
     {
@@ -462,6 +501,8 @@ public sealed class TiledImageMap : ImageMap
     
     using(Surface surface = new Surface(GetImageStream()))
     {
+      textureSize = new Size();
+
       // find how much space we have available to retrieve tiles from. if the stride is negative, we'll move from the
       // start point (plus the first tile's size) towards the left/top. otherwise, we'll move from the start point
       // towards the right/bottom.
@@ -471,10 +512,10 @@ public sealed class TiledImageMap : ImageMap
 
       int numTiles;
 
-      // if the space isn't enough to get any tiles from, return immediately.
+      // if the space isn't enough to get any tiles from, return immediately. (this simplifies the calculations below)
       if(availableSpace.Width < tileSize.Width || availableSpace.Height < tileSize.Height)
       {
-        return;
+        return false;
       }
       // otherwise, make sure there's enough room to read the first tile
       else if(tileStart.X + tileSize.Width > surface.Width || tileStart.Y + tileSize.Height > surface.Height)
@@ -491,8 +532,6 @@ public sealed class TiledImageMap : ImageMap
         numTiles = horzTiles * vertTiles; // calculate the total number of tiles
         if(tileLimit != 0 && numTiles > tileLimit) numTiles = tileLimit; // and apply the tile limit if there is one
       }
-
-      Size textureSize = new Size();
 
       // use a simple, brute force algorithm to calculate the optimum texture size given filter padding and OpenGL
       // texture size limitations. for 10 tiles, it will try 10x1, 5x2, 4x3, 3x4, 2x5, and 1x10
@@ -589,6 +628,8 @@ public sealed class TiledImageMap : ImageMap
         // (so that we can avoid invalidating the texture unnecessarily)
         tilesPadded = FilterMode != FilterMode.None;
       }
+      
+      return true;
     }
   }
 
