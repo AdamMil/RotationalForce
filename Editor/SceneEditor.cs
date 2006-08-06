@@ -17,6 +17,7 @@ namespace RotationalForce.Editor
 
 public class SceneEditor : Form, IEditorForm
 {
+  const int TriggerIcon=0, StaticImageIcon=1;
   const int DecorationRadius = 8;
   const double DefaultViewSize = 100;
   
@@ -38,6 +39,7 @@ public class SceneEditor : Form, IEditorForm
     toolbox = new Toolbox(this);
 
     InitializeComponent();
+    systemDefinedIconCount = objectImgs.Images.Count;
 
     foreach(ToolboxItem item in ToolboxItem.GetItems())
     {
@@ -346,20 +348,20 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.MenuStrip menuBar;
     System.Windows.Forms.ToolStripDropDownButton toolboxNewMenu;
     System.Windows.Forms.ToolStripMenuItem newStaticImage;
-    System.Windows.Forms.ListViewGroup listViewGroup5 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup6 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup7 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup8 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
-    System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     System.Windows.Forms.SplitContainer mainSplitter;
+    System.Windows.Forms.ListViewGroup listViewGroup1 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
+    System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
-    this.toolBar = new System.Windows.Forms.ToolStrip();
+    this.renderPanel = new RotationalForce.Editor.RenderPanel();
     this.rightPane = new System.Windows.Forms.SplitContainer();
     this.objToolBar = new System.Windows.Forms.ToolStrip();
     this.objectList = new RotationalForce.Editor.ToolboxList();
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
-    this.renderPanel = new RotationalForce.Editor.RenderPanel();
+    this.toolBar = new System.Windows.Forms.ToolStrip();
     this.statusBar = new System.Windows.Forms.StatusStrip();
     this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
@@ -371,16 +373,16 @@ public class SceneEditor : Form, IEditorForm
     newStaticImage = new System.Windows.Forms.ToolStripMenuItem();
     mainSplitter = new System.Windows.Forms.SplitContainer();
     menuBar.SuspendLayout();
-    this.toolBar.SuspendLayout();
+    mainSplitter.Panel1.SuspendLayout();
+    mainSplitter.Panel2.SuspendLayout();
+    mainSplitter.SuspendLayout();
+    this.renderPanel.SuspendLayout();
     this.rightPane.Panel1.SuspendLayout();
     this.rightPane.Panel2.SuspendLayout();
     this.rightPane.SuspendLayout();
     this.objToolBar.SuspendLayout();
-    this.renderPanel.SuspendLayout();
+    this.toolBar.SuspendLayout();
     this.statusBar.SuspendLayout();
-    mainSplitter.Panel1.SuspendLayout();
-    mainSplitter.Panel2.SuspendLayout();
-    mainSplitter.SuspendLayout();
     this.SuspendLayout();
     // 
     // selectTool
@@ -453,19 +455,49 @@ public class SceneEditor : Form, IEditorForm
     newStaticImage.Text = "Static image map";
     newStaticImage.Click += new System.EventHandler(this.newStaticImage_Click);
     // 
-    // toolBar
+    // mainSplitter
     // 
-    this.toolBar.AutoSize = false;
-    this.toolBar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
-    this.toolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            selectTool,
-            layerTool,
-            cameraTool});
-    this.toolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
-    this.toolBar.Location = new System.Drawing.Point(0, 0);
-    this.toolBar.Name = "toolBar";
-    this.toolBar.Size = new System.Drawing.Size(228, 24);
-    this.toolBar.TabIndex = 1;
+    mainSplitter.Dock = System.Windows.Forms.DockStyle.Fill;
+    mainSplitter.Location = new System.Drawing.Point(0, 0);
+    mainSplitter.Name = "mainSplitter";
+    // 
+    // mainSplitter.Panel1
+    // 
+    mainSplitter.Panel1.Controls.Add(this.renderPanel);
+    mainSplitter.Panel1MinSize = 300;
+    // 
+    // mainSplitter.Panel2
+    // 
+    mainSplitter.Panel2.Controls.Add(this.rightPane);
+    mainSplitter.Panel2.Controls.Add(this.toolBar);
+    mainSplitter.Panel2MinSize = 130;
+    mainSplitter.Size = new System.Drawing.Size(772, 523);
+    mainSplitter.SplitterDistance = 600;
+    mainSplitter.TabIndex = 5;
+    // 
+    // renderPanel
+    // 
+    this.renderPanel.AllowDrop = true;
+    this.renderPanel.BackColor = System.Drawing.Color.Black;
+    this.renderPanel.Controls.Add(menuBar);
+    this.renderPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+    this.renderPanel.Location = new System.Drawing.Point(0, 0);
+    this.renderPanel.Name = "renderPanel";
+    this.renderPanel.Size = new System.Drawing.Size(600, 523);
+    this.renderPanel.TabIndex = 0;
+    this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
+    this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
+    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
+    this.renderPanel.MouseClick += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseClick);
+    this.renderPanel.MouseDrag += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDrag);
+    this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
+    this.renderPanel.DragEnter += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragEnter);
+    this.renderPanel.MouseDragStart += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseDragStart);
+    this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
+    this.renderPanel.KeyUp += new System.Windows.Forms.KeyEventHandler(this.renderPanel_KeyUp);
+    this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
+    this.renderPanel.MouseDragEnd += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDragEnd);
+    this.renderPanel.KeyDown += new System.Windows.Forms.KeyEventHandler(this.renderPanel_KeyDown);
     // 
     // rightPane
     // 
@@ -484,7 +516,7 @@ public class SceneEditor : Form, IEditorForm
     // 
     this.rightPane.Panel2.Controls.Add(this.propertyGrid);
     this.rightPane.Panel2Collapsed = true;
-    this.rightPane.Size = new System.Drawing.Size(228, 499);
+    this.rightPane.Size = new System.Drawing.Size(168, 499);
     this.rightPane.SplitterDistance = 209;
     this.rightPane.TabIndex = 3;
     // 
@@ -498,7 +530,7 @@ public class SceneEditor : Form, IEditorForm
     this.objToolBar.Location = new System.Drawing.Point(0, 0);
     this.objToolBar.Name = "objToolBar";
     this.objToolBar.RenderMode = System.Windows.Forms.ToolStripRenderMode.System;
-    this.objToolBar.Size = new System.Drawing.Size(226, 24);
+    this.objToolBar.Size = new System.Drawing.Size(166, 24);
     this.objToolBar.TabIndex = 2;
     // 
     // objectList
@@ -506,34 +538,36 @@ public class SceneEditor : Form, IEditorForm
     this.objectList.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-    listViewGroup5.Header = "Static Images";
-    listViewGroup5.Name = "staticImgGroup";
-    listViewGroup6.Header = "Animated Images";
-    listViewGroup6.Name = "animImgGroup";
-    listViewGroup7.Header = "Vector Animations";
-    listViewGroup7.Name = "vectorAnimGroup";
-    listViewGroup8.Header = "Miscellaneous";
-    listViewGroup8.Name = "miscGroup";
+    listViewGroup1.Header = "Static Images";
+    listViewGroup1.Name = "staticImgGroup";
+    listViewGroup2.Header = "Animated Images";
+    listViewGroup2.Name = "animImgGroup";
+    listViewGroup3.Header = "Vector Animations";
+    listViewGroup3.Name = "vectorAnimGroup";
+    listViewGroup4.Header = "Miscellaneous";
+    listViewGroup4.Name = "miscGroup";
     this.objectList.Groups.AddRange(new System.Windows.Forms.ListViewGroup[] {
-            listViewGroup5,
-            listViewGroup6,
-            listViewGroup7,
-            listViewGroup8});
+            listViewGroup1,
+            listViewGroup2,
+            listViewGroup3,
+            listViewGroup4});
     this.objectList.LargeImageList = this.objectImgs;
     this.objectList.Location = new System.Drawing.Point(2, 24);
     this.objectList.MultiSelect = false;
     this.objectList.Name = "objectList";
     this.objectList.ShowItemToolTips = true;
-    this.objectList.Size = new System.Drawing.Size(221, 470);
+    this.objectList.Size = new System.Drawing.Size(161, 470);
     this.objectList.TabIndex = 0;
     this.objectList.TileSize = new System.Drawing.Size(192, 36);
     this.objectList.UseCompatibleStateImageBehavior = false;
+    this.objectList.DoubleClick += new System.EventHandler(this.objectList_DoubleClick);
     // 
     // objectImgs
     // 
     this.objectImgs.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("objectImgs.ImageStream")));
     this.objectImgs.TransparentColor = System.Drawing.Color.Transparent;
     this.objectImgs.Images.SetKeyName(0, "TriggerIcon.bmp");
+    this.objectImgs.Images.SetKeyName(1, "StaticImageIcon.bmp");
     // 
     // propertyGrid
     // 
@@ -544,29 +578,19 @@ public class SceneEditor : Form, IEditorForm
     this.propertyGrid.TabIndex = 0;
     this.propertyGrid.Visible = false;
     // 
-    // renderPanel
+    // toolBar
     // 
-    this.renderPanel.AllowDrop = true;
-    this.renderPanel.BackColor = System.Drawing.Color.Black;
-    this.renderPanel.Controls.Add(menuBar);
-    this.renderPanel.Dock = System.Windows.Forms.DockStyle.Fill;
-    this.renderPanel.Location = new System.Drawing.Point(0, 0);
-    this.renderPanel.Name = "renderPanel";
-    this.renderPanel.Size = new System.Drawing.Size(540, 523);
-    this.renderPanel.TabIndex = 0;
-    this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
-    this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
-    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
-    this.renderPanel.MouseClick += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseClick);
-    this.renderPanel.MouseDrag += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDrag);
-    this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
-    this.renderPanel.DragEnter += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragEnter);
-    this.renderPanel.MouseDragStart += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseDragStart);
-    this.renderPanel.Resize += new System.EventHandler(this.renderPanel_Resize);
-    this.renderPanel.KeyUp += new System.Windows.Forms.KeyEventHandler(this.renderPanel_KeyUp);
-    this.renderPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.renderPanel_Paint);
-    this.renderPanel.MouseDragEnd += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDragEnd);
-    this.renderPanel.KeyDown += new System.Windows.Forms.KeyEventHandler(this.renderPanel_KeyDown);
+    this.toolBar.AutoSize = false;
+    this.toolBar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
+    this.toolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            selectTool,
+            layerTool,
+            cameraTool});
+    this.toolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
+    this.toolBar.Location = new System.Drawing.Point(0, 0);
+    this.toolBar.Name = "toolBar";
+    this.toolBar.Size = new System.Drawing.Size(168, 24);
+    this.toolBar.TabIndex = 1;
     // 
     // statusBar
     // 
@@ -591,26 +615,6 @@ public class SceneEditor : Form, IEditorForm
     this.layerLabel.Size = new System.Drawing.Size(47, 17);
     this.layerLabel.Text = "Layer: 0";
     // 
-    // mainSplitter
-    // 
-    mainSplitter.Dock = System.Windows.Forms.DockStyle.Fill;
-    mainSplitter.Location = new System.Drawing.Point(0, 0);
-    mainSplitter.Name = "mainSplitter";
-    // 
-    // mainSplitter.Panel1
-    // 
-    mainSplitter.Panel1.Controls.Add(this.renderPanel);
-    mainSplitter.Panel1MinSize = 300;
-    // 
-    // mainSplitter.Panel2
-    // 
-    mainSplitter.Panel2.Controls.Add(this.rightPane);
-    mainSplitter.Panel2.Controls.Add(this.toolBar);
-    mainSplitter.Panel2MinSize = 130;
-    mainSplitter.Size = new System.Drawing.Size(772, 523);
-    mainSplitter.SplitterDistance = 600;
-    mainSplitter.TabIndex = 5;
-    // 
     // SceneEditor
     // 
     this.ClientSize = new System.Drawing.Size(772, 523);
@@ -621,23 +625,23 @@ public class SceneEditor : Form, IEditorForm
     this.Name = "SceneEditor";
     this.Text = "Scene Editor";
     this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
-    this.GotFocus += new EventHandler(SceneEditor_GotFocus);
+    this.GotFocus += new System.EventHandler(this.SceneEditor_GotFocus);
     menuBar.ResumeLayout(false);
     menuBar.PerformLayout();
-    this.toolBar.ResumeLayout(false);
-    this.toolBar.PerformLayout();
+    mainSplitter.Panel1.ResumeLayout(false);
+    mainSplitter.Panel2.ResumeLayout(false);
+    mainSplitter.ResumeLayout(false);
+    this.renderPanel.ResumeLayout(false);
+    this.renderPanel.PerformLayout();
     this.rightPane.Panel1.ResumeLayout(false);
     this.rightPane.Panel2.ResumeLayout(false);
     this.rightPane.ResumeLayout(false);
     this.objToolBar.ResumeLayout(false);
     this.objToolBar.PerformLayout();
-    this.renderPanel.ResumeLayout(false);
-    this.renderPanel.PerformLayout();
+    this.toolBar.ResumeLayout(false);
+    this.toolBar.PerformLayout();
     this.statusBar.ResumeLayout(false);
     this.statusBar.PerformLayout();
-    mainSplitter.Panel1.ResumeLayout(false);
-    mainSplitter.Panel2.ResumeLayout(false);
-    mainSplitter.ResumeLayout(false);
     this.ResumeLayout(false);
     this.PerformLayout();
 
@@ -3239,9 +3243,34 @@ public class SceneEditor : Form, IEditorForm
   #endregion
 
   #region Toolbox
+  int AddIcon(Bitmap icon, int currentIndex)
+  {
+    if(currentIndex < systemDefinedIconCount) // if it's currently a system-defined icon, don't replace it
+    {
+      objectImgs.Images.Add(icon);
+      return objectImgs.Images.Count - 1;
+    }
+    else
+    {
+      objectImgs.Images[currentIndex] = icon;
+      return currentIndex;
+    }
+  }
+  
+  void RemoveIcon(int index)
+  {
+    foreach(ListViewItem item in objectList.Items)
+    {
+      if(item.ImageIndex >= index) item.ImageIndex--;
+    }
+
+    objectImgs.Images.RemoveAt(index);
+  }
+  
   void AddToolboxItem(ToolboxItem item)
   {
-    ListViewItem lvItem = new ListViewItem(item.DisplayName, 0, objectList.Groups[(int)item.Category]);
+    ListViewItem lvItem = new ListViewItem(item.DisplayName, GenerateThumbnail(item),
+                                           objectList.Groups[(int)item.Category]);
     lvItem.Tag = item;
     objectList.Items.Add(lvItem);
   }
@@ -3252,12 +3281,124 @@ public class SceneEditor : Form, IEditorForm
     {
       if(string.Equals(item.Name, ((ToolboxItem)lvItem.Tag).Name, StringComparison.Ordinal))
       {
+        lvItem.ImageIndex = GenerateThumbnail(item, lvItem);
         lvItem.Tag = item;
         return;
       }
     }
     
     AddToolboxItem(item);
+  }
+
+  void EditImageMap(ImageMapDialog md, ImageMap oldMap, string mapFile)
+  {
+    if(md.ShowDialog() == DialogResult.OK)
+    {
+      using(Stream stream = File.Open(mapFile, FileMode.Create, FileAccess.Write))
+      {
+        Serializer.BeginBatch();
+        Serializer.Serialize(md.ImageMap, stream);
+        Serializer.EndBatch();
+      }
+
+      Engine.Engine.AddImageMap(md.ImageMap);
+      SetToolboxItem(new StaticImageItem(md.ImageMap));
+      md.ImageMap.InvalidateMode(); // since the image map is being used in a new context now, reset its texture mode
+      InvalidateRender();
+    }
+    else if(md.ImageMap != oldMap) // dispose the image map if it's not the one we gave it, and we're not going to use it
+    {
+      md.ImageMap.Dispose();
+    }
+  }
+
+  int GenerateThumbnail(ToolboxItem item)
+  {
+    return GenerateThumbnail(item, null);
+  }
+  
+  int GenerateThumbnail(ToolboxItem item, ListViewItem lvItem)
+  {
+    if(item is TriggerItem)
+    {
+      return TriggerIcon;
+    }
+    else if(item is StaticImageItem)
+    {
+      ImageMap map = ((StaticImageItem)item).GetImageMap();
+      if(map == null || map.Frames.Count == 0)
+      {
+        if(lvItem.ImageIndex >= systemDefinedIconCount)
+        {
+          RemoveIcon(lvItem.ImageIndex);
+        }
+        return StaticImageIcon;
+      }
+      else
+      {
+        Rectangle displayArea = new Rectangle(new Point(), map.Frames[0].Size);
+        if(displayArea.Width > displayArea.Height)
+        {
+          displayArea.Height = 32 * displayArea.Height / displayArea.Width;
+          displayArea.Width  = 32;
+        }
+        else
+        {
+          displayArea.Width  = 32 * displayArea.Width / displayArea.Height;
+          displayArea.Height = 32;
+        }
+        displayArea.X = (32 - displayArea.Width)  / 2;
+        displayArea.Y = (32 - displayArea.Height) / 2;
+        
+        GLBuffer.SetCurrent(iconBuffer);
+        Engine.Engine.ResetOpenGL(32, 32, new Rectangle(0, 0, 32, 32));
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT);
+
+        GL.glEnable(GL.GL_TEXTURE_2D);
+        map.InvalidateMode();
+        map.BindFrame(0);
+
+        GL.glBegin(GL.GL_QUADS);
+          GL.glTexCoord2d(map.GetTextureCoord(0, new GLPoint(0, 0)));
+          GL.glVertex2i(displayArea.Left, displayArea.Top);
+
+          GL.glTexCoord2d(map.GetTextureCoord(0, new GLPoint(1, 0)));
+          GL.glVertex2i(displayArea.Right, displayArea.Top);
+
+          GL.glTexCoord2d(map.GetTextureCoord(0, new GLPoint(1, 1)));
+          GL.glVertex2i(displayArea.Right, displayArea.Bottom);
+
+          GL.glTexCoord2d(map.GetTextureCoord(0, new GLPoint(0, 1)));
+          GL.glVertex2i(displayArea.Left, displayArea.Bottom);
+        GL.glEnd();
+        GL.glDisable(GL.GL_TEXTURE_2D);
+        GL.glFlush();
+        GLBuffer.SetCurrent(null);
+
+        return AddIcon(iconBuffer.CreateBitmap(), lvItem == null ? 0 : lvItem.ImageIndex);
+      }
+    }
+    
+    throw new NotImplementedException();
+  }
+
+  void objectList_DoubleClick(object sender, EventArgs e)
+  {
+    if(objectList.SelectedItems.Count != 1) return;
+    
+    ListViewItem lvItem = objectList.SelectedItems[0];
+    ToolboxItem item = (ToolboxItem)lvItem.Tag;
+    
+    StaticImageItem staticImage = item as StaticImageItem;
+    if(staticImage != null)
+    {
+      ImageMap map = staticImage.GetImageMap();
+      string imagePath = Project.GetRealPath(map.ImageFile);
+      ImageMapDialog md = new ImageMapDialog();
+      md.Open(map);
+      EditImageMap(md, map,
+                   Path.Combine(Path.GetDirectoryName(imagePath), Path.GetFileNameWithoutExtension(imagePath)+".map"));
+    }
   }
 
   void renderPanel_DragEnter(object sender, DragEventArgs e)
@@ -3325,7 +3466,7 @@ public class SceneEditor : Form, IEditorForm
     if(imap != null)
     {
       MessageBox.Show("An image map for this image has already been loaded into the project. The existing map will "+
-                      "edited.", "Image map already exists", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                      "be edited.", "Image map already exists", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     ImageMapDialog md = new ImageMapDialog();
@@ -3338,22 +3479,7 @@ public class SceneEditor : Form, IEditorForm
       md.Open(imap);
     }
 
-    string oldName = imap == null ? null : imap.Name;
-    if(md.ShowDialog() == DialogResult.OK)
-    {
-      Serializer.BeginBatch();
-      Serializer.Serialize(md.ImageMap, File.Open(mapFile, FileMode.Create, FileAccess.Write));
-      Serializer.EndBatch();
-
-      Engine.Engine.AddImageMap(md.ImageMap);
-      SetToolboxItem(new StaticImageItem(md.ImageMap));
-      md.ImageMap.InvalidateMode();
-      InvalidateRender();
-    }
-    else if(md.ImageMap != imap) // dispose the image map if it's not the one we gave it, and we're not going to use it
-    {
-      md.ImageMap.Dispose();
-    }
+    EditImageMap(md, imap, mapFile);
   }
   #endregion
  
@@ -3479,7 +3605,7 @@ public class SceneEditor : Form, IEditorForm
     currentTool.PanelResized();
   }
   #endregion
- 
+
   #region Painting, rendering, and layout
   void renderPanel_RenderBackground(object sender, EventArgs e)
   {
@@ -3571,7 +3697,10 @@ public class SceneEditor : Form, IEditorForm
   DesktopControl desktop;
   SceneViewControl sceneView;
   Project.Level level;
+  int systemDefinedIconCount;
   bool isModified, isClosed;
+  
+  static GLBuffer iconBuffer = new GLBuffer(32, 32);
 }
 
 enum ToolboxCategory { StaticImages, AnimatedImages, VectorAnimations, Miscellaneous }
@@ -3709,10 +3838,15 @@ sealed class StaticImageItem : ToolboxItem
   {
     get { return imageMapName; }
   }
+  
+  public ImageMap GetImageMap()
+  {
+    return Engine.Engine.GetImageMap(imageMapName).ImageMap;
+  }
 
   public override SceneObject CreateSceneObject(SceneViewControl sceneView)
   {
-    ImageMap map = Engine.Engine.GetImageMap(imageMapName).ImageMap;
+    ImageMap map = GetImageMap();
     if(map.Frames.Count == 0)
     {
       MessageBox.Show("This image map has no frames. Try editing the map.", "Uh oh.",

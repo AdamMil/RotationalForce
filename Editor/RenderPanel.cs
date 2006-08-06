@@ -200,6 +200,8 @@ sealed class GLBuffer : IDisposable
   [DllImport("gdi32.dll")]
   static extern int DeleteDC(IntPtr hdc);
   [DllImport("opengl32.dll")]
+  static extern int wglCopyContext(IntPtr hglrcSrc, IntPtr hglrcDest, uint attributes);
+  [DllImport("opengl32.dll")]
   static extern IntPtr wglCreateContext(IntPtr hdc);
   [DllImport("opengl32.dll")]
   static extern int wglDeleteContext(IntPtr hglrc);

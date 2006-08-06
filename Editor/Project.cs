@@ -126,6 +126,11 @@ sealed class Project
     return NormalizePath(Path.GetFullPath(filename).Remove(0, path.Length+5)); // remove path + data/
   }
 
+  public string GetRealPath(string enginePath)
+  {
+    return Path.Combine(EngineDataPath, DenormalizePath(enginePath));
+  }
+
   public string GetLevelPath(string filename)
   {
     return Path.Combine(LevelsPath, filename);
