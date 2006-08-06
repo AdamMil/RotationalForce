@@ -59,6 +59,7 @@
     <Compile Include="Scene\AnimatedObject.cs" />
     <Compile Include="Scene\GameObject.cs" />
     <Compile Include="Scene\ImageMap.cs" />
+    <Compile Include="Scene\ImageObject.cs" />
     <Compile Include="Scene\SceneObject.cs" />
     <Compile Include="GUI\SceneViewControl.cs" />
     <Compile Include="Scene\Trigger.cs" />

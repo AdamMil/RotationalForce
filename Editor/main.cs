@@ -15,6 +15,7 @@ static class EditorApp
   static void Main()
   {
     Application.EnableVisualStyles();
+    GLBuffer.SetCurrent(null); // make sure we always have a rendering context
     Application.Run(MainForm);
   }
   

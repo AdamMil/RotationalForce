@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using RotationalForce.Engine;
 
 namespace RotationalForce.Editor
 {
@@ -82,13 +83,22 @@ sealed class MainForm : Form
   {
     UpdateTitle();
     UpdateFileMenu();
+
+    ToolboxItem.ClearItems();
+
     if(project == null)
     {
       Engine.Engine.Deinitialize();
     }
     else
     {
-      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EditorDataPath));
+      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EditorDataPath), true);
+
+      ToolboxItem.SetItem(new TriggerItem());
+      foreach(ImageMap map in Engine.Engine.GetImageMaps())
+      {
+        ToolboxItem.SetItem(new StaticImageItem(map));
+      }
     }
   }
 
@@ -156,7 +166,6 @@ sealed class MainForm : Form
     {
       if(TryCloseAllWindows())
       {
-        project.Dispose();
         project = null;
         OnProjectChanged();
       }

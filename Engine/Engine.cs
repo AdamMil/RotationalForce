@@ -31,17 +31,23 @@ public static class Engine
     get { return fileSystem; }
   }
 
-  public static void Initialize(IFileSystem fileSystem)
+  public static void Initialize(IFileSystem fileSystem, bool autoLoadImageMaps)
   {
     if(fileSystem == null) throw new ArgumentNullException();
     Engine.fileSystem = fileSystem;
     GLVideo.Initialize();
+    
+    if(autoLoadImageMaps)
+    {
+      LoadImageMapFiles();
+    }
   }
 
   public static void Deinitialize()
   {
     GLVideo.Deinitialize();
     fileSystem = null;
+    UnloadImageMaps();
   }
 
   public static void CreateWindow(int width, int height, string windowTitle, ScreenFlag flags)
@@ -123,16 +129,125 @@ public static class Engine
     tickers.Remove(ticker);
   }
 
+  #region Image maps
+  public static void AddImageMap(ImageMap map)
+  {
+    if(string.IsNullOrEmpty(map.Name))
+    {
+      throw new ArgumentException("The image map must have a name before it can be added.");
+    }
+
+    ImageMap oldMap;
+    imageMaps.TryGetValue(map.Name, out oldMap);
+    imageMaps[map.Name] = map;
+  }
+
+  public static ImageMap GetImageMap(string mapName)
+  {
+    int dummy;
+    return GetImageMap(mapName, out dummy);
+  }
+
+  public static ImageMap GetImageMap(string mapName, out int frameNumber)
+  {
+    if(string.IsNullOrEmpty(mapName))
+    {
+      throw new ArgumentException("Image map name cannot be null or empty.");
+    }
+
+    int hashPos = mapName.IndexOf('#');
+    if(hashPos == -1)
+    {
+      frameNumber = 0;
+    }
+    else
+    {
+      int.TryParse(mapName.Substring(hashPos+1), out frameNumber);
+      mapName = mapName.Substring(0, hashPos);
+    }
+
+    ImageMap map = imageMaps[mapName];
+
+    if(hashPos != -1 && (frameNumber < 0 || frameNumber >= map.Frames.Count))
+    {
+      throw new ArgumentException("Image map '"+mapName+"' does not have a frame numbered "+frameNumber);
+    }
+
+    return map;    
+  }
+
+  public static ICollection<ImageMap> GetImageMaps()
+  {
+    return imageMaps.Values;
+  }
+
+  public static void RemoveImageMap(string name)
+  {
+    if(!string.IsNullOrEmpty(name))
+    {
+      imageMaps.Remove(name);
+    }
+  }
+
+  static void LoadImageMapFiles()
+  {
+    foreach(string mapFile in fileSystem.GetFiles(StandardPath.Images, "*.map", true))
+    {
+      Serializer.BeginBatch();
+      try
+      {
+        ImageMap map = Serializer.Deserialize(fileSystem.OpenForRead(mapFile)) as ImageMap;
+        if(map != null)
+        {
+          AddImageMap(map);
+        }
+      }
+      catch { }
+      Serializer.EndBatch();
+    }
+  }
+
   internal static void OnImageMapDisposed(ImageMap map)
   {
-    // TODO: implement once we have image map handling
+    ImageMap oldMap;
+    if(!string.IsNullOrEmpty(map.Name) && imageMaps.TryGetValue(map.Name, out oldMap) && oldMap == map)
+    {
+      imageMaps.Remove(map.Name);
+    }
   }
 
-  internal static void OnImageMapNameChanged(ImageMap map)
+  internal static void OnImageMapNameChanged(ImageMap map, string oldName)
   {
-    // TODO: implement once we have image map handling
+    ImageMap oldMap;
+    if(!string.IsNullOrEmpty(oldName) && imageMaps.TryGetValue(oldName, out oldMap) && map == oldMap)
+    {
+      imageMaps.Remove(oldName);
+      imageMaps.Add(map.Name, map);
+    }
+
+    #if DEBUG
+    foreach(KeyValuePair<string, ImageMap> de in imageMaps)
+    {
+      if(de.Value == map) throw new ArgumentException("Old image map name doesn't match old image map.");
+    }
+    #endif
   }
 
+  static void UnloadImageMaps()
+  {
+    // since disposing a map automatically removes it from the imageMaps collection, we make a copy of the values.
+    // if we didn't the loop would throw an exception because the dictionary would be modified when we called .Dispose
+    List<ImageMap> maps = new List<ImageMap>(imageMaps.Values);
+    imageMaps.Clear();
+
+    foreach(ImageMap map in maps)
+    {
+      map.Dispose();
+    }
+  }
+  #endregion
+
+  static Dictionary<string,ImageMap> imageMaps = new Dictionary<string,ImageMap>();
   static List<ITicker> tickers = new List<ITicker>();
   static IFileSystem fileSystem;
 }

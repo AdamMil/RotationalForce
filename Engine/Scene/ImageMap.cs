@@ -148,8 +148,9 @@ public abstract class ImageMap : UniqueObject, IDisposable
       {
         throw new ArgumentException("Image map name cannot be null or empty.");
       }
+      string oldName = name;
       name = value;
-      Engine.OnImageMapNameChanged(this);
+      Engine.OnImageMapNameChanged(this, oldName);
     }
   }
 

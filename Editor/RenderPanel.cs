@@ -128,7 +128,7 @@ sealed class GLBuffer : IDisposable
   {
     if(buffer == null)
     {
-      wglMakeCurrent(IntPtr.Zero, IntPtr.Zero);
+      wglMakeCurrent(globalBuffer.hdc, globalBuffer.hglrc);
       currentBuffer = null;
     }
     else

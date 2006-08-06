@@ -36,7 +36,7 @@ static class EngineApp
 {
   static void Main()
   {
-    TheEngine.Initialize(new StandardFileSystem(".", "."));
+    TheEngine.Initialize(new StandardFileSystem(".", "."), false);
     TheEngine.CreateWindow(800, 600, "Test", ScreenFlag.None);
 
     Scene scene = new Scene();
