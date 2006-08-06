@@ -46,7 +46,7 @@ static class EngineApp
     obj.Height = 50;
     obj.X = 120;
     obj.Y = 80;
-    obj.BlendColor = Color.Red;
+    obj.Color = Color.Red;
     obj.AddToGroup(1);
     scene.AddObject(obj);
 
@@ -56,7 +56,7 @@ static class EngineApp
     obj.X = 0;
     obj.Y = 1000;
     obj.AddToGroup(1);
-    obj.BlendColor = Color.DarkGreen;
+    obj.Color = Color.DarkGreen;
     scene.AddObject(obj);
 
     obj = new RectangleObject();

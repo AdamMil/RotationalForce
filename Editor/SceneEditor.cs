@@ -49,15 +49,6 @@ public class SceneEditor : Form, IEditorForm
     toolBar.Items[2].Tag = Tools.Zoom;
 
     CurrentTool = Tools.Object;
-
-    sceneView = new SceneViewControl();
-    // use the minor camera axis so that we easily calculate the camera size needed to fully display a given object
-    sceneView.CameraAxis      = CameraAxis.Minor;
-    sceneView.CameraSize      = DefaultViewSize;
-    sceneView.RenderInvisible = true;
-
-    desktop = new DesktopControl();
-    desktop.AddChild(sceneView);
   }
 
   #region IEditorForm
@@ -86,7 +77,16 @@ public class SceneEditor : Form, IEditorForm
 
   public void CreateNew()
   {
-    sceneView.Scene = scene = new Scene();
+    sceneView = new SceneViewControl();
+    // use the minor camera axis so that we easily calculate the camera size needed to fully display a given object
+    sceneView.CameraAxis      = CameraAxis.Minor;
+    sceneView.CameraSize      = DefaultViewSize;
+    sceneView.RenderInvisible = true;
+    sceneView.Scene           = new Scene();
+
+    desktop = new DesktopControl();
+    desktop.AddChild(sceneView);
+
     level = Project.CreateLevel();
     InvalidateRender();
     isModified = false;
@@ -113,13 +113,17 @@ public class SceneEditor : Form, IEditorForm
       try
       {
         Serializer.BeginBatch();
-        sceneView.Scene = scene = (Scene)Serializer.Deserialize(sr);
+        sceneView = (SceneViewControl)Serializer.Deserialize(sr);
+        sceneView.Scene = (Scene)Serializer.Deserialize(sr);
         Serializer.EndBatch();
       }
       finally
       {
         sr.Close();
       }
+
+      desktop = new DesktopControl();
+      desktop.AddChild(sceneView);
 
       level = Project.LoadLevel(fd.FileName);
       InvalidateRender();
@@ -172,7 +176,8 @@ public class SceneEditor : Form, IEditorForm
     try
     {
       Serializer.BeginBatch();
-      Serializer.Serialize(scene, sw);
+      Serializer.Serialize(sceneView, sw); // sceneViews don't serialize their scene objects
+      Serializer.Serialize(sceneView.Scene, sw);
       Serializer.EndBatch();
     }
     finally
@@ -192,7 +197,7 @@ public class SceneEditor : Form, IEditorForm
     return isClosed;
   }
   #endregion
-
+  
   #region Invalidation
   new void Invalidate(Rectangle rect, bool invalidateRender)
   {
@@ -325,6 +330,11 @@ public class SceneEditor : Form, IEditorForm
   {
     get { return EditorApp.MainForm.Project; }
   }
+  
+  Scene Scene
+  {
+    get { return sceneView.Scene; }
+  }
 
   #region InitializeComponent
   void InitializeComponent()
@@ -334,13 +344,14 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.ToolStripButton layerTool;
     System.Windows.Forms.ToolStripButton cameraTool;
     System.Windows.Forms.MenuStrip menuBar;
-    System.Windows.Forms.ListViewGroup listViewGroup1 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
-    System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     System.Windows.Forms.ToolStripDropDownButton toolboxNewMenu;
     System.Windows.Forms.ToolStripMenuItem newStaticImage;
+    System.Windows.Forms.ListViewGroup listViewGroup5 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup6 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup7 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup8 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
+    System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
+    System.Windows.Forms.SplitContainer mainSplitter;
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
     this.toolBar = new System.Windows.Forms.ToolStrip();
     this.rightPane = new System.Windows.Forms.SplitContainer();
@@ -358,6 +369,7 @@ public class SceneEditor : Form, IEditorForm
     menuBar = new System.Windows.Forms.MenuStrip();
     toolboxNewMenu = new System.Windows.Forms.ToolStripDropDownButton();
     newStaticImage = new System.Windows.Forms.ToolStripMenuItem();
+    mainSplitter = new System.Windows.Forms.SplitContainer();
     menuBar.SuspendLayout();
     this.toolBar.SuspendLayout();
     this.rightPane.Panel1.SuspendLayout();
@@ -366,6 +378,9 @@ public class SceneEditor : Form, IEditorForm
     this.objToolBar.SuspendLayout();
     this.renderPanel.SuspendLayout();
     this.statusBar.SuspendLayout();
+    mainSplitter.Panel1.SuspendLayout();
+    mainSplitter.Panel2.SuspendLayout();
+    mainSplitter.SuspendLayout();
     this.SuspendLayout();
     // 
     // selectTool
@@ -422,28 +437,41 @@ public class SceneEditor : Form, IEditorForm
     this.editMenu.Size = new System.Drawing.Size(37, 20);
     this.editMenu.Text = "&Edit";
     // 
+    // toolboxNewMenu
+    // 
+    toolboxNewMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            newStaticImage});
+    toolboxNewMenu.Name = "toolboxNewMenu";
+    toolboxNewMenu.Size = new System.Drawing.Size(41, 17);
+    toolboxNewMenu.Text = "New";
+    toolboxNewMenu.ToolTipText = "Creates a toolbox item and adds it to the project and the level.";
+    // 
+    // newStaticImage
+    // 
+    newStaticImage.Name = "newStaticImage";
+    newStaticImage.Size = new System.Drawing.Size(155, 22);
+    newStaticImage.Text = "Static image map";
+    newStaticImage.Click += new System.EventHandler(this.newStaticImage_Click);
+    // 
     // toolBar
     // 
-    this.toolBar.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
     this.toolBar.AutoSize = false;
-    this.toolBar.Dock = System.Windows.Forms.DockStyle.None;
     this.toolBar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
     this.toolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             selectTool,
             layerTool,
             cameraTool});
     this.toolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
-    this.toolBar.Location = new System.Drawing.Point(561, 3);
+    this.toolBar.Location = new System.Drawing.Point(0, 0);
     this.toolBar.Name = "toolBar";
-    this.toolBar.Size = new System.Drawing.Size(206, 24);
+    this.toolBar.Size = new System.Drawing.Size(228, 24);
     this.toolBar.TabIndex = 1;
     // 
     // rightPane
     // 
-    this.rightPane.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Right)));
     this.rightPane.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-    this.rightPane.Location = new System.Drawing.Point(560, 30);
+    this.rightPane.Dock = System.Windows.Forms.DockStyle.Fill;
+    this.rightPane.Location = new System.Drawing.Point(0, 24);
     this.rightPane.Name = "rightPane";
     this.rightPane.Orientation = System.Windows.Forms.Orientation.Horizontal;
     // 
@@ -456,7 +484,7 @@ public class SceneEditor : Form, IEditorForm
     // 
     this.rightPane.Panel2.Controls.Add(this.propertyGrid);
     this.rightPane.Panel2Collapsed = true;
-    this.rightPane.Size = new System.Drawing.Size(207, 491);
+    this.rightPane.Size = new System.Drawing.Size(228, 499);
     this.rightPane.SplitterDistance = 209;
     this.rightPane.TabIndex = 3;
     // 
@@ -470,7 +498,7 @@ public class SceneEditor : Form, IEditorForm
     this.objToolBar.Location = new System.Drawing.Point(0, 0);
     this.objToolBar.Name = "objToolBar";
     this.objToolBar.RenderMode = System.Windows.Forms.ToolStripRenderMode.System;
-    this.objToolBar.Size = new System.Drawing.Size(205, 24);
+    this.objToolBar.Size = new System.Drawing.Size(226, 24);
     this.objToolBar.TabIndex = 2;
     // 
     // objectList
@@ -478,25 +506,25 @@ public class SceneEditor : Form, IEditorForm
     this.objectList.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-    listViewGroup1.Header = "Static Images";
-    listViewGroup1.Name = "staticImgGroup";
-    listViewGroup2.Header = "Animated Images";
-    listViewGroup2.Name = "animImgGroup";
-    listViewGroup3.Header = "Vector Animations";
-    listViewGroup3.Name = "vectorAnimGroup";
-    listViewGroup4.Header = "Miscellaneous";
-    listViewGroup4.Name = "miscGroup";
+    listViewGroup5.Header = "Static Images";
+    listViewGroup5.Name = "staticImgGroup";
+    listViewGroup6.Header = "Animated Images";
+    listViewGroup6.Name = "animImgGroup";
+    listViewGroup7.Header = "Vector Animations";
+    listViewGroup7.Name = "vectorAnimGroup";
+    listViewGroup8.Header = "Miscellaneous";
+    listViewGroup8.Name = "miscGroup";
     this.objectList.Groups.AddRange(new System.Windows.Forms.ListViewGroup[] {
-            listViewGroup1,
-            listViewGroup2,
-            listViewGroup3,
-            listViewGroup4});
+            listViewGroup5,
+            listViewGroup6,
+            listViewGroup7,
+            listViewGroup8});
     this.objectList.LargeImageList = this.objectImgs;
-    this.objectList.Location = new System.Drawing.Point(4, 24);
+    this.objectList.Location = new System.Drawing.Point(2, 24);
     this.objectList.MultiSelect = false;
     this.objectList.Name = "objectList";
     this.objectList.ShowItemToolTips = true;
-    this.objectList.Size = new System.Drawing.Size(196, 462);
+    this.objectList.Size = new System.Drawing.Size(221, 470);
     this.objectList.TabIndex = 0;
     this.objectList.TileSize = new System.Drawing.Size(192, 36);
     this.objectList.UseCompatibleStateImageBehavior = false;
@@ -519,14 +547,12 @@ public class SceneEditor : Form, IEditorForm
     // renderPanel
     // 
     this.renderPanel.AllowDrop = true;
-    this.renderPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
     this.renderPanel.BackColor = System.Drawing.Color.Black;
     this.renderPanel.Controls.Add(menuBar);
-    this.renderPanel.Location = new System.Drawing.Point(2, 3);
+    this.renderPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+    this.renderPanel.Location = new System.Drawing.Point(0, 0);
     this.renderPanel.Name = "renderPanel";
-    this.renderPanel.Size = new System.Drawing.Size(552, 518);
+    this.renderPanel.Size = new System.Drawing.Size(540, 523);
     this.renderPanel.TabIndex = 0;
     this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
     this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
@@ -565,34 +591,37 @@ public class SceneEditor : Form, IEditorForm
     this.layerLabel.Size = new System.Drawing.Size(47, 17);
     this.layerLabel.Text = "Layer: 0";
     // 
-    // toolboxNewMenu
+    // mainSplitter
     // 
-    toolboxNewMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            newStaticImage});
-    toolboxNewMenu.Name = "toolboxNewMenu";
-    toolboxNewMenu.Size = new System.Drawing.Size(41, 17);
-    toolboxNewMenu.Text = "New";
-    toolboxNewMenu.ToolTipText = "Creates a toolbox item and adds it to the project and the level.";
+    mainSplitter.Dock = System.Windows.Forms.DockStyle.Fill;
+    mainSplitter.Location = new System.Drawing.Point(0, 0);
+    mainSplitter.Name = "mainSplitter";
     // 
-    // newStaticImage
+    // mainSplitter.Panel1
     // 
-    newStaticImage.Name = "newStaticImage";
-    newStaticImage.Size = new System.Drawing.Size(155, 22);
-    newStaticImage.Text = "Static image map";
-    newStaticImage.Click += new System.EventHandler(this.newStaticImage_Click);
+    mainSplitter.Panel1.Controls.Add(this.renderPanel);
+    mainSplitter.Panel1MinSize = 300;
+    // 
+    // mainSplitter.Panel2
+    // 
+    mainSplitter.Panel2.Controls.Add(this.rightPane);
+    mainSplitter.Panel2.Controls.Add(this.toolBar);
+    mainSplitter.Panel2MinSize = 130;
+    mainSplitter.Size = new System.Drawing.Size(772, 523);
+    mainSplitter.SplitterDistance = 600;
+    mainSplitter.TabIndex = 5;
     // 
     // SceneEditor
     // 
     this.ClientSize = new System.Drawing.Size(772, 523);
+    this.Controls.Add(mainSplitter);
     this.Controls.Add(this.statusBar);
-    this.Controls.Add(this.rightPane);
-    this.Controls.Add(this.toolBar);
-    this.Controls.Add(this.renderPanel);
     this.MainMenuStrip = menuBar;
     this.MinimumSize = new System.Drawing.Size(430, 250);
     this.Name = "SceneEditor";
     this.Text = "Scene Editor";
     this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
+    this.GotFocus += new EventHandler(SceneEditor_GotFocus);
     menuBar.ResumeLayout(false);
     menuBar.PerformLayout();
     this.toolBar.ResumeLayout(false);
@@ -606,9 +635,12 @@ public class SceneEditor : Form, IEditorForm
     this.renderPanel.PerformLayout();
     this.statusBar.ResumeLayout(false);
     this.statusBar.PerformLayout();
+    mainSplitter.Panel1.ResumeLayout(false);
+    mainSplitter.Panel2.ResumeLayout(false);
+    mainSplitter.ResumeLayout(false);
     this.ResumeLayout(false);
     this.PerformLayout();
- 
+
   }
  
   #endregion
@@ -650,7 +682,7 @@ public class SceneEditor : Form, IEditorForm
     
     protected Scene Scene
     {
-      get { return Editor.scene; }
+      get { return Editor.Scene; }
     }
 
     protected SceneViewControl SceneView
@@ -3242,7 +3274,7 @@ public class SceneEditor : Form, IEditorForm
       SceneObject obj = item.CreateSceneObject(sceneView);
       obj.Position = sceneView.ClientToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
       obj.Layer    = CurrentLayer;
-      scene.AddObject(obj);
+      Scene.AddObject(obj);
       InvalidateRender();
 
       CurrentTool = Tools.Object;
@@ -3306,6 +3338,7 @@ public class SceneEditor : Form, IEditorForm
       md.Open(imap);
     }
 
+    string oldName = imap == null ? null : imap.Name;
     if(md.ShowDialog() == DialogResult.OK)
     {
       Serializer.BeginBatch();
@@ -3314,6 +3347,8 @@ public class SceneEditor : Form, IEditorForm
 
       Engine.Engine.AddImageMap(md.ImageMap);
       SetToolboxItem(new StaticImageItem(md.ImageMap));
+      md.ImageMap.InvalidateMode();
+      InvalidateRender();
     }
     else if(md.ImageMap != imap) // dispose the image map if it's not the one we gave it, and we're not going to use it
     {
@@ -3456,7 +3491,17 @@ public class SceneEditor : Form, IEditorForm
   {
     currentTool.PaintDecoration(e.Graphics);
   }
-  
+
+  void SceneEditor_GotFocus(object sender, EventArgs e)
+  {
+    // since we can't easily propogate texture modes between rendering contexts, we'll simply reset the mode whenever
+    // we get focus
+    foreach(ImageMapHandle handle in Engine.Engine.GetImageMaps())
+    {
+      if(handle.ImageMap != null) handle.ImageMap.InvalidateMode();
+    }
+  }
+
   void HideRightPane()
   {
     rightPane.Panel2Collapsed = true;
@@ -3525,7 +3570,6 @@ public class SceneEditor : Form, IEditorForm
 
   DesktopControl desktop;
   SceneViewControl sceneView;
-  Scene scene;
   Project.Level level;
   bool isModified, isClosed;
 }
@@ -3668,7 +3712,7 @@ sealed class StaticImageItem : ToolboxItem
 
   public override SceneObject CreateSceneObject(SceneViewControl sceneView)
   {
-    ImageMap map = Engine.Engine.GetImageMap(imageMapName);
+    ImageMap map = Engine.Engine.GetImageMap(imageMapName).ImageMap;
     if(map.Frames.Count == 0)
     {
       MessageBox.Show("This image map has no frames. Try editing the map.", "Uh oh.",

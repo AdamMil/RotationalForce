@@ -133,11 +133,12 @@ sealed class Project
 
   public ImageMap GetImageMap(string enginePath)
   {
-    foreach(ImageMap map in Engine.Engine.GetImageMaps())
+    foreach(ImageMapHandle handle in Engine.Engine.GetImageMaps())
     {
-      if(string.Equals(enginePath, map.ImageFile, StringComparison.OrdinalIgnoreCase))
+      if(handle.ImageMap != null &&
+         string.Equals(enginePath, handle.ImageMap.ImageFile, StringComparison.OrdinalIgnoreCase))
       {
-        return map;
+        return handle.ImageMap;
       }
     }
 

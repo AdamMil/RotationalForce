@@ -52,11 +52,14 @@ namespace RotationalForce.Editor
 
     public void Open(ImageMap map)
     {
+      map.InvalidateMode(); // since we have our own rendering context, we need to reset the texture mode
+
       imageMap = map;
       imageName.Text = map.Name;
       OnTypeChanged();
       ValidateImage();
       initialized = true;
+      isEditing   = true;
     }
 
     #region InitializeComponent
@@ -644,7 +647,19 @@ namespace RotationalForce.Editor
 
     void imageName_Validated(object sender, EventArgs e)
     {
-      imageMap.Name = ((TextBox)sender).Text;
+      if(isEditing && imageMap.Name != imageName.Text &&
+         MessageBox.Show("Changing the name of an image map can break objects that reference it. Objects in open "+
+                         "levels will be updated automatically, but other objects will not. Are you sure you want to "+
+                         "change the name of this image map?", "Change image map name?", MessageBoxButtons.YesNo,
+                         MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.No)
+         
+      {
+        imageName.Text = imageMap.Name;
+      }
+      else
+      {
+        imageMap.Name = imageName.Text;
+      }
     }
 
     void imageMode_SelectedIndexChanged(object sender, EventArgs e)
@@ -823,6 +838,6 @@ namespace RotationalForce.Editor
 
     ImageMap imageMap;
     int tileZoom;
-    bool initialized;
+    bool initialized, isEditing;
   }
 }

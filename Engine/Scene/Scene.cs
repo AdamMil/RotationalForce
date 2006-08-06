@@ -394,6 +394,14 @@ public class Scene : UniqueObject, ITicker, IDisposable
            (options.AllowInvisible || obj.EffectiveVisibility);
   }
 
+  public IEnumerable<SceneObject> PickAll()
+  {
+    PickOptions options = new PickOptions();
+    options.AllowInvisible = options.AllowUnpickable = true;
+    options.GroupMask = options.LayerMask = 0xffffffff;
+    return PickAll(options);
+  }
+
   public IEnumerable<SceneObject> PickAll(PickOptions options)
   {
     return Pick(new AllEnumerable(objects, options), options.SortByLayer);

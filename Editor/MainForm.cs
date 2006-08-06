@@ -95,9 +95,9 @@ sealed class MainForm : Form
       Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EditorDataPath), true);
 
       ToolboxItem.SetItem(new TriggerItem());
-      foreach(ImageMap map in Engine.Engine.GetImageMaps())
+      foreach(ImageMapHandle map in Engine.Engine.GetImageMaps())
       {
-        ToolboxItem.SetItem(new StaticImageItem(map));
+        ToolboxItem.SetItem(new StaticImageItem(map.ImageMap));
       }
     }
   }

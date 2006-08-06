@@ -23,18 +23,28 @@ public class StaticImageObject : SceneObject
 
         if(string.IsNullOrEmpty(imageMapName))
         {
-          imageMap = null;
+          mapHandle = null;
         }
         else
         {
-          imageMap = Engine.GetImageMap(imageMapName, out frameNumber);
+          mapHandle = Engine.GetImageMap(imageMapName, out frameNumber);
         }
       }
     }
   }
 
+  protected override void Deserialize(DeserializationStore store)
+  {
+    if(!string.IsNullOrEmpty(imageMapName))
+    {
+      mapHandle = Engine.GetImageMap(imageMapName, out frameNumber);
+    }
+  }
+
   protected override void RenderContent()
   {
+    ImageMap imageMap = mapHandle == null ? null : mapHandle.ImageMap;
+
     // use default rendering if the image map is null or the frame number is invalid
     if(imageMap == null || frameNumber >= imageMap.Frames.Count)
     {
@@ -59,8 +69,8 @@ public class StaticImageObject : SceneObject
   }
 
   string imageMapName;
-  ImageMap imageMap;
-  int frameNumber;
+  [NonSerialized] ImageMapHandle mapHandle;
+  [NonSerialized] int frameNumber;
 }
 
 } // namespace RotationalForce.Engine
