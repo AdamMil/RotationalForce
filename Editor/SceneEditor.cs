@@ -3393,8 +3393,9 @@ public class SceneEditor : Form, IEditorForm
     ImageMap imap = Project.GetImageMap(imgFile);
     if(imap != null)
     {
-      MessageBox.Show("An image map for this image has already been loaded into the project. In the future, use the "+
-                      "'Import' command to load this image map into a level.", "Image map already exists",
+      MessageBox.Show("An image map for this image has already been loaded into the project. The existing map will "+
+                      "edited. If you wanted to import the image map into the level, use the 'Import' command rather "+
+                      "than the 'New' command.", "Image map already exists",
                       MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
