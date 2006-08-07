@@ -1002,7 +1002,7 @@ public static class Serializer
 
   #region Serialization
   /// <summary>Serializes an object into the given <see cref="Stream"/>. The object can be null.</summary>
-  /// <remarks>If you'll be serializing multiple objects to the stream, it's more efficient to create a
+  /// <remarks>If you'll be serializing multiple objects to the stream, you must instead create a
   /// <see cref="SexpWriter"/> and call the overload that takes it.
   /// </remarks>
   public static void Serialize(object obj, Stream store)
@@ -1014,7 +1014,7 @@ public static class Serializer
   }
 
   /// <summary>Serializes an object into the given <see cref="TextWriter"/>. The object can be null.</summary>
-  /// <remarks>If you'll be serializing multiple objects to the text writer, it's more efficient to create a
+  /// <remarks>If you'll be serializing multiple objects to the text writer, you must instead create a
   /// <see cref="SexpWriter"/> and call the overload that takes it.
   /// </remarks>
   public static void Serialize(object obj, TextWriter store)
@@ -1289,7 +1289,7 @@ public static class Serializer
 
   #region Deserialization
   /// <summary>Deserializes an object from a <see cref="Stream"/>.</summary>
-  /// <remarks>If you'll be deserializing multiple objects from the stream, it's more efficient to create a
+  /// <remarks>If you'll be deserializing multiple objects from the stream, you must instead create a
   /// <see cref="SexpReader"/> and call the overload that takes it.
   /// </remarks>
   public static object Deserialize(Stream store)
@@ -1298,7 +1298,7 @@ public static class Serializer
   }
 
   /// <summary>Deserializes an object from a <see cref="TextReader"/>.</summary>
-  /// <remarks>If you'll be deserializing multiple objects from the text reader, it's more efficient to create a
+  /// <remarks>If you'll be deserializing multiple objects from the text reader, you must instead create a
   /// <see cref="SexpReader"/> and call the overload that takes it.
   /// </remarks>
   public static object Deserialize(TextReader store)
