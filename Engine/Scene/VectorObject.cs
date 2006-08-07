@@ -714,9 +714,10 @@ public sealed class VectorAnimation : Animation
       // we're actually rotating the texture coordinates. we're doing the inverse operations to the texture coordinates
       // rather than attempting to rotate the texture. then, in texture space, x is still x and y is still y, so the
       // rotation doesn't alter the aspect ratio.
-      if(textureRotation != 0)
+      double rotation = -textureRotation * MathConst.DegreesToRadians;
+      if(rotation != 0)
       {
-        Math2D.Rotate(texCoords, 0, texCoords.Length, -textureRotation*MathConst.DegreesToRadians);
+        Math2D.Rotate(texCoords, 0, texCoords.Length, rotation);
       }
 
       // a value that can be multiplied to rescale the coordinates to -1/2 TextureRepeat to 1/2 TextureRepeat.
@@ -743,7 +744,7 @@ public sealed class VectorAnimation : Animation
       // finally, assign the coordinates back, plus the texture offset, and an offset to get the coordinates back to
       // what would be expected for texture coordinates. (we were using -0.5repeat to 0.5repeat. this puts it back to
       // 0 to 1repeat)
-      Vector offset = new Vector(textureRepeat*0.5, textureRepeat*0.5) - textureOffset;
+      Vector offset = new Vector(textureRepeat*0.5, textureRepeat*0.5) - textureOffset.Rotated(rotation);
       for(int i=0; i<texCoords.Length; i++)
       {
         subPoints[i].TextureCoord = texCoords[i] + offset;

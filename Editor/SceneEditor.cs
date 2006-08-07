@@ -111,17 +111,12 @@ public class SceneEditor : Form, IEditorForm
         return false;
       }
       
-      StreamReader sr = new StreamReader(levelPath, System.Text.Encoding.UTF8);
-      try
+      using(SexpReader sr = new SexpReader(new StreamReader(levelPath, System.Text.Encoding.UTF8)))
       {
         Serializer.BeginBatch();
         sceneView = (SceneViewControl)Serializer.Deserialize(sr);
         sceneView.Scene = (Scene)Serializer.Deserialize(sr);
         Serializer.EndBatch();
-      }
-      finally
-      {
-        sr.Close();
       }
 
       desktop = new DesktopControl();
@@ -1685,8 +1680,12 @@ public class SceneEditor : Form, IEditorForm
 
           if(dragMode != DragMode.Select)
           {
-            // draw the control rectangle around the selected items
-            g.DrawRectangle(Pens.White, GetHandleBorder());
+            Color bgColor = SceneView.BackColor;
+            using(Pen pen = new Pen(Color.FromArgb(255-bgColor.R, 255-bgColor.G, 255-bgColor.B)))
+            {
+              // draw the control rectangle around the selected items (we'll use the opposite of the background color)
+              g.DrawRectangle(pen, GetHandleBorder());
+            }
             foreach(Handle handle in GetHandles())
             {
               DrawControlHandle(g, handle);
@@ -1942,7 +1941,7 @@ public class SceneEditor : Form, IEditorForm
 
       void menu_EditCollision(object sender, EventArgs e)
       {
-        throw new NotImplementedException();
+        MessageBox.Show("Not implemented yet."); // TODO: implement
       }
 
       void menu_EditLinks(object sender, EventArgs e)
@@ -1962,7 +1961,7 @@ public class SceneEditor : Form, IEditorForm
 
       void menu_Export(object sender, EventArgs e)
       {
-        throw new NotImplementedException();
+        MessageBox.Show("This used to work, but got erased when visual studio got bitchy! Boo."); // TODO: implement
       }
       #endregion
 
@@ -2072,7 +2071,7 @@ public class SceneEditor : Form, IEditorForm
               TrySelectObjectAndPoint(SelectedObject, e.Location, SelectMode.Toggle);
             }
           }
-          // ctrl-click breaks/joins the shape at that point (spline shapes only)
+          // ctrl-click breaks/joins the shape at that point
           else if(Control.ModifierKeys == Keys.Control)
           {
             if(SelectObject(e.Location, SelectMode.DeselectPoints) && selectedPoints.Count == 1)
@@ -3386,6 +3385,8 @@ public class SceneEditor : Form, IEditorForm
   
   void SetToolboxItem(ToolboxItem item)
   {
+    ToolboxItem.SetItem(item);
+
     foreach(ListViewItem lvItem in objectList.Items)
     {
       if(string.Equals(item.Name, ((ToolboxItem)lvItem.Tag).Name, StringComparison.Ordinal))
