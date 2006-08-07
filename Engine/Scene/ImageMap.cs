@@ -322,6 +322,15 @@ public abstract class ImageMap : UniqueObject, IDisposable
 
     if(textureID != 0)
     {
+      uint currentTexture;
+      GL.glGetIntegerv(GL.GL_TEXTURE_BINDING_2D, out currentTexture);
+
+      // if the texture being disposed is currently selected in opengl, deselect it before deleting it.
+      if(currentTexture == textureID)
+      {
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0);
+      }
+
       GL.glDeleteTexture(textureID);
       textureID = 0;
     }
@@ -333,7 +342,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
   {
     if(framesDirty)
     {
-      // clear the 'framesDirty' flag immediately so that if something fails, we don't keep retrying 100 times per
+      // clear the 'framesDirty' flag immediately so that if something fails, we don't keep retrying many times per
       // frame.
       // TODO: think about how to communicate texture loading failure to the user of the engine
       framesDirty = false;

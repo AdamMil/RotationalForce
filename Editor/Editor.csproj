@@ -68,7 +68,7 @@
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Compile Include="SceneEditor.cs">
-      <SubType>Form</SubType>
+      <SubType>Component</SubType>
     </Compile>
     <Compile Include="Xml.cs" />
   </ItemGroup>
@@ -111,6 +111,7 @@
     <None Include="Resources\CollisionTool.bmp" />
     <Content Include="Resources\Rotate.cur" />
     <Content Include="Resources\SelectTool.bmp" />
+    <Content Include="Resources\StaticImageIcon.bmp" />
     <Content Include="Resources\TriggerIcon.bmp" />
     <Content Include="Resources\ZoomIn.cur" />
     <Content Include="Resources\ZoomOut.cur" />

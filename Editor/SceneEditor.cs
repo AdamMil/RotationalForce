@@ -2018,7 +2018,8 @@ public class SceneEditor : Form, IEditorForm
             break;
           }
         }
-        
+
+        ObjectTool.DeselectObjects();
         if(selectedObject != null)
         {
           SelectObject(selectedObject);
@@ -2202,6 +2203,8 @@ public class SceneEditor : Form, IEditorForm
               dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoint].Position));
             }
           }
+          
+          dragMode = DragMode.MoveVertices;
           return true;
         }
         else if(e.Button == MouseButtons.Right) // for right drags, clone and move vertices
@@ -2211,6 +2214,57 @@ public class SceneEditor : Form, IEditorForm
           CloneAndSelectPoint(selectedPoints[0]);
           dragPoints.Clear();
           dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoints[0]].Position));
+          dragMode = DragMode.MoveVertices;
+          return true;
+        }
+        else if(e.Button == MouseButtons.Middle) // for middle drags, manipulate the texture
+        {
+          // if there wasn't a polygun under the mouse, or the polygon has no texture, or it doesn't define a valid
+          // area, cancel the drag
+          if(!SelectObject(e.Location, SelectMode.DeselectPoints) || string.IsNullOrEmpty(SelectedPoly.Texture) ||
+             SelectedPoly.Vertices.Count < 3)
+          {
+            return false;
+          }
+
+          // get the size of the polygon in scene coordinates, so we can scale the texture movement by the mouse
+          // movement.
+          double x1 = double.MaxValue, y1 = double.MaxValue, x2 = double.MinValue, y2 = double.MinValue;
+          foreach(VectorAnimation.Vertex vertex in SelectedPoly.Vertices)
+          {
+            GLPoint pt = vertex.Position;
+            if(pt.X < x1) x1 = pt.X;
+            if(pt.X > x2) x2 = pt.X;
+            if(pt.Y < y1) y1 = pt.Y;
+            if(pt.Y > y2) y2 = pt.Y;
+          }
+          Vector sceneSize = SelectedObject.LocalToScene(new Vector(x2-x1, y2-y1));
+          GLPoint sceneCenter = SelectedObject.LocalToScene(x1, y1) + sceneSize*0.5;
+          dragSize = Math.Max(sceneSize.X, sceneSize.Y);
+
+          if(Control.ModifierKeys == Keys.None)
+          {
+            dragVector = SelectedPoly.TextureOffset;
+            dragMode = DragMode.MoveTexture;
+          }
+          else if(Control.ModifierKeys == Keys.Control)
+          {
+            dragVector = new Vector(sceneCenter);
+            dragRotation = Math2D.AngleBetween(sceneCenter, SceneView.ClientToScene(e.Location)) -
+                           SelectedPoly.TextureRotation * MathConst.DegreesToRadians;
+            dragMode = DragMode.RotateTexture;
+          }
+          else if(Control.ModifierKeys == Keys.Shift)
+          {
+            dragVector = new Vector(sceneCenter);
+            dragZoom = SelectedPoly.TextureRepeat;
+            dragMode = DragMode.ZoomTexture;
+          }
+          else
+          {
+            return false;
+          }
+          
           return true;
         }
 
@@ -2218,6 +2272,66 @@ public class SceneEditor : Form, IEditorForm
       }
 
       public override void MouseDrag(MouseDragEventArgs e)
+      {
+        if(dragMode == DragMode.MoveVertices)
+        {
+          DragVertices(e);
+        }
+        else if(dragMode == DragMode.MoveTexture)
+        {
+          DragTexture(e);
+        }
+        else if(dragMode == DragMode.RotateTexture)
+        {
+          RotateTexture(e);
+        }
+        else if(dragMode == DragMode.ZoomTexture)
+        {
+          ZoomTexture(e);
+        }
+      }
+
+      public override void MouseDragEnd(MouseDragEventArgs e)
+      {
+        // if we were moving the whole object, just invalidate the render
+        if((selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count) &&
+         SelectedFrame.Polygons.Count == 1)
+        {
+          Editor.InvalidateRender();
+        }
+        else // otherwise, we'll need to recalculate the object bounds
+        {
+          ObjectTool.InvalidateSelectedBounds(true);
+          RecalculateObjectBounds();
+          ObjectTool.RecalculateAndInvalidateSelectedBounds();
+        }
+      }
+
+      void DragTexture(MouseDragEventArgs e)
+      {
+        Vector sceneDist = SceneView.ClientToScene(new Size(e.X-e.Start.X, e.Y-e.Start.Y));
+        SelectedPoly.TextureOffset = dragVector + sceneDist/dragSize;
+        ObjectTool.InvalidateSelectedBounds(true);
+      }
+      
+      void RotateTexture(MouseDragEventArgs e)
+      {
+        double rotation = Math2D.AngleBetween(dragVector.ToPoint(), SceneView.ClientToScene(e.Location)) - dragRotation;
+        SelectedPoly.TextureRotation = EngineMath.NormalizeAngle(rotation * MathConst.RadiansToDegrees);
+        ObjectTool.InvalidateSelectedBounds(true);
+      }
+      
+      void ZoomTexture(MouseDragEventArgs e)
+      {
+        GLPoint currentPoint = SceneView.ClientToScene(e.Location), startPoint = SceneView.ClientToScene(e.Start);
+        double currentDist = currentPoint.DistanceTo(dragVector.ToPoint()),
+                 startDist = startPoint.DistanceTo(dragVector.ToPoint());
+        if(currentDist < 0.00001) return; // prevent divide by zero if the user moves the mouse close to the center
+        SelectedPoly.TextureRepeat = dragZoom * (startDist / currentDist);
+        ObjectTool.InvalidateSelectedBounds(true);
+      }
+
+      void DragVertices(MouseDragEventArgs e)
       {
         ObjectTool.InvalidateSelectedBounds(true);
 
@@ -2262,22 +2376,6 @@ public class SceneEditor : Form, IEditorForm
 
         RecalculateObjectBounds();
         ObjectTool.RecalculateAndInvalidateSelectedBounds();
-      }
-
-      public override void MouseDragEnd(MouseDragEventArgs e)
-      {
-        // if we were moving the whole object, just invalidate the render
-        if((selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count) &&
-         SelectedFrame.Polygons.Count == 1)
-        {
-          Editor.InvalidateRender();
-        }
-        else // otherwise, we'll need to recalculate the object bounds
-        {
-          ObjectTool.InvalidateSelectedBounds(true);
-          RecalculateObjectBounds();
-          ObjectTool.RecalculateAndInvalidateSelectedBounds();
-        }
       }
 
       void RecalculateObjectBounds()
@@ -2357,6 +2455,14 @@ public class SceneEditor : Form, IEditorForm
         DeselectPoints=2,
         DeselectIfNone=4,
         DeselectMask=6,
+      }
+      
+      enum DragMode
+      {
+        MoveVertices,
+        MoveTexture,
+        RotateTexture,
+        ZoomTexture
       }
 
       VectorAnimation SelectedAnimation
@@ -2689,7 +2795,10 @@ public class SceneEditor : Form, IEditorForm
 
       List<int> selectedPoints = new List<int>();
       List<GLPoint> dragPoints = new List<GLPoint>();
+      Vector dragVector;
+      double dragZoom, dragRotation, dragSize;
       int selectedPoly;
+      DragMode dragMode;
 
       /// <summary>Determines whether the specified polygon contains the given point.</summary>
       static bool PolygonContains(VectorAnimation.Polygon poly, GLPoint point)
@@ -3427,7 +3536,7 @@ public class SceneEditor : Form, IEditorForm
   void newStaticImage_Click(object sender, EventArgs e)
   {
     OpenFileDialog ofd = new OpenFileDialog();
-    ofd.Filter = "Image files (png;jpeg;pcx;bmp)|*.png;*.jpg;*.jpeg;*.pcx;*.bmp|All files (*.*)|*.*";
+    ofd.Filter = "Image files (png;jpeg;bmp;pcx;gif)|*.png;*.jpg;*.jpeg;*.bmp;*.pcx;*.gif|All files (*.*)|*.*";
     ofd.Title  = "Select an image to import";
     ofd.InitialDirectory = Project.ImagesPath;
     if(ofd.ShowDialog() != DialogResult.OK) return;

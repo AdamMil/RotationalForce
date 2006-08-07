@@ -152,8 +152,8 @@ sealed class UniqueObjectReference : ISerializable, IObjectReference
 /// <summary>An enum describing the type of the current node read from a <see cref="SexpReader"/>.</summary>
 public enum SexpNodeType
 {
-  /// <summary>No node has been read yet.</summary>
-  None,
+  /// <summary>No node has been read yet. This value is only used internally by the <see cref="SexpReader"/> class.</summary>
+  Invalid,
   /// <summary>The reader has just read the start of an element.</summary>
   Begin,
   /// <summary>The reader has just read some text content from the element.</summary>
@@ -177,6 +177,7 @@ public sealed class SexpReader : IDisposable
     if(reader == null) throw new ArgumentNullException();
     this.reader = reader;
     NextChar(); // read the first character, if there is one
+    Read(); // advance to the first node
   }
 
   public bool EOF
@@ -222,7 +223,7 @@ public sealed class SexpReader : IDisposable
 
     switch(nodeType)
     {
-      case SexpNodeType.None:
+      case SexpNodeType.Invalid:
         ReadFromBOF();
         break;
 
@@ -329,8 +330,7 @@ public sealed class SexpReader : IDisposable
 
   public override string ToString()
   {
-    return nodeType == SexpNodeType.None || nodeType == SexpNodeType.EOF ?
-      "[" + nodeType + "]" : string.Format("[{0} {1}]", TagName, nodeType);
+    return nodeType == SexpNodeType.EOF ? "[" + nodeType + "]" : string.Format("[{0} {1}]", TagName, nodeType);
   }
 
   bool ReaderAtEOF
@@ -821,7 +821,7 @@ public class DeserializationStore
       string nodeName = reader.TagName;
 
       reader.ReadBeginElement(); // read the opening variable name element
-      value = Serializer.InnerDeserialize(reader);
+      value = Serializer.Deserialize(reader);
       reader.ReadEndElement(); // consume the closing variable name node
 
       // prepend the new object to the list (where it can be found quickest)
@@ -1309,18 +1309,6 @@ public static class Serializer
   /// <summary>Deserializes an object from an <see cref="SexpReader"/>.</summary>
   public static object Deserialize(SexpReader store)
   {
-    if(store.NodeType == SexpNodeType.None) // if no data has been read yet...
-    {
-      store.Read(); // ... position the reader on the first node
-    }
-    return InnerDeserialize(store); // deserialize the root object
-  }
-
-  /// <summary>Deserializes an object from a <see cref="SexpReader"/>, assuming that the reader is positioned at the
-  /// start node.
-  /// </summary>
-  internal static object InnerDeserialize(SexpReader store)
-  {
     Type type = GetTypeFromName(store.TagName);
     object value;
 
@@ -1377,7 +1365,7 @@ public static class Serializer
 
       do
       {
-        array.SetValue(InnerDeserialize(store), indices);
+        array.SetValue(Deserialize(store), indices);
 
         for(int i=indices.Length-1; i >= 0; i--)
         {
@@ -1401,8 +1389,8 @@ public static class Serializer
     IDictionary dict = (IDictionary)ConstructObject(type);
     while(store.NodeType == SexpNodeType.Begin)
     {
-      object key   = InnerDeserialize(store);
-      object value = InnerDeserialize(store);
+      object key   = Deserialize(store);
+      object value = Deserialize(store);
       dict.Add(key, value);
     }
     return dict;
@@ -1413,7 +1401,7 @@ public static class Serializer
     IList list = (IList)ConstructObject(type);
     while(store.NodeType == SexpNodeType.Begin)
     {
-      list.Add(InnerDeserialize(store));
+      list.Add(Deserialize(store));
     }
     return list;
   }
@@ -1479,7 +1467,7 @@ public static class Serializer
       }
       else
       {
-        fieldValue = InnerDeserialize(store);
+        fieldValue = Deserialize(store);
       }
 
       fi.SetValue(instance, fieldValue);

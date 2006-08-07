@@ -8,7 +8,7 @@ namespace RotationalForce.Engine
 
 public class StaticImageObject : SceneObject
 {
-  /// <summary>Gets the image map name with an optional frame number.</summary>
+  /// <summary>Gets or sets the image map name with an optional frame number.</summary>
   [Category("Rendering")]
   [Description("The name of the image map to display, with an optional zero-based frame number. The format is "+
                "imageMapName (eg, player) or imageMapName#frameNumber (eg, player#2).")]
