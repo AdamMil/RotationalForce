@@ -1404,7 +1404,7 @@ public abstract class SceneObject : GameObject, ISerializable
       if(rotation != 0)
       {
         double sin, cos;
-        Math2D.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
+        GLMath.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
 
         // finish recalculating the world points associated with each link point
         for(int i=0; i<numLinkPoints; i++)

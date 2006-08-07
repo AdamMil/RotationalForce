@@ -398,7 +398,6 @@ public sealed class SerializationTests
     
     ms.Position = 0;
     SexpReader reader = new SexpReader(ms);
-    reader.Read();
     reader.ReadBeginElement("a");
     reader.ReadEndElement(); // end a
     Assert.AreEqual(reader.ReadElement("b"), "hello");
@@ -415,7 +414,6 @@ public sealed class SerializationTests
     // test skipping
     ms.Position = 0;
     reader = new SexpReader(ms);
-    reader.Read();
     Assert.AreEqual(reader.TagName, "a");
     Assert.AreEqual(reader.NodeType, SexpNodeType.Begin);
     reader.Skip();
@@ -429,7 +427,6 @@ public sealed class SerializationTests
 
     ms.Position = 0;
     reader = new SexpReader(ms);
-    reader.Read();
     reader.Skip();
     reader.Skip(); // skip to 'c'
     reader.Read(); // read to 'xxx'
