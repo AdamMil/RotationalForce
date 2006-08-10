@@ -24,7 +24,7 @@ static class EditorApp
   static void Application_ThreadException(object sender, System.Threading.ThreadExceptionEventArgs e)
   {
     if(MessageBox.Show("An unhandled exception occurred. To continue execution, click Yes. To exit, click No. You'll "+
-                       "have a chance to save if you choose to exit.\n\n" + e.Exception.ToString(), "Ruh roh",
+                       "have a chance to save if you choose to exit. Maybe.\n\n" + e.Exception.ToString(), "Ruh roh",
                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No)
     {
       MainForm.Close();

@@ -12,57 +12,75 @@ sealed class GLBuffer : IDisposable
 {
   public GLBuffer(int width, int height)
   {
-    hdc = CreateCompatibleDC(IntPtr.Zero);
-    if(hdc == IntPtr.Zero)
+    foreach(int bits in new int[] { 32, 24, 16 })
     {
-      Dispose();
-      throw new ApplicationException("Failure in GetDC");
-    }
-    
-    BitmapInfo bmp = new BitmapInfo();
-    bmp.Size = Marshal.SizeOf(typeof(BitmapInfo));
-    bmp.Width = width;
-    bmp.Height = height;
-    bmp.Planes = 1;
-    bmp.BitCount = 24;
+      hdc = CreateCompatibleDC(IntPtr.Zero);
+      if(hdc == IntPtr.Zero)
+      {
+        throw new ApplicationException("Failure in CreateCompatibleDC: " + GetLastError());
+      }
 
-    hbitmap = CreateDIBSection(hdc, ref bmp, 0, IntPtr.Zero, IntPtr.Zero, 0);
-    if(hbitmap == IntPtr.Zero)
-    {
-      Dispose();
-      throw new ApplicationException("Failure in CreateBitmap");
+      BitmapInfo bmp = new BitmapInfo();
+      bmp.Size     = Marshal.SizeOf(typeof(BitmapInfo));
+      bmp.Width    = width;
+      bmp.Height   = height;
+      bmp.Planes   = 1;
+      bmp.BitCount = (ushort)bits;
+
+      hbitmap = CreateDIBSection(hdc, ref bmp, 0, IntPtr.Zero, IntPtr.Zero, 0);
+      if(hbitmap == IntPtr.Zero)
+      {
+        Dispose(false);
+        if(bits == 16)
+        {
+          throw new ApplicationException("Failure in CreateDIBSection:" + GetLastError());
+        }
+        continue;
+      }
+
+      IntPtr oldObject = SelectObject(hdc, hbitmap);
+      if(oldObject != IntPtr.Zero) DeleteObject(oldObject);
+
+      PixelFormatDescriptor pfd = new PixelFormatDescriptor();
+      pfd.nSize      = (ushort)Marshal.SizeOf(typeof(PixelFormatDescriptor));
+      pfd.nVersion   = 1;
+      pfd.dwFlags    = PFlag.DepthDontcare | PFlag.DoublebufferDontcare | PFlag.DrawToBitmap | PFlag.SupportOpengl;
+      pfd.iPixelType = 0; // PFD_TYPE_RGBA
+      pfd.cColorBits = (byte)bits;
+      
+      int pixelFormat = ChoosePixelFormat(hdc, ref pfd);
+      if(pixelFormat == 0)
+      {
+        Dispose(false);
+        if(bits == 16)
+        {
+          throw new ApplicationException("Failure in ChoosePixelFormat:" + GetLastError());
+        }
+        continue;
+      }
+
+      if(SetPixelFormat(hdc, pixelFormat, ref pfd) == 0)
+      {
+        Dispose(false);
+        if(bits == 16)
+        {
+          throw new ApplicationException("Failure in SetPixelFormat:" + GetLastError());
+        }
+      }
+
+      hglrc = wglCreateContext(hdc);
+      if(hglrc == IntPtr.Zero)
+      {
+        Dispose(false);
+        if(bits == 16)
+        {
+          throw new ApplicationException("Failure in wglCreateContext:" + GetLastError());
+        }
+      }
+      
+      break; // it worked at this depth
     }
 
-    IntPtr oldObject = SelectObject(hdc, hbitmap);
-    if(oldObject != IntPtr.Zero) DeleteObject(oldObject);
-    
-    PixelFormatDescriptor pfd = new PixelFormatDescriptor();
-    pfd.nSize      = (ushort)Marshal.SizeOf(typeof(PixelFormatDescriptor));
-    pfd.nVersion   = 1;
-    pfd.dwFlags    = PFlag.DepthDontcare | PFlag.DoublebufferDontcare | PFlag.DrawToBitmap | PFlag.SupportOpengl;
-    pfd.iPixelType = 0; // PFD_TYPE_RGBA
-    pfd.cColorBits = 24;
-    
-    int pixelFormat = ChoosePixelFormat(hdc, ref pfd);
-    if(pixelFormat == 0)
-    {
-      Dispose();
-      throw new ApplicationException("Failure in ChoosePixelFormat");
-    }
-
-    if(SetPixelFormat(hdc, pixelFormat, ref pfd) == 0)
-    {
-      Dispose();
-      throw new ApplicationException("Failure in SetPixelFormat");
-    }
-    
-    hglrc = wglCreateContext(hdc);
-    if(hglrc == IntPtr.Zero)
-    {
-      Dispose();
-      throw new ApplicationException("Failure in wglCreateContext");
-    }
-    
     if(globalBuffer != null)
     {
       wglShareLists(globalBuffer.hglrc, hglrc);
