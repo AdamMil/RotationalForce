@@ -946,24 +946,27 @@ public class SceneEditor : Form, IEditorForm
       {
         Rectangle boundsRect = SceneView.SceneToClient(Object.GetRotatedAreaBounds());
         boundsRect.Inflate(2,2);
-        g.DrawRectangle(Pens.White, boundsRect);
+        using(Pen pen = new Pen(ObjectTool.GetInverseBackgroundColor()))
+        {
+          g.DrawRectangle(pen, boundsRect);
         
-        // loop through twice so that the mount points are on the bottom
-        for(int i=0; i<linkPoints.Length; i++)
-        {
-          if(IsMountPoint(i)) DrawLinkPoint(g, i);
-        }
-        for(int i=0; i<linkPoints.Length; i++)
-        {
-          if(!IsMountPoint(i)) DrawLinkPoint(g, i);
+          // loop through twice so that the mount points are on the bottom
+          for(int i=0; i<linkPoints.Length; i++)
+          {
+            if(IsMountPoint(i)) DrawLinkPoint(g, pen, i);
+          }
+          for(int i=0; i<linkPoints.Length; i++)
+          {
+            if(!IsMountPoint(i)) DrawLinkPoint(g, pen, i);
+          }
         }
       }
 
-      void DrawLinkPoint(Graphics g, int linkPoint)
+      void DrawLinkPoint(Graphics g, Pen pen, int linkPoint)
       {
         Rectangle rect = GetLinkRect(linkPoint);
         g.FillRectangle(IsMountPoint(linkPoint) ? Brushes.Red : Brushes.Blue, rect);
-        g.DrawRectangle(Pens.White, rect);
+        g.DrawRectangle(pen, rect);
       }
 
       Rectangle GetLinkRect(int linkPoint)
@@ -1680,22 +1683,24 @@ public class SceneEditor : Form, IEditorForm
 
           if(dragMode != DragMode.Select)
           {
-            Color bgColor = SceneView.BackColor;
-            using(Pen pen = new Pen(Color.FromArgb(255-bgColor.R, 255-bgColor.G, 255-bgColor.B)))
+            using(Pen pen = new Pen(ObjectTool.GetInverseBackgroundColor()))
             {
               // draw the control rectangle around the selected items (we'll use the opposite of the background color)
               g.DrawRectangle(pen, GetHandleBorder());
-            }
-            foreach(Handle handle in GetHandles())
-            {
-              DrawControlHandle(g, handle);
+              foreach(Handle handle in GetHandles())
+              {
+                DrawControlHandle(g, pen, handle);
+              }
             }
           }
         }
 
         if(dragMode == DragMode.Select)
         {
-          g.DrawRectangle(Pens.White, dragBox);
+          using(Pen pen = new Pen(ObjectTool.GetInverseBackgroundColor()))
+          {
+            g.DrawRectangle(pen, dragBox);
+          }
         }
       }
 
@@ -1721,11 +1726,11 @@ public class SceneEditor : Form, IEditorForm
         ObjectTool.DeselectObjects();
       }
 
-      void DrawControlHandle(Graphics g, Handle handle)
+      void DrawControlHandle(Graphics g, Pen pen, Handle handle)
       {
         Rectangle rect = GetHandleRect(handle);
         g.FillRectangle(Brushes.Blue, rect);
-        g.DrawRectangle(Pens.White, rect);
+        g.DrawRectangle(pen, rect);
       }
 
       Handle GetHandleUnderPoint(Point pt)
@@ -2953,9 +2958,9 @@ public class SceneEditor : Form, IEditorForm
       frame.AddPolygon(poly);
 
       VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
-      vertex.Color = Color.White;
+      vertex.Color    = GetInverseBackgroundColor();
       vertex.Position = new GLPoint(-1, -1);
-      vertex.Split = breakVertices;
+      vertex.Split    = breakVertices;
       poly.AddVertex(vertex);
 
       vertex = vertex.Clone();
@@ -3008,6 +3013,12 @@ public class SceneEditor : Form, IEditorForm
         ClearSelectedObjectBounds();
         OnSelectedObjectsChanged();
       }
+    }
+
+    Color GetInverseBackgroundColor()
+    {
+      Color bgColor = SceneView.BackColor;
+      return Color.FromArgb(255-bgColor.R, 255-bgColor.G, 255-bgColor.B);
     }
 
     bool IsSelected(SceneObject obj) { return selectedObjects.Contains(obj); }

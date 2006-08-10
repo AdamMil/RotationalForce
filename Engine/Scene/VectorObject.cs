@@ -355,7 +355,7 @@ public sealed class VectorAnimation : Animation
           EngineMath.AssertValidFloat(value);
           if(value < 0) throw new ArgumentOutOfRangeException("LOD", "LOD cannot be negative.");
           lodThreshold = value;
-          InvalidateGeometry(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -381,7 +381,7 @@ public sealed class VectorAnimation : Animation
             throw new ArgumentOutOfRangeException("Subdivisions", "Subdivisions must be greater than or equal to 1.");
           }
           subdivisions = value;
-          InvalidateGeometry(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -390,7 +390,7 @@ public sealed class VectorAnimation : Animation
     #region ISerializable
     protected override void Deserialize(DeserializationStore store)
     {
-      InvalidateGeometry(true); // we don't save subdivision or tessellation info, so they'll need to be recalculated
+      InvalidateGeometry(); // we don't save subdivision or tessellation info, so they'll need to be recalculated
       
       // the vertices' Polygon pointer was not saved, so reset them here
       foreach(Vertex vertex in vertices)
@@ -418,7 +418,7 @@ public sealed class VectorAnimation : Animation
         {
           shadeModel = value;
           // the subdivision process interpolates the colors differently depending on the shade model
-          InvalidateGeometry(false);
+          InvalidateGeometry();
         }
       }
     }
@@ -472,7 +472,7 @@ public sealed class VectorAnimation : Animation
       if(vertices.Count != 0)
       {
         vertices.Clear();
-        InvalidateGeometry(true);
+        InvalidateGeometry();
       }
     }
 
@@ -481,14 +481,14 @@ public sealed class VectorAnimation : Animation
       if(vertex.Polygon != null) throw new ArgumentException("Vertex already belongs to a polygon.");
       vertices.Insert(index, vertex);
       vertex.Polygon = this;
-      InvalidateGeometry(true);
+      InvalidateGeometry();
     }
 
     public void RemoveVertex(int index)
     {
       vertices[index].Polygon = null;
       vertices.RemoveAt(index);
-      InvalidateGeometry(true);
+      InvalidateGeometry();
     }
 
     public void Render()
@@ -647,10 +647,11 @@ public sealed class VectorAnimation : Animation
     /// <summary>Called when the tessellated/subdivided geometry of the polygon needs to be recalculated. Changes to
     /// interpolated vertex properties (color and texture coordinate) also cause this to need to be recalculated.
     /// </summary>
-    internal void InvalidateGeometry(bool recalculateTexCoords)
+    internal void InvalidateGeometry()
     {
       tessellationDirty = true;
-      if(recalculateTexCoords) InvalidateTextureCoords();
+      // invalidating the geometry means the subpoints will be invalidated, including the stored texture coordinates
+      InvalidateTextureCoords();
     }
     
     void InvalidateTextureCoords()
@@ -1158,7 +1159,7 @@ public sealed class VectorAnimation : Animation
         if(value != color)
         {
           color = value;
-          InvalidateGeometry(false);
+          InvalidateGeometry();
         }
       }
     }
@@ -1174,7 +1175,7 @@ public sealed class VectorAnimation : Animation
         {
           EngineMath.AssertValidFloats(value.X, value.Y);
           position = value;
-          InvalidateGeometry(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -1189,7 +1190,7 @@ public sealed class VectorAnimation : Animation
         if(value != split)
         {
           split = value;
-          InvalidateGeometry(true);
+          InvalidateGeometry();
         }
       }
     }
@@ -1218,9 +1219,9 @@ public sealed class VectorAnimation : Animation
 
     [NonSerialized] internal Polygon Polygon;
 
-    void InvalidateGeometry(bool recalculateTexCoords)
+    void InvalidateGeometry()
     {
-      if(Polygon != null) Polygon.InvalidateGeometry(recalculateTexCoords);
+      if(Polygon != null) Polygon.InvalidateGeometry();
     }
 
     /// <summary>This vertex's position within the polygon.</summary>
