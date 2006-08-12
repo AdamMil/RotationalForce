@@ -331,8 +331,12 @@ public abstract class SceneObject : GameObject, ISerializable
   {
     EngineMath.AssertValidFloats(localX, localY);
 
+    // negate coordinates according to our hflip and vflip flags
+    if(HorizontalFlip) localX = -localX;
+    if(VerticalFlip)   localY = -localY;
+
     // orient the point with our rotation
-    Vector offset   = new Vector(localX, localY);
+    Vector offset = new Vector(localX, localY);
     double rotation = EffectiveRotation;
     if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
 
@@ -360,6 +364,11 @@ public abstract class SceneObject : GameObject, ISerializable
     {
       localPoint = new Vector(localPoint).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
     }
+
+    // negate coordinates according to our hflip and vflip flags
+    if(HorizontalFlip) localPoint.X = -localPoint.X;
+    if(VerticalFlip) localPoint.Y = -localPoint.Y;
+
     return localPoint;
   }
   
