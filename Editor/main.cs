@@ -11,6 +11,12 @@ static class EditorApp
     get { return mainForm; }
   }
   
+  public static object Clipboard
+  {
+    get { return clipboardObject; }
+    set { clipboardObject = value; }
+  }
+
   [STAThread]
   static void Main()
   {
@@ -32,6 +38,7 @@ static class EditorApp
   }
 
   static readonly MainForm mainForm = new MainForm();
+  static object clipboardObject;
 }
 
 } // namespace RotationalForce.Editor

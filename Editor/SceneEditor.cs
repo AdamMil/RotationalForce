@@ -699,6 +699,7 @@ public class SceneEditor : Form, IEditorForm
   {
     public ObjectTool(SceneEditor editor) : base(editor)
     {
+      joinTool    = new JoinSubTool(editor, this);
       linksTool   = new LinksSubTool(editor, this);
       mountTool   = new MountSubTool(editor, this);
       spatialTool = new SpatialSubTool(editor, this);
@@ -728,6 +729,11 @@ public class SceneEditor : Form, IEditorForm
       get { return spatialTool; }
     }
     
+    public JoinSubTool JoinTool
+    {
+      get { return joinTool; }
+    }
+
     public LinksSubTool LinksTool
     {
       get { return linksTool; }
@@ -781,6 +787,69 @@ public class SceneEditor : Form, IEditorForm
       
       ObjectTool objectTool;
     }
+
+    #region JoinSubTool
+    public sealed class JoinSubTool : ObjectSubTool
+    {
+      public JoinSubTool(SceneEditor editor, ObjectTool parent) : base(editor, parent) { }
+
+      public override void Activate()
+      {
+        EditorApp.MainForm.StatusText = "Click on the parent object...";
+      }
+
+      public override void Deactivate()
+      {
+        EditorApp.MainForm.StatusText = "";
+      }
+
+      public override void KeyPress(KeyEventArgs e, bool down)
+      {
+        if(down && (e.KeyCode == Keys.Escape || e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space))
+        {
+          ObjectTool.SubTool = ObjectTool.SpatialTool;
+          e.Handled = true;
+        }
+      }
+
+      public override bool MouseClick(MouseEventArgs e)
+      {
+        if(e.Button != MouseButtons.Left) return false;
+
+        AnimatedObject destObj = ObjectTool.ObjectUnderPoint(e.Location) as AnimatedObject;
+        if(destObj == null) return false;
+        
+        VectorAnimation destAnim = destObj.Animation as VectorAnimation;
+        if(destAnim == null) return false;
+
+        if(destObj == SelectedObjects[0])
+        {
+          MessageBox.Show("You can't join an object with itself.", "Hmm...", MessageBoxButtons.OK,
+                          MessageBoxIcon.Exclamation);
+          return true;
+        }
+
+        AnimatedObject   srcObj = (AnimatedObject)SelectedObjects[0];
+        VectorAnimation srcAnim = (VectorAnimation)srcObj.Animation;
+        foreach(VectorAnimation.Polygon poly in srcAnim.Frames[0].Polygons)
+        {
+          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+          {
+            vertex.Position = destObj.SceneToLocal(srcObj.LocalToScene(vertex.Position));
+          }
+          destAnim.Frames[0].AddPolygon(poly);
+        }
+
+        ObjectTool.SelectObject(destObj, true);
+        Scene.RemoveObject(srcObj);
+        ObjectTool.SubTool = ObjectTool.VectorTool;
+        ObjectTool.VectorTool.RecalculateObjectBounds();
+        Editor.InvalidateRender();
+        EditorApp.MainForm.StatusText = "Objects joined.";
+        return true;
+      }
+    }
+    #endregion
 
     #region LinksSubTool
     public sealed class LinksSubTool : ObjectSubTool
@@ -1645,7 +1714,7 @@ public class SceneEditor : Form, IEditorForm
       {
         if(dragMode == DragMode.Select)
         {
-          Editor.InvalidateDecoration(dragBox);
+          Editor.InvalidateDecoration();
         }
         dragMode = DragMode.None;
         
@@ -2058,13 +2127,10 @@ public class SceneEditor : Form, IEditorForm
         {
           if(Control.ModifierKeys == Keys.None)
           {
-            if(!SelectObject(e.Location, SelectMode.DeselectPoints))
-            {
-              DeselectObject();
-            }
+            SelectSingleVertex(e.Location);
             return true;
           }
-          // shift-click toggles selection of individual vertices
+          // shift-click toggles selection of individual vertices.
           else if(Control.ModifierKeys == Keys.Shift)
           {
             if(SelectedObject == null)
@@ -2074,6 +2140,40 @@ public class SceneEditor : Form, IEditorForm
             else
             {
               TrySelectObjectAndPoint(SelectedObject, e.Location, SelectMode.Toggle);
+            }
+          }
+          // ctrl-shift-click selects contiguous vertices
+          else if(Control.ModifierKeys == (Keys.Shift|Keys.Control))
+          {
+            if(selectedPoints.Count == 0)
+            {
+              SelectSingleVertex(e.Location);
+            }
+            else
+            {
+              int endPoint = PointUnderCursor(e.Location); // this will only select points within the current polygon
+              if(endPoint == -1) return true;
+              int startPoint = selectedPoints[selectedPoints.Count-1];
+              
+              // always select points in a clockwise fashion
+              if(startPoint <= endPoint)
+              {
+                for(int i=startPoint; i<=endPoint; i++)
+                {
+                  SelectVertex(i, false);
+                }
+              }
+              else
+              {
+                for(int i=startPoint; i<SelectedPoly.Vertices.Count; i++)
+                {
+                  SelectVertex(i, false);
+                }
+                for(int i=0; i<=endPoint; i++)
+                {
+                  SelectVertex(i, false);
+                }
+              }
             }
           }
           // ctrl-click breaks/joins the shape at that point
@@ -2113,10 +2213,11 @@ public class SceneEditor : Form, IEditorForm
               }
             }
 
-            // if it only has one polygon, the polygon can be added to another vector object
-            if(SelectedFrame.Polygons.Count == 1)
+            // if it only has one frame, it can be joined with another vector object
+            if(SelectedAnimation.Frames.Count == 1)
             {
-              menu.MenuItems.Add("Join with another object");
+              menu.MenuItems.Add("Join with another object",
+                                 delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.JoinTool; });
             }
 
             if(SelectedPoly.HasSpline)
@@ -2173,6 +2274,14 @@ public class SceneEditor : Form, IEditorForm
         }
 
         return false;
+      }
+      
+      void SelectSingleVertex(Point pt)
+      {
+        if(!SelectObject(pt, SelectMode.DeselectPoints))
+        {
+          DeselectObject();
+        }
       }
 
       public override bool MouseDragStart(MouseEventArgs e)
@@ -2382,7 +2491,7 @@ public class SceneEditor : Form, IEditorForm
         ObjectTool.RecalculateAndInvalidateSelectedBounds();
       }
 
-      void RecalculateObjectBounds()
+      internal void RecalculateObjectBounds()
       {
         // calculate the minimum bounding box to contain the points, assign the bounding box, and then readjust the
         // position of all points so that they fit within the new bounding box without moving
@@ -2605,6 +2714,7 @@ public class SceneEditor : Form, IEditorForm
           SelectedFrame.RemovePolygon(selectedPoly);
           SelectedFrame.InsertPolygon(selectedPoly + offset, poly);
           SelectPolygon(selectedPoly + offset);
+          ObjectTool.InvalidateSelectedBounds(true);
         }
       }
 
@@ -2635,10 +2745,19 @@ public class SceneEditor : Form, IEditorForm
           }
         }
 
+        if((mode&SelectMode.DeselectMask) == SelectMode.DeselectIfNone)
+        {
+          DeselectPoints();
+        }
         return false;
       }
 
-      bool SelectPolygonAndPoint(AnimatedObject obj, int polyIndex, Point pt, SelectMode mode)
+      int PointUnderCursor(Point pt)
+      {
+        return PointUnderCursor(SelectedObject, selectedPoly, pt);
+      }
+      
+      int PointUnderCursor(AnimatedObject obj, int polyIndex, Point pt)
       {
         VectorAnimation.Polygon poly = ((VectorAnimation)obj.Animation).Frames[0].Polygons[polyIndex];
         for(int i=0; i<poly.Vertices.Count; i++)
@@ -2648,22 +2767,32 @@ public class SceneEditor : Form, IEditorForm
           int xd = vertex.X-pt.X, yd=vertex.Y-pt.Y, distSqr=xd*xd+yd*yd;
           if(distSqr<=32) // select points within approx 5.66 pixels
           {
-            SelectObject(obj);
-            SelectPolygon(polyIndex);
-            if((mode&SelectMode.Toggle) != 0 && selectedPoints.Contains(i))
-            {
-              selectedPoints.Remove(i);
-              OnSelectionChanged();
-            }
-            else
-            {
-              SelectVertex(i, (mode&SelectMode.DeselectMask) == SelectMode.DeselectPoints);
-            }
-            return true;
+            return i;
           }
         }
+        return -1;
+      }
 
-        if((mode&SelectMode.DeselectMask) != 0)
+      bool SelectPolygonAndPoint(AnimatedObject obj, int polyIndex, Point pt, SelectMode mode)
+      {
+        int pointIndex = PointUnderCursor(obj, polyIndex, pt);
+        if(pointIndex != -1)
+        {
+          SelectObject(obj);
+          SelectPolygon(polyIndex);
+          if((mode&SelectMode.Toggle) != 0 && selectedPoints.Contains(pointIndex))
+          {
+            selectedPoints.Remove(pointIndex);
+            OnSelectionChanged();
+          }
+          else
+          {
+            SelectVertex(pointIndex, (mode&SelectMode.DeselectMask) == SelectMode.DeselectPoints);
+          }
+          return true;
+        }
+
+        if((mode&SelectMode.DeselectMask) == SelectMode.DeselectPoints)
         {
           DeselectPoints();
         }
@@ -2675,8 +2804,8 @@ public class SceneEditor : Form, IEditorForm
         if(obj != SelectedObject)
         {
           ObjectTool.SelectObject(obj, true);
-          selectedPoly = 0;
           ObjectTool.InvalidateSelectedBounds(false);
+          selectedPoly = -1;
           SelectPolygon(0);
         }
       }
@@ -2720,6 +2849,7 @@ public class SceneEditor : Form, IEditorForm
           if(PolygonContains(frame.Polygons[polyIndex], localPoint))
           {
             SelectObject(obj);
+            SelectPolygon(polyIndex);
             SelectPolygonAndPoint(obj, polyIndex, pt, mode);
             return true;
           }
@@ -2837,6 +2967,7 @@ public class SceneEditor : Form, IEditorForm
     }
     #endregion
 
+    JoinSubTool joinTool;
     LinksSubTool linksTool;
     MountSubTool mountTool;
     SpatialSubTool spatialTool;
