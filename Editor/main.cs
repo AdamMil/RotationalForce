@@ -58,18 +58,61 @@ static class EditorApp
     set { clipboardObject = value; }
   }
 
+  public static void Log(string line) { logFile.WriteLine(line); }
+  public static void Log(string format, params object[] args) { Log(string.Format(format, args)); }
+  public static void Log(Exception e)
+  {
+    Log("Error occurred:\n"+e.ToString()+"\n");
+    errorOccurred = true;
+  }
+
   [STAThread]
   static void Main()
   {
     Application.ThreadException += new System.Threading.ThreadExceptionEventHandler(Application_ThreadException);
-    
     Application.EnableVisualStyles();
-    GLBuffer.SetCurrent(null); // make sure we always have a rendering context (null sets the default context)
-    Application.Run(MainForm);
+
+    try
+    {
+      try
+      {
+        GLBuffer.Initialize();
+      }
+      catch(Exception e)
+      {
+        Log(e);
+      }
+
+      if(!errorOccurred)
+      {
+        Application.Run(MainForm);
+      }
+    }
+    finally
+    {
+      if(errorOccurred &&
+         MessageBox.Show("Unhandled exceptions occurred. Save the log?", "Save the log?", MessageBoxButtons.YesNo,
+                         MessageBoxIcon.Question, MessageBoxDefaultButton.Button1) == DialogResult.Yes)
+      {
+        SaveFileDialog fd = new SaveFileDialog();
+        fd.FileName = "errors.txt";
+        fd.Title = "Save log as";
+
+        if(fd.ShowDialog() == DialogResult.OK)
+        {
+          using(StreamWriter writer = new StreamWriter(fd.FileName))
+          {
+            writer.Write(logFile.GetStringBuilder().ToString());
+          }
+        }
+      }
+    }
   }
 
   static void Application_ThreadException(object sender, System.Threading.ThreadExceptionEventArgs e)
   {
+    Log(e.Exception);
+
     if(MessageBox.Show("An unhandled exception occurred. To continue execution, click Yes. To exit, click No. You'll "+
                        "have a chance to save if you choose to exit. Maybe.\n\n" + e.Exception.ToString(), "Ruh roh",
                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No)
@@ -80,6 +123,8 @@ static class EditorApp
 
   static readonly MainForm mainForm = new MainForm();
   static ClipboardObject clipboardObject;
+  static StringWriter logFile = new StringWriter();
+  static bool errorOccurred;
 }
 
 } // namespace RotationalForce.Editor

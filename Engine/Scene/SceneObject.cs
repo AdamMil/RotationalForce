@@ -382,7 +382,7 @@ public abstract class SceneObject : GameObject, ISerializable
   #region Grouping
   [Category("Behavior")]
   [Description("A bitmask that determines the groups of which this object is a member.")]
-  [DefaultValue(1)]
+  [DefaultValue((uint)1)]
   public uint GroupMask
   {
     get { return groups; }
@@ -710,7 +710,7 @@ public abstract class SceneObject : GameObject, ISerializable
   /// <summary>Gets/sets the rotational velocity of the object, in degrees per second.</summary>
   [Category("Physics")]
   [Description("The rotational velocity of the object, in degrees per second.")]
-  [DefaultValue(0)]
+  [DefaultValue(0.0)]
   public double AngularVelocity
   {
     get { return autoRotation; }
@@ -730,7 +730,7 @@ public abstract class SceneObject : GameObject, ISerializable
   [Category("Spatial")]
   [Description("The rotation of the object, in degrees. If the object is mounted, this is the rotation in addition "+
     "to the parent's rotation.")]
-  [DefaultValue(0)]
+  [DefaultValue(0.0)]
   public double Rotation
   {
     get { return rotation; }
@@ -1031,7 +1031,7 @@ public abstract class SceneObject : GameObject, ISerializable
   [Category("Behavior")]
   [Description("Determines the object's lifetime. If set to a positive value, the object will be automatically "+
     "deleted after that many seconds.")]
-  [DefaultValue(0)]
+  [DefaultValue(0.0)]
   public double Lifetime
   {
     get { return lifetime; }
@@ -1056,7 +1056,7 @@ public abstract class SceneObject : GameObject, ISerializable
   /// <remarks>This property can inherited from a mount parent.</remarks>
   [Category("Rendering")]
   [Description("Determines whether the object and its children will be rendered in the scene.")]
-  [DefaultValue(false)]
+  [DefaultValue(true)]
   public bool Visible
   {
     get { return HasFlag(Flag.Visible); }

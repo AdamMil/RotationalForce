@@ -12,78 +12,22 @@ sealed class GLBuffer : IDisposable
 {
   public GLBuffer(int width, int height)
   {
-    foreach(int bits in new int[] { 32, 24, 16 })
+    try
     {
-      hdc = CreateCompatibleDC(IntPtr.Zero);
-      if(hdc == IntPtr.Zero)
-      {
-        throw new ApplicationException("Failure in CreateCompatibleDC: " + GetLastError());
-      }
-
-      BitmapInfo bmp = new BitmapInfo();
-      bmp.Size     = Marshal.SizeOf(typeof(BitmapInfo));
-      bmp.Width    = width;
-      bmp.Height   = height;
-      bmp.Planes   = 1;
-      bmp.BitCount = (ushort)bits;
-
-      hbitmap = CreateDIBSection(hdc, ref bmp, 0, IntPtr.Zero, IntPtr.Zero, 0);
-      if(hbitmap == IntPtr.Zero)
-      {
-        Dispose(false);
-        if(bits == 16)
-        {
-          throw new ApplicationException("Failure in CreateDIBSection:" + GetLastError());
-        }
-        continue;
-      }
-
-      IntPtr oldObject = SelectObject(hdc, hbitmap);
-      if(oldObject != IntPtr.Zero) DeleteObject(oldObject);
-
-      PixelFormatDescriptor pfd = new PixelFormatDescriptor();
-      pfd.nSize      = (ushort)Marshal.SizeOf(typeof(PixelFormatDescriptor));
-      pfd.nVersion   = 1;
-      pfd.dwFlags    = PFlag.DepthDontcare | PFlag.DoublebufferDontcare | PFlag.DrawToBitmap | PFlag.SupportOpengl;
-      pfd.iPixelType = 0; // PFD_TYPE_RGBA
-      pfd.cColorBits = (byte)bits;
-      
-      int pixelFormat = ChoosePixelFormat(hdc, ref pfd);
-      if(pixelFormat == 0)
-      {
-        Dispose(false);
-        if(bits == 16)
-        {
-          throw new ApplicationException("Failure in ChoosePixelFormat:" + GetLastError());
-        }
-        continue;
-      }
-
-      if(SetPixelFormat(hdc, pixelFormat, ref pfd) == 0)
-      {
-        Dispose(false);
-        if(bits == 16)
-        {
-          throw new ApplicationException("Failure in SetPixelFormat:" + GetLastError());
-        }
-      }
-
-      hglrc = wglCreateContext(hdc);
-      if(hglrc == IntPtr.Zero)
-      {
-        Dispose(false);
-        if(bits == 16)
-        {
-          throw new ApplicationException("Failure in wglCreateContext:" + GetLastError());
-        }
-      }
-      
-      break; // it worked at this depth
+      osbCreator.Create(ref hdc, ref hbitmap, ref hglrc, width, height);
+    }
+    catch
+    {
+      Dispose(false);
+      throw;
     }
 
     if(globalBuffer != null)
     {
-      wglShareLists(globalBuffer.hglrc, hglrc);
+      if(wglShareLists(globalBuffer.hglrc, hglrc) == 0)
+      {
+        throw Failed("wglShareLists");
+      }
     }
 
     this.width  = width;
@@ -142,23 +86,263 @@ sealed class GLBuffer : IDisposable
   IntPtr hbitmap, hdc, hglrc;
   int width, height;
 
+  public static void Initialize()
+  {
+    EditorApp.Log("Initializing OpenGL rendering context");
+
+    IntPtr hdc = CreateCompatibleDC(IntPtr.Zero);
+    if(hdc == IntPtr.Zero) throw Failed("CreateCompatibleDC");
+    EditorApp.Log("Got compatible DC. Enumerating available pixel formats...");
+    
+    try
+    {
+      uint size = (uint)Marshal.SizeOf(typeof(PixelFormatDescriptor));
+      PixelFormatDescriptor pfd, bestPfd = new PixelFormatDescriptor();
+      int maxFormat = DescribePixelFormat(hdc, 1, size, out pfd);
+      int bestFormat = 0, bestScore = 0;
+      if(maxFormat == 0) throw Failed("DescribePixelFormat");
+
+      for(int format=1; format<=maxFormat; format++)
+      {
+        DescribePixelFormat(hdc, format, size, out pfd);
+        int score = LogPixelFormat(format, ref pfd);
+
+        if(score > bestScore)
+        {
+          bestScore  = score;
+          bestFormat = format;
+          bestPfd    = pfd;
+        }
+      }
+
+      EditorApp.Log("Best format: " + bestFormat);
+      if(bestFormat == 0) throw Failed("No suitable pixel format found!");
+      
+      int tries = 0;
+      while(true)
+      {
+        EditorApp.Log("Attempting offscreen buffer creation with device-dependent bitmaps.");
+        osbCreator = new OsbCreator(bestFormat, bestPfd, true);
+
+        try
+        {
+          try
+          {
+            globalBuffer = new GLBuffer(16, 16);
+            break;
+          }
+          catch(Exception e)
+          {
+            EditorApp.Log("Buffer creation failed. Error was: "+e.ToString());
+            EditorApp.Log("Retrying with device-independent bitmaps.");
+
+            osbCreator = new OsbCreator(bestFormat, bestPfd, false);
+            globalBuffer = new GLBuffer(16, 16);
+            break;
+          }
+        }
+        catch(Exception e)
+        {
+          EditorApp.Log("Buffer creation failed. Error was: "+e.ToString());
+          if(tries == 0)
+          {
+            EditorApp.Log("Asking the card what pixel format we should be using.");
+            pfd = new PixelFormatDescriptor();
+            pfd.nSize       = (ushort)size;
+            pfd.nVersion    = 1;
+            pfd.dwFlags     = PFlag.DrawToBitmap | PFlag.SupportOpengl;
+            pfd.iPixelType  = PixelType.RGBA;
+            pfd.cColorBits  = 32;
+            
+            bestFormat = ChoosePixelFormat(hdc, ref pfd);
+            if(bestFormat != 0)
+            {
+              DescribePixelFormat(hdc, bestFormat, size, out bestPfd);
+            }
+
+            if(bestFormat == 0 || bestPfd.cColorBits < 16)
+            {
+              EditorApp.Log("The card recommended no pixel formats. Retrying with double buffering allowed.");
+              pfd.dwFlags |= PFlag.DoublebufferDontcare;
+              bestFormat = ChoosePixelFormat(hdc, ref pfd);
+              if(bestFormat != 0)
+              {
+                DescribePixelFormat(hdc, bestFormat, size, out bestPfd);
+              }
+
+              if(bestFormat == 0 || bestPfd.cColorBits < 16)
+              {
+                EditorApp.Log("The card recommended no usable pixel formats at all.");
+                EditorApp.Log("Giving up.");
+                throw;
+              }
+            }
+
+            LogPixelFormat(bestFormat, ref bestPfd);
+            tries++;
+          }
+          else
+          {
+            EditorApp.Log("Giving up.");
+            throw;
+          }
+        }
+      }
+
+      GLBuffer.SetCurrent(globalBuffer);
+    }
+    finally
+    {
+      DeleteDC(hdc);
+    }
+  }
+
   public static void SetCurrent(GLBuffer buffer)
   {
     if(buffer == null)
     {
-      wglMakeCurrent(globalBuffer.hdc, globalBuffer.hglrc);
+      if(wglMakeCurrent(globalBuffer.hdc, globalBuffer.hglrc) == 0)
+      {
+        throw Failed("wglMakeCurrent(null)");
+      }
       currentBuffer = null;
     }
     else
     {
-      wglMakeCurrent(buffer.hdc, buffer.hglrc);
+      if(wglMakeCurrent(buffer.hdc, buffer.hglrc) == 0)
+      {
+        throw Failed("wglMakeCurrent");
+      }
       currentBuffer = new WeakReference(buffer);
     }
   }
 
+  #region OsbCreator
+  sealed class OsbCreator
+  {
+    public OsbCreator(int formatIndex, PixelFormatDescriptor format, bool useDDB)
+    {
+      this.pixelFormatIndex = formatIndex;
+      this.pixelFormat      = format;
+      this.useDDB           = useDDB;
+    }
+
+    public void Create(ref IntPtr hdc, ref IntPtr hbitmap, ref IntPtr hglrc, int width, int height)
+    {
+      EditorApp.Log("Creating {0}x{1} offscreen buffer", width, height);
+
+      IntPtr screenDC = GetDC(IntPtr.Zero);
+      if(screenDC == IntPtr.Zero)
+      {
+        throw Failed("GetDC");
+      }
+
+      try
+      {
+        hdc = CreateCompatibleDC(screenDC);
+        if(hdc == IntPtr.Zero)
+        {
+          throw Failed("CreateCompatibleDC");
+        }
+
+        if(useDDB)
+        {
+          hbitmap = CreateCompatibleBitmap(screenDC, width, height);
+          if(hbitmap == IntPtr.Zero)
+          {
+            throw Failed("CreateCompatibleBitmap");
+          }
+        }
+        else
+        {
+          BitmapInfo bmp = new BitmapInfo();
+          bmp.Size     = Marshal.SizeOf(typeof(BitmapInfo));
+          bmp.Width    = width;
+          bmp.Height   = height;
+          bmp.Planes   = 1;
+          bmp.BitCount = pixelFormat.cColorBits;
+
+          hbitmap = CreateDIBSection(hdc, ref bmp, 0, IntPtr.Zero, IntPtr.Zero, 0);
+          if(hbitmap == IntPtr.Zero)
+          {
+            throw Failed("CreateDIBSection");
+          }
+        }
+
+        if(SelectObject(hdc, hbitmap) == IntPtr.Zero)
+        {
+          throw Failed("SelectObject");
+        }
+
+        if(SetPixelFormat(hdc, pixelFormatIndex, ref pixelFormat) == 0)
+        {
+          throw Failed("SetPixelFormat");
+        }
+
+        hglrc = wglCreateContext(hdc);
+        if(hglrc == IntPtr.Zero)
+        {
+          throw Failed("wglCreateContext");
+        }
+      }
+      finally
+      {
+        DeleteDC(screenDC);
+      }
+    }
+    
+    PixelFormatDescriptor pixelFormat;
+    int pixelFormatIndex;
+    bool useDDB;
+  }
+  #endregion
+
+  static Exception Failed(string message)
+  {
+    return new ApplicationException("Failure: "+message+". Last error: "+GetLastError());
+  }
+  
+  static int LogPixelFormat(int formatIndex, ref PixelFormatDescriptor pfd)
+  {
+    bool accelerated  = (pfd.dwFlags&PFlag.GenericAccelerated) != 0;
+    bool hwSupport    = (pfd.dwFlags&PFlag.GenericFormat) == 0;
+    bool drawToBitmap = (pfd.dwFlags&PFlag.DrawToBitmap) != 0;
+    bool openGL       = (pfd.dwFlags&PFlag.SupportOpengl) != 0;
+    bool isStereo     = (pfd.dwFlags&PFlag.Stereo) != 0;
+    bool doubleBuffer = (pfd.dwFlags&PFlag.Doublebuffer) != 0;
+    bool isRGBA       = pfd.iPixelType == PixelType.RGBA;
+
+    int score = accelerated ? 20 : hwSupport ? 10 : 5;
+    score += pfd.cColorBits == 32 ? 35 : pfd.cColorBits == 24 ? 30 : pfd.cColorBits == 16 ? 5 : 0;
+
+    if(!drawToBitmap || !openGL || isStereo || !isRGBA || pfd.cColorBits == 8) score = 0;
+    else
+    {
+      if(doubleBuffer) score--;
+      score -= pfd.cDepthBits / 16;
+    }
+
+    EditorApp.Log("Format #"+formatIndex);
+    EditorApp.Log("Color bits: "+pfd.cColorBits);
+    EditorApp.Log("Depth bits: "+pfd.cDepthBits);
+    EditorApp.Log("Stencil bits: "+pfd.cStencilBits);
+    EditorApp.Log("Supported directly by hardware: {0}", hwSupport ? "Yes" : "No");
+    EditorApp.Log("Hardware accelerated: {0}", accelerated ? "Yes" : "No");
+    EditorApp.Log("Double buffered: {0}", doubleBuffer ? "Yes" : "No");
+    EditorApp.Log("Supports rendering to bitmaps: {0}", drawToBitmap ? "Yes" : "No**");
+    EditorApp.Log("Supports OpenGL: {0}", openGL ? "Yes" : "No**");
+    EditorApp.Log("Stereoscopic: {0}", isStereo ? "Yes**" : "No");
+    EditorApp.Log("Pixel type: {0}", isRGBA ? "RGB" : "Palette**");
+    EditorApp.Log("Score: "+score);
+    EditorApp.Log("");
+    
+    return score;
+  }
+
   [ThreadStatic] static WeakReference currentBuffer;
 
-  static GLBuffer globalBuffer = new GLBuffer(1, 1);
+  static OsbCreator osbCreator;
+  static GLBuffer globalBuffer;
 
   [Flags]
   enum PFlag : uint
@@ -182,12 +366,15 @@ sealed class GLBuffer : IDisposable
     StereoDontcare        =0x80000000,
   }
 
+  [Flags] enum PixelType : byte { RGBA=0, Palette=1 }
+
   [StructLayout(LayoutKind.Sequential)]
   struct PixelFormatDescriptor
   {
     public ushort nSize, nVersion;
     public PFlag dwFlags;
-    public byte iPixelType, cColorBits, cRedBits, cRedShift, cGreenBits, cGreenShift, cBlueBits, cBlueShift,
+    public PixelType iPixelType;
+    public byte cColorBits, cRedBits, cRedShift, cGreenBits, cGreenShift, cBlueBits, cBlueShift,
                 cAlphaBits, cAlphaShift, cAccumBits, cAccumRedBits, cAccumGreenBits, cAccumBlueBits, cAccumAlphaBits,
                 cDepthBits, cStencilBits, cAuxBuffers, iLayerType, bReserved;
     public uint dwLayerMask, dwVisibleMask, dwDamageMask;
@@ -202,6 +389,10 @@ sealed class GLBuffer : IDisposable
     uint quads;
   }
 
+  [DllImport("user32.dll")]
+  static extern IntPtr GetDC(IntPtr hwnd);
+  [DllImport("gdi32.dll")]
+  static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
   [DllImport("gdi32.dll")]
   static extern IntPtr CreateDIBSection(IntPtr hdc, [In] ref BitmapInfo bmp, uint usage,
                                         IntPtr data, IntPtr section, uint offset);
@@ -209,6 +400,8 @@ sealed class GLBuffer : IDisposable
   static extern IntPtr CreateCompatibleDC(IntPtr hdc);
   [DllImport("gdi32.dll")]
   static extern int ChoosePixelFormat(IntPtr hdc, [In] ref PixelFormatDescriptor pfmt);
+  [DllImport("gdi32.dll")]
+  static extern int DescribePixelFormat(IntPtr hdc, int formatIndex, uint bufferSize, out PixelFormatDescriptor pfmt);
   [DllImport("gdi32.dll")]
   static extern int SetPixelFormat(IntPtr hdc, int iPixelFormat, [In] ref PixelFormatDescriptor pfmt);
   [DllImport("gdi32.dll")]
