@@ -268,7 +268,7 @@ class RenderPanel : Control
     DoubleBuffered = true;
   }
 
-  public event EventHandler RenderBackground;
+  public event PaintEventHandler RenderBackground;
 
   public void InvalidateRender() { InvalidateRender(ClientRectangle); }
 
@@ -292,7 +292,7 @@ class RenderPanel : Control
 
       GLBuffer.SetCurrent(GetBuffer());
       Engine.Engine.ResetOpenGL(Width, Height, ClientRectangle);
-      RenderBackground(this, EventArgs.Empty);
+      RenderBackground(this, e);
       GL.glFlush();
 
       if(image != null) image.Dispose();

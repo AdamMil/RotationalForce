@@ -1145,7 +1145,7 @@ public static class Serializer
 
   static void SerializeObjectFields(Type objectType, object instance, SexpWriter store)
   {
-    Dictionary<string,object> fieldNames = new Dictionary<string,object>();
+    Dictionary<string,FieldInfo> fieldNames = new Dictionary<string,FieldInfo>();
     store.BeginElement("@fields");
     foreach(Type type in GetTypeHierarchy(objectType))
     {
@@ -1155,7 +1155,7 @@ public static class Serializer
   }
 
   static void SerializeObjectFields(Type type, object instance, SexpWriter store,
-                                    Dictionary<string,object> fieldNames)
+                                    Dictionary<string,FieldInfo> fieldNames)
   {
     // get the instance fields (public and private)
     FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
@@ -1165,7 +1165,7 @@ public static class Serializer
       FieldInfo fi = fields[i];
       if(ShouldSkipField(fi)) continue;
 
-      store.BeginElement(GetFieldName(fi.Name, fieldNames));
+      store.BeginElement(GetFieldName(fi, fieldNames));
       if(IsSimpleType(fi.FieldType))
       {
         store.WriteContent(GetSimpleValue(fi.GetValue(instance), fi.FieldType));
@@ -1440,39 +1440,43 @@ public static class Serializer
 
   static void DeserializeObjectFields(Type objectType, object instance, SexpReader store)
   {
-    Dictionary<string, object> fieldNames = new Dictionary<string, object>();
+    Dictionary<string,FieldInfo> fields = new Dictionary<string,FieldInfo>();
     foreach(Type type in GetTypeHierarchy(objectType))
     {
-      DeserializeObjectFields(type, instance, store, fieldNames);
-    }
-  }
-
-  static void DeserializeObjectFields(Type type, object instance, SexpReader store,
-                                      Dictionary<string,object> fieldNames)
-  {
-    // get the instance fields (public and private)
-    FieldInfo[] fields = type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
-                                        BindingFlags.Instance | BindingFlags.DeclaredOnly);
-    for(int i=0; i<fields.Length; i++)
-    {
-      FieldInfo fi = fields[i];
-      if(ShouldSkipField(fi)) continue;
-
-      string fieldName = GetFieldName(fi.Name, fieldNames);
-      object fieldValue;
-      store.ReadBeginElement(fieldName);
-
-      if(IsSimpleType(fi.FieldType))
+      // get the instance fields (public and private)
+      foreach(FieldInfo fi in type.GetFields(BindingFlags.Public   | BindingFlags.NonPublic |
+                                             BindingFlags.Instance | BindingFlags.DeclaredOnly))
       {
-        fieldValue = ParseSimpleValue(store.ReadContent(), fi.FieldType);
+        if(!ShouldSkipField(fi))
+        {
+          GetFieldName(fi, fields);
+        }
+      }
+    }
+
+    while(store.NodeType == SexpNodeType.Begin)
+    {
+      FieldInfo fi;
+      if(fields.TryGetValue(store.TagName, out fi))
+      {
+        store.ReadBeginElement();
+        object fieldValue;
+        if(IsSimpleType(fi.FieldType))
+        {
+          fieldValue = ParseSimpleValue(store.ReadContent(), fi.FieldType);
+        }
+        else
+        {
+          fieldValue = Deserialize(store);
+        }
+        store.ReadEndElement();
+
+        fi.SetValue(instance, fieldValue);
       }
       else
       {
-        fieldValue = Deserialize(store);
+        store.Skip();
       }
-
-      fi.SetValue(instance, fieldValue);
-      store.ReadEndElement();
     }
   }
 
@@ -1590,18 +1594,18 @@ public static class Serializer
   }
   #endregion
 
-  static string GetFieldName(string name, Dictionary<string,object> fieldNames)
+  static string GetFieldName(FieldInfo fi, Dictionary<string,FieldInfo> fieldNames)
   {
-    string testName = name;
+    string testName = fi.Name;
     int which = 2; // start disambiguation by appending "2" to the name, then proceed to "3", etc.
 
     while(fieldNames.ContainsKey(testName))
     {
-      testName = name + which.ToString(CultureInfo.InvariantCulture);
+      testName = fi.Name + which.ToString(CultureInfo.InvariantCulture);
       which++;
     }
     
-    fieldNames[testName] = null;
+    fieldNames[testName] = fi;
     return testName;
   }
 

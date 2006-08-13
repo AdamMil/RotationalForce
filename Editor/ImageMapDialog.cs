@@ -430,7 +430,7 @@ namespace RotationalForce.Editor
       this.renderPanel.Size = new System.Drawing.Size(263, 237);
       this.renderPanel.TabIndex = 30;
       this.renderPanel.TabStop = false;
-      this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
+      this.renderPanel.RenderBackground += new PaintEventHandler(this.renderPanel_RenderBackground);
       // 
       // lblCoords
       // 
