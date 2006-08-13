@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows.Forms;
 using RotationalForce.Engine;
 using GameLib.Interop.OpenGL;
+using GameLib.Video;
 using MathConst = GameLib.Mathematics.MathConst;
 using Math2D  = GameLib.Mathematics.TwoD.Math2D;
 using GLPoint = GameLib.Mathematics.TwoD.Point;
@@ -34,6 +35,7 @@ public class SceneEditor : Form, IEditorForm
   private ToolStripStatusLabel layerLabel;
   private ToolStripMenuItem editCopyMenuItem;
   private ToolStripMenuItem editPasteMenuItem;
+  private ToolStripMenuItem editUnloadTraceItem;
   private RenderPanel renderPanel;
 
   public SceneEditor()
@@ -53,6 +55,16 @@ public class SceneEditor : Form, IEditorForm
     toolBar.Items[2].Tag = Tools.Zoom;
 
     CurrentTool = Tools.Object;
+  }
+
+  protected override void Dispose(bool disposing)
+  {
+    base.Dispose(disposing);
+    
+    if(traceImage != null)
+    {
+      traceImage.Dispose();
+    }
   }
 
   #region IEditorForm
@@ -82,6 +94,7 @@ public class SceneEditor : Form, IEditorForm
   public void CreateNew()
   {
     sceneView = new SceneViewControl();
+    sceneView.BackColor = Color.Black;
     // use the minor camera axis so that we easily calculate the camera size needed to fully display a given object
     sceneView.CameraAxis      = CameraAxis.Minor;
     sceneView.CameraSize      = DefaultViewSize;
@@ -89,6 +102,7 @@ public class SceneEditor : Form, IEditorForm
     sceneView.Scene           = new Scene();
 
     desktop = new DesktopControl();
+    desktop.BackColor = Color.Empty; // we want the whole background to come from the sceneview
     desktop.AddChild(sceneView);
 
     level = Project.CreateLevel();
@@ -122,6 +136,7 @@ public class SceneEditor : Form, IEditorForm
       }
 
       desktop = new DesktopControl();
+      desktop.BackColor = Color.Empty; // we want the whole background to come from the sceneview
       desktop.AddChild(sceneView);
 
       level = Project.LoadLevel(fd.FileName);
@@ -338,6 +353,8 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.ToolStripButton layerTool;
     System.Windows.Forms.ToolStripButton cameraTool;
     System.Windows.Forms.MenuStrip menuBar;
+    System.Windows.Forms.ToolStripSeparator menuSep1;
+    System.Windows.Forms.ToolStripMenuItem editLoadTraceItem;
     System.Windows.Forms.ToolStripDropDownButton toolboxNewMenu;
     System.Windows.Forms.ToolStripMenuItem newStaticImage;
     System.Windows.Forms.SplitContainer mainSplitter;
@@ -347,6 +364,9 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
     System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
+    this.editCopyMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+    this.editPasteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+    this.editUnloadTraceItem = new System.Windows.Forms.ToolStripMenuItem();
     this.renderPanel = new RotationalForce.Editor.RenderPanel();
     this.rightPane = new System.Windows.Forms.SplitContainer();
     this.objToolBar = new System.Windows.Forms.ToolStrip();
@@ -357,12 +377,12 @@ public class SceneEditor : Form, IEditorForm
     this.statusBar = new System.Windows.Forms.StatusStrip();
     this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
-    this.editCopyMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-    this.editPasteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     selectTool = new System.Windows.Forms.ToolStripButton();
     layerTool = new System.Windows.Forms.ToolStripButton();
     cameraTool = new System.Windows.Forms.ToolStripButton();
     menuBar = new System.Windows.Forms.MenuStrip();
+    menuSep1 = new System.Windows.Forms.ToolStripSeparator();
+    editLoadTraceItem = new System.Windows.Forms.ToolStripMenuItem();
     toolboxNewMenu = new System.Windows.Forms.ToolStripDropDownButton();
     newStaticImage = new System.Windows.Forms.ToolStripMenuItem();
     mainSplitter = new System.Windows.Forms.SplitContainer();
@@ -429,13 +449,51 @@ public class SceneEditor : Form, IEditorForm
     // 
     this.editMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.editCopyMenuItem,
-            this.editPasteMenuItem});
+            this.editPasteMenuItem,
+            menuSep1,
+            editLoadTraceItem,
+            this.editUnloadTraceItem});
     this.editMenu.MergeAction = System.Windows.Forms.MergeAction.Insert;
     this.editMenu.MergeIndex = 1;
     this.editMenu.Name = "editMenu";
     this.editMenu.Size = new System.Drawing.Size(37, 20);
     this.editMenu.Text = "&Edit";
     this.editMenu.DropDownOpening += new System.EventHandler(this.editMenu_DropDownOpening);
+    // 
+    // editCopyMenuItem
+    // 
+    this.editCopyMenuItem.Name = "editCopyMenuItem";
+    this.editCopyMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C)));
+    this.editCopyMenuItem.Size = new System.Drawing.Size(174, 22);
+    this.editCopyMenuItem.Text = "&Copy";
+    this.editCopyMenuItem.Click += new System.EventHandler(this.editCopyMenuItem_Click);
+    // 
+    // editPasteMenuItem
+    // 
+    this.editPasteMenuItem.Name = "editPasteMenuItem";
+    this.editPasteMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V)));
+    this.editPasteMenuItem.Size = new System.Drawing.Size(174, 22);
+    this.editPasteMenuItem.Text = "&Paste";
+    this.editPasteMenuItem.Click += new System.EventHandler(this.editPasteMenuItem_Click);
+    // 
+    // menuSep1
+    // 
+    menuSep1.Name = "menuSep1";
+    menuSep1.Size = new System.Drawing.Size(171, 6);
+    // 
+    // editLoadTraceItem
+    // 
+    editLoadTraceItem.Name = "editLoadTraceItem";
+    editLoadTraceItem.Size = new System.Drawing.Size(174, 22);
+    editLoadTraceItem.Text = "Load tracing image";
+    editLoadTraceItem.Click += new EventHandler(editLoadTraceItem_Click);
+    // 
+    // editUnloadTraceItem
+    // 
+    this.editUnloadTraceItem.Name = "editUnloadTraceItem";
+    this.editUnloadTraceItem.Size = new System.Drawing.Size(174, 22);
+    this.editUnloadTraceItem.Text = "Unload tracing image";
+    this.editUnloadTraceItem.Click += new EventHandler(editUnloadTraceItem_Click);
     // 
     // toolboxNewMenu
     // 
@@ -485,7 +543,7 @@ public class SceneEditor : Form, IEditorForm
     this.renderPanel.TabIndex = 0;
     this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
     this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
-    this.renderPanel.RenderBackground += new System.EventHandler(this.renderPanel_RenderBackground);
+    this.renderPanel.RenderBackground += new PaintEventHandler(this.renderPanel_RenderBackground);
     this.renderPanel.MouseClick += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseClick);
     this.renderPanel.MouseDrag += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDrag);
     this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
@@ -612,22 +670,6 @@ public class SceneEditor : Form, IEditorForm
     this.layerLabel.Name = "layerLabel";
     this.layerLabel.Size = new System.Drawing.Size(47, 17);
     this.layerLabel.Text = "Layer: 0";
-    // 
-    // editCopyMenuItem
-    // 
-    this.editCopyMenuItem.Name = "editCopyMenuItem";
-    this.editCopyMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C)));
-    this.editCopyMenuItem.Size = new System.Drawing.Size(152, 22);
-    this.editCopyMenuItem.Text = "&Copy";
-    this.editCopyMenuItem.Click += new EventHandler(editCopyMenuItem_Click);
-    // 
-    // editPasteMenuItem
-    // 
-    this.editPasteMenuItem.Name = "editPasteMenuItem";
-    this.editPasteMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V)));
-    this.editPasteMenuItem.Size = new System.Drawing.Size(152, 22);
-    this.editPasteMenuItem.Text = "&Paste";
-    this.editPasteMenuItem.Click += new EventHandler(editPasteMenuItem_Click);
     // 
     // SceneEditor
     // 
@@ -4063,10 +4105,67 @@ public class SceneEditor : Form, IEditorForm
   #endregion
 
   #region Painting, rendering, and layout
-  void renderPanel_RenderBackground(object sender, EventArgs e)
+  void renderPanel_RenderBackground(object sender, PaintEventArgs e)
   {
+    Color bgColor = sceneView.BackColor;
+
+    // if we have a trace image, we need to insert it into the rendering pipeline without breaking encapsulation.
+    // to do this, we'll temporarily set the background color of the scene view to a transparent color (eliminating
+    // the background), and render our own background
+    if(traceImage != null)
+    {
+      GL.glColor(bgColor);
+      GL.glRecti(e.ClipRectangle.X, e.ClipRectangle.Y, e.ClipRectangle.Right, e.ClipRectangle.Bottom);
+
+      Rectangle destRect = new Rectangle(0, 0, traceImage.ImgWidth, traceImage.ImgHeight);
+      if((double)destRect.Width/destRect.Height >= (double)renderPanel.Width/renderPanel.Height)
+      {
+        destRect.Height = renderPanel.Width * destRect.Height / destRect.Width;
+        destRect.Width  = renderPanel.Width;
+      }
+      else
+      {
+        destRect.Width  = renderPanel.Height * destRect.Width / destRect.Height;
+        destRect.Height = renderPanel.Height;
+      }
+      destRect.X = (renderPanel.Width  - destRect.Width)  / 2;
+      destRect.Y = (renderPanel.Height - destRect.Height) / 2;
+
+      GL.glEnable(GL.GL_TEXTURE_2D);
+      GL.glEnable(GL.GL_BLEND);
+      GL.glColor(Color.White);
+      traceImage.Bind();
+      GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST);
+      GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST);
+      GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
+
+      GL.glBegin(GL.GL_QUADS);
+        GL.glTexCoord2d(0, 0);
+        GL.glVertex2i(destRect.Left, destRect.Top);
+        
+        GL.glTexCoord2d((double)traceImage.ImgWidth/traceImage.TexWidth, 0);
+        GL.glVertex2i(destRect.Right, destRect.Top);
+
+        GL.glTexCoord2d((double)traceImage.ImgWidth/traceImage.TexWidth, (double)traceImage.ImgHeight/traceImage.TexHeight);
+        GL.glVertex2i(destRect.Right, destRect.Bottom);
+
+        GL.glTexCoord2d(0, (double)traceImage.ImgHeight/traceImage.TexHeight);
+        GL.glVertex2i(destRect.Left, destRect.Bottom);
+      GL.glEnd();
+
+      GL.glDisable(GL.GL_TEXTURE_2D);
+      GL.glDisable(GL.GL_BLEND);
+      
+      sceneView.BackColor = Color.FromArgb(0, 255, 255, 255);
+    }
+
     sceneView.Invalidate();
     desktop.Render();
+
+    if(traceImage != null)
+    {
+      sceneView.BackColor = bgColor;
+    }
   }
  
   void renderPanel_Paint(object sender, PaintEventArgs e)
@@ -4119,6 +4218,7 @@ public class SceneEditor : Form, IEditorForm
   {
     editCopyMenuItem.Enabled  = CurrentTool.CanCopy;
     editPasteMenuItem.Enabled = CurrentTool.CanPaste;
+    editUnloadTraceItem.Enabled = traceImage != null;
   }
 
   void editCopyMenuItem_Click(object sender, EventArgs e)
@@ -4129,6 +4229,36 @@ public class SceneEditor : Form, IEditorForm
   void editPasteMenuItem_Click(object sender, EventArgs e)
   {
     CurrentTool.Paste();
+  }
+  
+  void editLoadTraceItem_Click(object sender, EventArgs e)
+  {
+    OpenFileDialog fd = new OpenFileDialog();
+    fd.Filter = "Image files (*.jpg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|All files (*.*)|*.*";
+    fd.Title  = "Select tracing image";
+
+    if(fd.ShowDialog() == DialogResult.OK)
+    {
+      Surface surface = new Surface(fd.FileName);
+      //surface.UsingAlpha = true;
+      //surface.Alpha      = 128;
+
+      if(traceImage != null)
+      {
+        traceImage.Dispose();
+      }
+
+      traceImage = new GLTexture2D(surface);
+      surface.Dispose();
+      InvalidateRender();
+    }
+  }
+
+  void editUnloadTraceItem_Click(object sender, EventArgs e)
+  {
+    traceImage.Dispose();
+    traceImage = null;
+    InvalidateRender();
   }
   #endregion
  
@@ -4171,6 +4301,7 @@ public class SceneEditor : Form, IEditorForm
   DesktopControl desktop;
   SceneViewControl sceneView;
   Project.Level level;
+  GLTexture2D traceImage;
   int systemDefinedIconCount;
   bool isModified, isClosed;
   

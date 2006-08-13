@@ -514,7 +514,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   {
     EngineMath.AssertValidFloat(sceneSize);
     if(sceneSize <= 0) throw new ArgumentOutOfRangeException("Scene size must be positive.");
-    return sceneSize / CameraSize;
+    return CameraSize / sceneSize;
   }
   
   /// <summary>Converts a distance in client coordinates to a distance in scene coordinates.</summary>
