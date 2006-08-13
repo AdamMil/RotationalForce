@@ -430,14 +430,14 @@ public sealed class VectorAnimation : Animation
       get { return new ReadOnlyCollection<Vertex>(vertices); }
     }
 
-    /// <summary>Creates a copy of this polygon will all spline edges subdivided into static vertices.</summary>
-    public Polygon CloneAsVertexPolygon()
+    public Polygon Clone()
     {
       Polygon poly = new Polygon();
-      // copy all properties (except LOD and Subdivisions)
       poly.BlendingEnabled       = BlendingEnabled;
       poly.DestinationBlendMode  = DestinationBlendMode;
       poly.GenerateTextureCoords = GenerateTextureCoords;
+      poly.LOD                   = LOD;
+      poly.Subdivisions          = Subdivisions;
       poly.ShadeModel            = ShadeModel;
       poly.SourceBlendMode       = SourceBlendMode;
       poly.StrokeColor           = StrokeColor;
@@ -445,7 +445,21 @@ public sealed class VectorAnimation : Animation
       poly.Texture               = Texture;
       poly.TextureOffset         = TextureOffset;
       poly.TextureRotation       = TextureRotation;
+      
+      foreach(Vertex vertex in vertices)
+      {
+        poly.AddVertex(vertex.Clone());
+      }
+      
+      return poly;
+    }
 
+    /// <summary>Creates a copy of this polygon with all spline edges subdivided into static vertices.</summary>
+    public Polygon CloneAsVertexPolygon()
+    {
+      Polygon poly = Clone();
+      poly.ClearVertices();
+      
       if(tessellationDirty) Tessellate();
       if(texCoordsDirty) GenerateTextureCoordinates();
 
@@ -1101,7 +1115,7 @@ public sealed class VectorAnimation : Animation
     /// <summary>Cached subdivision info containing the subdivision points.</summary>
     [NonSerialized] SubPoint[] subPoints;
     /// <summary>The name of the selected texture.</summary>
-    string imageMapName;
+    string textureName;
     /// <summary>The handle to the selected texture.</summary>
     [NonSerialized] ImageMapHandle mapHandle;
     /// <summary>The selected texture frame.</summary>
@@ -1114,8 +1128,6 @@ public sealed class VectorAnimation : Animation
     double textureRotation;
     /// <summary>The texture repeat factor.</summary>
     double textureRepeat = 1;
-    /// <summary>The texture's name. Used to look up the actual texture.</summary>
-    string textureName;
     /// <summary>The color of the polygon's stroke line.</summary>
     Color strokeColor = Color.Black;
     /// <summary>The width of the polygon's stroke line.</summary>

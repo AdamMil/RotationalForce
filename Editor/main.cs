@@ -1,8 +1,49 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Windows.Forms;
+using RotationalForce.Engine;
 
 namespace RotationalForce.Editor
 {
+
+enum ObjectType
+{
+  None,
+  Objects,
+  Polygons
+}
+
+struct ClipboardObject
+{
+  public ClipboardObject(ObjectType type, byte[] data)
+  {
+    this.type = type;
+    this.data = data;
+  }
+  
+  public ObjectType Type
+  {
+    get { return type; }
+  }
+  
+  public object[] Deserialize()
+  {
+    using(SexpReader reader = new SexpReader(new MemoryStream(data, false)))
+    {
+      List<object> list = new List<object>();
+
+      Serializer.BeginBatch();
+      while(!reader.EOF) list.Add(Serializer.Deserialize(reader));
+      Serializer.EndBatch();
+
+      return list.ToArray();
+    }
+  }
+
+  byte[] data;
+  ObjectType type;
+}
 
 static class EditorApp
 {
@@ -11,7 +52,7 @@ static class EditorApp
     get { return mainForm; }
   }
   
-  public static object Clipboard
+  public static ClipboardObject Clipboard
   {
     get { return clipboardObject; }
     set { clipboardObject = value; }
@@ -38,7 +79,7 @@ static class EditorApp
   }
 
   static readonly MainForm mainForm = new MainForm();
-  static object clipboardObject;
+  static ClipboardObject clipboardObject;
 }
 
 } // namespace RotationalForce.Editor

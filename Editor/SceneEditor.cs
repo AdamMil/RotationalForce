@@ -32,6 +32,8 @@ public class SceneEditor : Form, IEditorForm
   private StatusStrip statusBar;
   private ToolStripStatusLabel mousePosLabel;
   private ToolStripStatusLabel layerLabel;
+  private ToolStripMenuItem editCopyMenuItem;
+  private ToolStripMenuItem editPasteMenuItem;
   private RenderPanel renderPanel;
 
   public SceneEditor()
@@ -169,17 +171,12 @@ public class SceneEditor : Form, IEditorForm
     level.Save(fileName);
 
     fileName = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName)) + ".scene";
-    StreamWriter sw = new StreamWriter(fileName, false, System.Text.Encoding.UTF8);
-    try
+    using(StreamWriter sw = new StreamWriter(fileName, false, System.Text.Encoding.UTF8))
     {
       Serializer.BeginBatch();
       Serializer.Serialize(sceneView, sw); // sceneViews don't serialize their scene objects
       Serializer.Serialize(sceneView.Scene, sw);
       Serializer.EndBatch();
-    }
-    finally
-    {
-      sw.Close();
     }
     
     isModified = false;
@@ -360,6 +357,8 @@ public class SceneEditor : Form, IEditorForm
     this.statusBar = new System.Windows.Forms.StatusStrip();
     this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
+    this.editCopyMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+    this.editPasteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     selectTool = new System.Windows.Forms.ToolStripButton();
     layerTool = new System.Windows.Forms.ToolStripButton();
     cameraTool = new System.Windows.Forms.ToolStripButton();
@@ -422,17 +421,21 @@ public class SceneEditor : Form, IEditorForm
             this.editMenu});
     menuBar.Location = new System.Drawing.Point(0, 0);
     menuBar.Name = "menuBar";
-    menuBar.Size = new System.Drawing.Size(552, 24);
+    menuBar.Size = new System.Drawing.Size(600, 24);
     menuBar.TabIndex = 0;
     menuBar.Visible = false;
     // 
     // editMenu
     // 
+    this.editMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.editCopyMenuItem,
+            this.editPasteMenuItem});
     this.editMenu.MergeAction = System.Windows.Forms.MergeAction.Insert;
     this.editMenu.MergeIndex = 1;
     this.editMenu.Name = "editMenu";
     this.editMenu.Size = new System.Drawing.Size(37, 20);
     this.editMenu.Text = "&Edit";
+    this.editMenu.DropDownOpening += new System.EventHandler(this.editMenu_DropDownOpening);
     // 
     // toolboxNewMenu
     // 
@@ -610,6 +613,22 @@ public class SceneEditor : Form, IEditorForm
     this.layerLabel.Size = new System.Drawing.Size(47, 17);
     this.layerLabel.Text = "Layer: 0";
     // 
+    // editCopyMenuItem
+    // 
+    this.editCopyMenuItem.Name = "editCopyMenuItem";
+    this.editCopyMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C)));
+    this.editCopyMenuItem.Size = new System.Drawing.Size(152, 22);
+    this.editCopyMenuItem.Text = "&Copy";
+    this.editCopyMenuItem.Click += new EventHandler(editCopyMenuItem_Click);
+    // 
+    // editPasteMenuItem
+    // 
+    this.editPasteMenuItem.Name = "editPasteMenuItem";
+    this.editPasteMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V)));
+    this.editPasteMenuItem.Size = new System.Drawing.Size(152, 22);
+    this.editPasteMenuItem.Text = "&Paste";
+    this.editPasteMenuItem.Click += new EventHandler(editPasteMenuItem_Click);
+    // 
     // SceneEditor
     // 
     this.ClientSize = new System.Drawing.Size(772, 523);
@@ -641,7 +660,6 @@ public class SceneEditor : Form, IEditorForm
     this.PerformLayout();
 
   }
- 
   #endregion
 
   #region Tools
@@ -653,8 +671,21 @@ public class SceneEditor : Form, IEditorForm
       this.editor = editor;
     }
 
+    public virtual bool CanCopy
+    {
+      get { return false; }
+    }
+
+    public virtual bool CanPaste
+    {
+      get { return false; }
+    }
+
     public virtual void Activate() { }
     public virtual void Deactivate() { }
+
+    public virtual bool Copy() { return false; }
+    public virtual bool Paste() { return false; }
 
     public virtual void KeyPress(KeyEventArgs e, bool down) { }
     public virtual bool MouseClick(MouseEventArgs e) { return false; }
@@ -693,7 +724,7 @@ public class SceneEditor : Form, IEditorForm
   }
   #endregion
 
-  // FIXME: invalidating an object doesn't invalidate its mounts
+  // FIXME: invalidating an object doesn't invalidate and reposition its mounts
   #region ObjectTool
   sealed class ObjectTool : EditTool
   {
@@ -844,6 +875,7 @@ public class SceneEditor : Form, IEditorForm
         Scene.RemoveObject(srcObj);
         ObjectTool.SubTool = ObjectTool.VectorTool;
         ObjectTool.VectorTool.RecalculateObjectBounds();
+        ObjectTool.RecalculateAndInvalidateSelectedBounds();
         Editor.InvalidateRender();
         EditorApp.MainForm.StatusText = "Objects joined.";
         return true;
@@ -864,7 +896,7 @@ public class SceneEditor : Form, IEditorForm
       public override void Activate()
       {
         previousViewCenter = SceneView.CameraPosition;
-        previousViewSize   = SceneView.CameraSize;
+        previousViewZoom   = SceneView.CameraZoom;
 
         previousRotation = Object.Rotation;
         Object.Rotation  = 0;
@@ -872,7 +904,7 @@ public class SceneEditor : Form, IEditorForm
         linkPoints = Object.GetLinkPoints();
  
         SceneView.CameraPosition = Object.Position; // center the camera on the object
-        SceneView.CameraSize     = Math.Max(Object.Width, Object.Height) * 1.10; // 10% bigger than the object's size
+        SceneView.CameraZoom     = SceneView.CalculateZoom(Math.Max(Object.Width, Object.Height) * 1.10); // 10% bigger than the object's size
         Editor.InvalidateView();
       }
 
@@ -881,7 +913,7 @@ public class SceneEditor : Form, IEditorForm
         Object.Rotation = previousRotation;
 
         SceneView.CameraPosition = previousViewCenter;
-        SceneView.CameraSize     = previousViewSize;
+        SceneView.CameraSize     = previousViewZoom;
         Editor.InvalidateView();
         
         linkPoints = null;
@@ -1092,7 +1124,7 @@ public class SceneEditor : Form, IEditorForm
       LinkPoint[] linkPoints;
       List<int> dragLinks;
       GLPoint previousViewCenter;
-      double  previousViewSize, previousRotation;
+      double  previousViewZoom, previousRotation;
     }
     #endregion
 
@@ -1115,7 +1147,7 @@ public class SceneEditor : Form, IEditorForm
         
         if(state == State.SelectingMount)
         {
-          SceneView.CameraSize = previousViewSize;
+          SceneView.CameraZoom = previousViewZoom;
           Editor.InvalidateView();
         }
         
@@ -1154,11 +1186,11 @@ public class SceneEditor : Form, IEditorForm
           
           links = parent.GetLinkPoints();
 
-          previousViewSize = SceneView.CameraSize;
+          previousViewZoom = SceneView.CameraZoom;
 
           Vector objSize = parent.GetRotatedAreaBounds().Size;
           SceneView.CameraPosition = parent.Position;
-          SceneView.CameraSize     = Math.Max(objSize.X, objSize.Y) * 1.50;
+          SceneView.CameraZoom     = SceneView.CalculateZoom(Math.Max(objSize.X, objSize.Y) * 1.50);
           Editor.InvalidateView();
 
           EditorApp.MainForm.StatusText = "Select mount point...";
@@ -1280,7 +1312,7 @@ public class SceneEditor : Form, IEditorForm
         return new Rectangle(pt.X-2, pt.Y-2, 5, 5);
       }
       
-      double previousViewSize;
+      double previousViewZoom;
       SceneObject child, parent;
       LinkPoint[] links;
       int selectedLink = -1;
@@ -1336,6 +1368,7 @@ public class SceneEditor : Form, IEditorForm
         }
         else if(e.Button == MouseButtons.Middle) // middle click swaps between object/vector mode
         {
+          SelectObject(e.Location, true);
           ObjectTool.SubTool = ObjectTool.VectorTool;
         }
         // a plain right click opens a context menu for the selected items
@@ -1374,6 +1407,7 @@ public class SceneEditor : Form, IEditorForm
 
             menu.MenuItems.Add(new MenuItem("Delete object(s)", menu_Delete, Shortcut.Del));
             menu.MenuItems.Add("Export object(s)", menu_Export);
+            menu.MenuItems.Add("Copy object(s)", Editor.editCopyMenuItem_Click);
             
             foreach(SceneObject obj in SelectedObjects)
             {
@@ -1391,6 +1425,10 @@ public class SceneEditor : Form, IEditorForm
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, true); });
           menu.MenuItems.Add("New spline shape",
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, false); });
+          if(Editor.CurrentTool.CanPaste)
+          {
+            menu.MenuItems.Add("Paste", Editor.editPasteMenuItem_Click);
+          }
 
           menu.Show(Panel, e.Location);
           return true;
@@ -2078,6 +2116,11 @@ public class SceneEditor : Form, IEditorForm
     {
       public VectorSubTool(SceneEditor editor, ObjectTool parent) : base(editor, parent) { }
 
+      public override bool CanCopy
+      {
+        get { return SelectedPoly != null; }
+      }
+
       public override void Activate()
       {
         Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
@@ -2109,6 +2152,30 @@ public class SceneEditor : Form, IEditorForm
         Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
         DeselectPoints();
         selectedPoly = 0;
+      }
+
+      public override bool Copy()
+      {
+        if(SelectedPoly != null)
+        {
+          using(MemoryStream stream = new MemoryStream())
+          {
+            VectorAnimation.Polygon poly = SelectedPoly.Clone();
+            // vertices are stored on the clipboard in scene coordinates
+            foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+            {
+              vertex.Position = SelectedObject.LocalToScene(vertex.Position);
+            }
+
+            Serializer.BeginBatch();
+            Serializer.Serialize(poly, stream);
+            Serializer.EndBatch();
+            EditorApp.Clipboard = new ClipboardObject(ObjectType.Polygons, stream.ToArray());
+          }
+          return true;
+        }
+        
+        return false;
       }
 
       public override void KeyPress(KeyEventArgs e, bool down)
@@ -2189,6 +2256,7 @@ public class SceneEditor : Form, IEditorForm
         }
         else if(e.Button == MouseButtons.Middle) // middle click swaps between object/vector mode
         {
+          SelectSingleVertex(e.Location);
           ObjectTool.SubTool = ObjectTool.SpatialTool;
         }
         else if(e.Button == MouseButtons.Right)
@@ -2219,6 +2287,8 @@ public class SceneEditor : Form, IEditorForm
               menu.MenuItems.Add("Join with another object",
                                  delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.JoinTool; });
             }
+
+            menu.MenuItems.Add("Copy selected polygon(s)", Editor.editCopyMenuItem_Click);
 
             if(SelectedPoly.HasSpline)
             {
@@ -2260,7 +2330,6 @@ public class SceneEditor : Form, IEditorForm
             menu.MenuItems.Add("Delete shape", delegate(object s, EventArgs a) { DeleteSelectedObject(); });
             menu.MenuItems.Add("Edit shape properties",
                                delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.SpatialTool; });
-            menu.MenuItems.Add("Edit in animation editor");
             menu.MenuItems.Add("-");
           }
 
@@ -2268,6 +2337,10 @@ public class SceneEditor : Form, IEditorForm
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, true); });
           menu.MenuItems.Add("New spline shape",
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, false); });
+          if(Editor.CurrentTool.CanPaste)
+          {
+            menu.MenuItems.Add("Paste", Editor.editPasteMenuItem_Click);
+          }
 
           menu.Show(Panel, e.Location);
           return true;
@@ -2975,6 +3048,97 @@ public class SceneEditor : Form, IEditorForm
     #endregion
 
     #region Delegation to subtool
+    public override bool CanCopy
+    {
+      get { return SubTool.CanCopy || selectedObjects.Count != 0; }
+    }
+
+    public override bool CanPaste
+    {
+      get
+      {
+        return SubTool.CanPaste ||
+               EditorApp.Clipboard.Type == ObjectType.Objects || EditorApp.Clipboard.Type == ObjectType.Polygons;
+      }
+    }
+
+    public override bool Copy()
+    {
+      if(SubTool.Copy()) return true;
+
+      if(selectedObjects.Count != 0)
+      {
+        MemoryStream stream = new MemoryStream();
+        using(SexpWriter writer = new SexpWriter(stream))
+        {
+          Serializer.BeginBatch();
+          foreach(SceneObject obj in selectedObjects)
+          {
+            Serializer.Serialize(obj, writer);
+          }
+          Serializer.EndBatch();
+          writer.Flush();
+          EditorApp.Clipboard = new ClipboardObject(ObjectType.Objects, stream.ToArray());
+        }
+        return true;
+      }
+
+      return false;
+    }
+
+    public override bool Paste()
+    {
+      if(SubTool.Paste()) return true;
+
+      object[] objects;
+      if(EditorApp.Clipboard.Type == ObjectType.Objects)
+      {
+        objects = EditorApp.Clipboard.Deserialize();
+      }
+      else if(EditorApp.Clipboard.Type == ObjectType.Polygons)
+      {
+        AnimatedObject obj = new AnimatedObject();
+        VectorAnimation anim = new VectorAnimation();
+        anim.AddFrame(new VectorAnimation.Frame());
+        obj.Animation = anim;
+        
+        double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
+        foreach(VectorAnimation.Polygon poly in EditorApp.Clipboard.Deserialize())
+        {
+          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+          {
+            if(vertex.Position.X < x1) x1 = vertex.Position.X;
+            if(vertex.Position.X > x2) x2 = vertex.Position.X;
+            if(vertex.Position.Y < y1) y1 = vertex.Position.Y;
+            if(vertex.Position.Y > y2) y2 = vertex.Position.Y;
+          }
+          anim.Frames[0].AddPolygon(poly);
+        }
+        
+        obj.Size     = new Vector(x2-x1, y2-y1);
+        obj.Position = new GLPoint(x1+obj.Width*0.5, y1+obj.Height*0.5);
+
+        // vertices on the clipboard are stored in scene units, so convert them back to local units
+        foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
+        {
+          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+          {
+            vertex.Position = obj.SceneToLocal(vertex.Position);
+          }
+        }
+        
+        objects = new object[] { obj };
+      }
+      else
+      {
+        return false;
+      }
+
+      // add objects to the center of the render panel
+      ImportObjects(new Point(Editor.renderPanel.Width/2, Editor.renderPanel.Height/2), objects);
+      return true;
+    }
+
     public override void KeyPress(KeyEventArgs e, bool down)
     {
       SubTool.KeyPress(e, down);
@@ -3105,10 +3269,11 @@ public class SceneEditor : Form, IEditorForm
       poly.AddVertex(vertex);
 
       AnimatedObject obj = new AnimatedObject();
+      double size = Math.Max(SceneView.CameraArea.Width, SceneView.CameraArea.Height);
       obj.Animation = anim;
       obj.Layer     = Editor.CurrentLayer;
       obj.Position  = SceneView.ClientToScene(at);
-      obj.Size      = new Vector(SceneView.CameraSize/10, SceneView.CameraSize/10);
+      obj.Size      = new Vector(size/10, size/10);
 
       Scene.AddObject(obj);
       Editor.InvalidateRender();
@@ -3150,6 +3315,45 @@ public class SceneEditor : Form, IEditorForm
     {
       Color bgColor = SceneView.BackColor;
       return Color.FromArgb(255-bgColor.R, 255-bgColor.G, 255-bgColor.B);
+    }
+
+    void ImportObjects(Point clientCenter, object[] sceneObjs)
+    {
+      // first find the bounds of the objects in scene space and in layers
+      double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
+      int minLayer=int.MaxValue, maxLayer=int.MinValue;
+
+      foreach(SceneObject obj in sceneObjs)
+      {
+        if(obj.X < x1) x1 = obj.X;
+        if(obj.X > x2) x2 = obj.X;
+        if(obj.Y < y1) y1 = obj.Y;
+        if(obj.Y > y2) y2 = obj.Y;
+        if(obj.Layer < minLayer) minLayer = obj.Layer;
+        if(obj.Layer > maxLayer) maxLayer = obj.Layer;
+      }
+
+      // now calculate a vector that will center the objects around the 'clientCenter'
+      Vector offset = SceneView.ClientToScene(clientCenter) - new GLPoint(x1+(x2-x1)*0.5, y1+(y2-y1)*0.5);
+      
+      // now calculate the layer offset that must be applied. we would prefer to put the topmost objects on the current
+      // layer, but if that causes the bottommost items to be outside the valid layer range, we'll adjust it upwards
+      int layerOffset = Editor.CurrentLayer - maxLayer;
+      if(minLayer + layerOffset < 0)
+      {
+        layerOffset -= minLayer + layerOffset;
+      }
+      
+      SubTool = SpatialTool;
+      DeselectObjects();
+      foreach(SceneObject obj in sceneObjs)
+      {
+        obj.Position += offset;
+        obj.Layer    += layerOffset;
+        Scene.AddObject(obj);
+        SelectObject(obj, false);
+      }
+      Editor.InvalidateRender();
     }
 
     bool IsSelected(SceneObject obj) { return selectedObjects.Contains(obj); }
@@ -3370,12 +3574,6 @@ public class SceneEditor : Form, IEditorForm
       {
         Panel.Cursor = down ? zoomOut : zoomIn;
         e.Handled = true;
-      }
-      else if(e.KeyCode == Keys.R && down) // pressing R resets the camera view
-      {
-        SceneView.CameraSize     = DefaultViewSize;
-        SceneView.CameraPosition = new GLPoint();
-        Editor.InvalidateView();
       }
     }
 
@@ -3758,6 +3956,12 @@ public class SceneEditor : Form, IEditorForm
       {
         CurrentLayer = c == '0' ? 9 : c-'1'; // '1'-'9' are layers 0-8. '0' is layer 9.
       }
+      else if(char.ToUpper(c)=='R') // pressing R resets the camera view
+      {
+        sceneView.CameraZoom     = 1;
+        sceneView.CameraPosition = new GLPoint();
+        InvalidateView();
+      }
     }
   }
  
@@ -3837,11 +4041,11 @@ public class SceneEditor : Form, IEditorForm
 
       if(wheelMovement < 0) // zooming out
       {
-        sceneView.CameraSize *= Math.Pow(zoomFactor, -wheelMovement);
+        sceneView.CameraZoom /= Math.Pow(zoomFactor, -wheelMovement);
       }
       else // zooming in
       {
-        sceneView.CameraSize /= Math.Pow(zoomFactor, wheelMovement);
+        sceneView.CameraZoom *= Math.Pow(zoomFactor, wheelMovement);
       }
 
       InvalidateView();
@@ -3907,6 +4111,24 @@ public class SceneEditor : Form, IEditorForm
     propertyGrid.Visible = true;
     HideRightPaneControls(propertyGrid);
     rightPane.Panel2Collapsed = false;
+  }
+  #endregion
+  
+  #region Other event handlers
+  void editMenu_DropDownOpening(object sender, EventArgs e)
+  {
+    editCopyMenuItem.Enabled  = CurrentTool.CanCopy;
+    editPasteMenuItem.Enabled = CurrentTool.CanPaste;
+  }
+
+  void editCopyMenuItem_Click(object sender, EventArgs e)
+  {
+    CurrentTool.Copy();
+  }
+
+  void editPasteMenuItem_Click(object sender, EventArgs e)
+  {
+    CurrentTool.Paste();
   }
   #endregion
  
@@ -4107,8 +4329,14 @@ sealed class StaticImageItem : ToolboxItem
     }
 
     StaticImageObject obj = new StaticImageObject();
-    obj.Size = sceneView.ClientToScene(map.Frames[0].Size);
     obj.ImageMap = map.Name;
+
+    // calculate the right image size for the default camera zoom
+    double previousZoom  = sceneView.CameraZoom;
+    sceneView.CameraZoom = 1;
+    obj.Size = sceneView.ClientToScene(map.Frames[0].Size);
+    sceneView.CameraZoom = previousZoom;
+
     return obj;
   }
 
