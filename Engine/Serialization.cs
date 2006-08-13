@@ -402,6 +402,7 @@ public sealed class SexpReader : IDisposable
   {
     tagNames.Pop();
     NextChar(); // advance past closing parenthesis
+    SkipWhitespace();
 
     if(ReaderAtEOF) // if we're at EOF, it's an error if not all tags are closed
     {
@@ -766,7 +767,7 @@ public class DeserializationStore
       throw new KeyNotFoundException("Cannot find a value called '"+name+"'.");
     }
   }
-  
+
   public bool GetBoolean(string name)
   {
     return (bool)GetValue(name);

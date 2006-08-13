@@ -507,6 +507,16 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   #endregion
 
   #region Coordinate conversion
+  /// <summary>
+  /// Calculates the zoom factor needed to display the given number of scene units on the selected camera axis.
+  /// </summary>
+  public double CalculateZoom(double sceneSize)
+  {
+    EngineMath.AssertValidFloat(sceneSize);
+    if(sceneSize <= 0) throw new ArgumentOutOfRangeException("Scene size must be positive.");
+    return sceneSize / CameraSize;
+  }
+  
   /// <summary>Converts a distance in client coordinates to a distance in scene coordinates.</summary>
   public Vector ClientToScene(Size clientSize)
   {
