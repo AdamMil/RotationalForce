@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -36,6 +37,7 @@ public class SceneEditor : Form, IEditorForm
   private ToolStripMenuItem editCopyMenuItem;
   private ToolStripMenuItem editPasteMenuItem;
   private ToolStripMenuItem editUnloadTraceItem;
+  private ToolStripMenuItem resetPropertyValueMenuItem;
   private RenderPanel renderPanel;
 
   public SceneEditor()
@@ -363,6 +365,7 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
     System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
+    System.Windows.Forms.ContextMenuStrip propertyGridMenu;
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
     this.editCopyMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.editPasteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -374,6 +377,7 @@ public class SceneEditor : Form, IEditorForm
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
     this.toolBar = new System.Windows.Forms.ToolStrip();
+    this.resetPropertyValueMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.statusBar = new System.Windows.Forms.StatusStrip();
     this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
@@ -386,6 +390,7 @@ public class SceneEditor : Form, IEditorForm
     toolboxNewMenu = new System.Windows.Forms.ToolStripDropDownButton();
     newStaticImage = new System.Windows.Forms.ToolStripMenuItem();
     mainSplitter = new System.Windows.Forms.SplitContainer();
+    propertyGridMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
     menuBar.SuspendLayout();
     mainSplitter.Panel1.SuspendLayout();
     mainSplitter.Panel2.SuspendLayout();
@@ -396,6 +401,7 @@ public class SceneEditor : Form, IEditorForm
     this.rightPane.SuspendLayout();
     this.objToolBar.SuspendLayout();
     this.toolBar.SuspendLayout();
+    propertyGridMenu.SuspendLayout();
     this.statusBar.SuspendLayout();
     this.SuspendLayout();
     // 
@@ -486,14 +492,14 @@ public class SceneEditor : Form, IEditorForm
     editLoadTraceItem.Name = "editLoadTraceItem";
     editLoadTraceItem.Size = new System.Drawing.Size(174, 22);
     editLoadTraceItem.Text = "Load tracing image";
-    editLoadTraceItem.Click += new EventHandler(editLoadTraceItem_Click);
+    editLoadTraceItem.Click += new System.EventHandler(this.editLoadTraceItem_Click);
     // 
     // editUnloadTraceItem
     // 
     this.editUnloadTraceItem.Name = "editUnloadTraceItem";
     this.editUnloadTraceItem.Size = new System.Drawing.Size(174, 22);
     this.editUnloadTraceItem.Text = "Unload tracing image";
-    this.editUnloadTraceItem.Click += new EventHandler(editUnloadTraceItem_Click);
+    this.editUnloadTraceItem.Click += new System.EventHandler(this.editUnloadTraceItem_Click);
     // 
     // toolboxNewMenu
     // 
@@ -543,7 +549,7 @@ public class SceneEditor : Form, IEditorForm
     this.renderPanel.TabIndex = 0;
     this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
     this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
-    this.renderPanel.RenderBackground += new PaintEventHandler(this.renderPanel_RenderBackground);
+    this.renderPanel.RenderBackground += new System.Windows.Forms.PaintEventHandler(this.renderPanel_RenderBackground);
     this.renderPanel.MouseClick += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseClick);
     this.renderPanel.MouseDrag += new RotationalForce.Editor.MouseDragEventHandler(this.renderPanel_MouseDrag);
     this.renderPanel.DragDrop += new System.Windows.Forms.DragEventHandler(this.renderPanel_DragDrop);
@@ -627,6 +633,7 @@ public class SceneEditor : Form, IEditorForm
     // 
     // propertyGrid
     // 
+    this.propertyGrid.ContextMenuStrip = propertyGridMenu;
     this.propertyGrid.Dock = System.Windows.Forms.DockStyle.Fill;
     this.propertyGrid.Location = new System.Drawing.Point(0, 0);
     this.propertyGrid.Name = "propertyGrid";
@@ -647,6 +654,21 @@ public class SceneEditor : Form, IEditorForm
     this.toolBar.Name = "toolBar";
     this.toolBar.Size = new System.Drawing.Size(168, 24);
     this.toolBar.TabIndex = 1;
+    // 
+    // propertyGridMenu
+    // 
+    propertyGridMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.resetPropertyValueMenuItem});
+    propertyGridMenu.Name = "propertyGridMenu";
+    propertyGridMenu.Size = new System.Drawing.Size(132, 26);
+    propertyGridMenu.Opening += new System.ComponentModel.CancelEventHandler(this.propertyGridMenu_Opening);
+    // 
+    // resetPropertyValueMenuItem
+    // 
+    this.resetPropertyValueMenuItem.Name = "resetPropertyValueMenuItem";
+    this.resetPropertyValueMenuItem.Size = new System.Drawing.Size(131, 22);
+    this.resetPropertyValueMenuItem.Text = "Reset value";
+    this.resetPropertyValueMenuItem.Click += new System.EventHandler(this.resetPropertyValueMenuItem_Click);
     // 
     // statusBar
     // 
@@ -696,6 +718,7 @@ public class SceneEditor : Form, IEditorForm
     this.objToolBar.PerformLayout();
     this.toolBar.ResumeLayout(false);
     this.toolBar.PerformLayout();
+    propertyGridMenu.ResumeLayout(false);
     this.statusBar.ResumeLayout(false);
     this.statusBar.PerformLayout();
     this.ResumeLayout(false);
@@ -4214,6 +4237,21 @@ public class SceneEditor : Form, IEditorForm
   #endregion
   
   #region Other event handlers
+  void propertyGridMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+  {
+    resetPropertyValueMenuItem.Enabled = propertyGrid.SelectedObjects.Length == 1 &&
+      propertyGrid.SelectedGridItem.PropertyDescriptor.Attributes[typeof(DefaultValueAttribute)] != null;
+  }
+
+  void resetPropertyValueMenuItem_Click(object sender, EventArgs e)
+  {
+    PropertyDescriptor prop = propertyGrid.SelectedGridItem.PropertyDescriptor;
+    DefaultValueAttribute dv = (DefaultValueAttribute)prop.Attributes[typeof(DefaultValueAttribute)];
+    prop.SetValue(propertyGrid.SelectedObject, Convert.ChangeType(dv.Value, prop.PropertyType));
+    propertyGrid.Refresh();
+    InvalidateRender();
+  }
+
   void editMenu_DropDownOpening(object sender, EventArgs e)
   {
     editCopyMenuItem.Enabled  = CurrentTool.CanCopy;

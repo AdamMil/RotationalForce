@@ -128,7 +128,7 @@ sealed class UniqueObjectReference : ISerializable, IObjectReference
 
   void ISerializable.BeforeDeserialize(DeserializationStore store)
   {
-    id = store.GetUint32("UniqueObject:ID");
+    id = store.GetUint32("UniqueObject.ID");
   }
 
   void ISerializable.Serialize(SerializationStore store)
