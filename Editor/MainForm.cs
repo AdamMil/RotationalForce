@@ -73,7 +73,7 @@ sealed class MainForm : Form
         catch
         {
           MessageBox.Show("Unable to create project. Check that the path is correct and you have write access.",
-                          "Project creation failed.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                          "Project creation failures.", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
       }
     }
@@ -95,9 +95,9 @@ sealed class MainForm : Form
       Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EditorDataPath), true);
 
       ToolboxItem.SetItem(new TriggerItem());
-      foreach(ImageMapHandle map in Engine.Engine.GetImageMaps())
+      foreach(ResourceHandle<ImageMap> map in Engine.Engine.GetResources<ImageMap>())
       {
-        ToolboxItem.SetItem(new StaticImageItem(map.ImageMap));
+        ToolboxItem.SetItem(new StaticImageItem(map.Resource));
       }
     }
   }
@@ -164,8 +164,9 @@ sealed class MainForm : Form
   {
     if(project != null)
     {
-      if(TryCloseAllWindows())
+      if(TrySaveProjectResources() && TryCloseAllWindows())
       {
+        project.Save();
         project = null;
         OnProjectChanged();
       }
@@ -185,6 +186,41 @@ sealed class MainForm : Form
     return false;
   }
 
+  bool TrySaveProjectResources()
+  {
+    List<string> failures = new List<string>();
+
+    foreach(ResourceHandle<Animation> anim in Engine.Engine.GetResources<Animation>())
+    {
+      if(anim.Resource != null)
+      {
+        Serializer.BeginBatch();
+        try
+        {
+          string enginePath = StandardPath.Animations + anim.Resource.Name + ".anim";
+          using(StreamWriter sw = new StreamWriter(Project.GetRealPath(enginePath)))
+          {
+            Serializer.Serialize(anim.Resource, sw);
+          }
+        }
+        catch(Exception e)
+        {
+          failures.Add("Failed to save animation " + anim.Resource.Name + " - " + e.ToString());
+          EditorApp.Log("Failed to save animation " + anim.Resource.Name);
+          EditorApp.Log(e);
+        }
+        Serializer.EndBatch();
+      }
+    }
+    
+    foreach(string failure in failures)
+    {
+      MessageBox.Show(failure);
+    }
+
+    return failures.Count == 0;
+  }
+
   void UpdateFileMenu()
   {
     bool isProjectOpen  = project != null;
@@ -198,7 +234,8 @@ sealed class MainForm : Form
 
   void UpdateTitle()
   {
-    Text = project == null ? WindowTitle : WindowTitle + " - " + Path.GetFileName(project.BasePath);
+    Text = project == null ? WindowTitle
+                           : WindowTitle + " - " + Path.GetFileName(Path.GetDirectoryName(project.BasePath));
   }
 
   protected override void OnClosing(CancelEventArgs e)

@@ -13,6 +13,10 @@ namespace RotationalForce.Engine
 #region VectorAnimation
 public sealed class VectorAnimation : Animation
 {
+  public VectorAnimation(string resourceName) : base(resourceName) { }
+
+  VectorAnimation(ISerializable dummy) : base(dummy) { } // special constructor used during deserialization
+  
   #region Frame
   public sealed class Frame : AnimationFrame
   {
@@ -548,7 +552,7 @@ public sealed class VectorAnimation : Animation
       }
 
       // if we have an assigned image map, enable texturing
-      ImageMap imageMap = mapHandle == null ? null : mapHandle.ImageMap;
+      ImageMap imageMap = mapHandle == null ? null : mapHandle.Resource;
       if(imageMap != null)
       {
         GL.glEnable(GL.GL_TEXTURE_2D);
@@ -681,9 +685,9 @@ public sealed class VectorAnimation : Animation
       // if we can calculate the texture aspect now, we can avoid invalidating the coordinates unless necessary,
       // by using the TextureAspect setter. otherwise, if we can't calculate it now, we have no choice but to
       // invalidate the coordinates.
-      if(mapHandle != null && mapHandle.ImageMap != null)
+      if(mapHandle != null && mapHandle.Resource != null)
       {
-        System.Drawing.Size size = mapHandle.ImageMap.Frames[frameNumber].Size;
+        System.Drawing.Size size = mapHandle.Resource.Frames[frameNumber].Size;
         TextureAspect = (double)size.Width / size.Height;
       }
       else
@@ -695,11 +699,11 @@ public sealed class VectorAnimation : Animation
     void GenerateTextureCoordinates()
     {
       // we won't generate texture coordinates until we have a valid texture
-      if(mapHandle == null || mapHandle.ImageMap == null) return;
+      if(mapHandle == null || mapHandle.Resource == null) return;
 
       if(genTextureAspect) // recalculate texture aspect if we're supposed to do that
       {
-        System.Drawing.Size size = mapHandle.ImageMap.Frames[frameNumber].Size;
+        System.Drawing.Size size = mapHandle.Resource.Frames[frameNumber].Size;
         textureAspect = (double)size.Width / size.Height;
       }
 
@@ -1117,7 +1121,7 @@ public sealed class VectorAnimation : Animation
     /// <summary>The name of the selected texture.</summary>
     string textureName;
     /// <summary>The handle to the selected texture.</summary>
-    [NonSerialized] ImageMapHandle mapHandle;
+    [NonSerialized] ResourceHandle<ImageMap> mapHandle;
     /// <summary>The selected texture frame.</summary>
     [NonSerialized] int frameNumber;
     /// <summary>The offset within the texture.</summary>

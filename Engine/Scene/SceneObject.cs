@@ -92,8 +92,7 @@ public delegate void CollisionEventHandler(SceneObject sender, SceneObject other
 public delegate bool CustomCollisionDetector(SceneObject a, SceneObject b);
 #endregion
 
-public delegate void ClickEventHandler(SceneObject obj, MouseButton button, Point worldPosition);
-public delegate void MouseMoveEventHandler(SceneObject obj, Point worldPosition);
+public delegate void SceneObjectEventHandler(SceneObject obj);
 
 public struct LinkPoint
 {
@@ -112,7 +111,7 @@ public struct LinkPoint
 }
 
 /// <summary>The base class of all renderable game objects.</summary>
-public abstract class SceneObject : GameObject, ISerializable
+public abstract class SceneObject : UniqueObject, ISerializable
 {
   public SceneObject()
   {
@@ -698,14 +697,6 @@ public abstract class SceneObject : GameObject, ISerializable
   }
   #endregion
 
-  #region Pointer events
-  public event ClickEventHandler MouseUp;
-  public event ClickEventHandler MouseDown;
-  public event MouseMoveEventHandler MouseEnter;
-  public event MouseMoveEventHandler MouseLeave;
-  public event MouseMoveEventHandler MouseMove;
-  #endregion
-
   #region Rotation
   /// <summary>Gets/sets the rotational velocity of the object, in degrees per second.</summary>
   [Category("Physics")]
@@ -973,8 +964,64 @@ public abstract class SceneObject : GameObject, ISerializable
     }
   }
   #endregion
+  
+  #region Scripting
+  public bool ContainsScriptVar(string name)
+  {
+    return scriptData == null ? false : scriptData.ContainsKey(name);
+  }
+
+  public void DeleteScriptVar(string name)
+  {
+    if(scriptData != null)
+    {
+      if(scriptData.Remove(name) && scriptData.Count == 0)
+      {
+        scriptData = null; // free the dictionary when the last variable has been deleted
+      }
+    }
+  }
+
+  public object GetScriptVar(string name)
+  {
+    if(scriptData == null) throw new KeyNotFoundException();
+    return scriptData[name];
+  }
+
+  public object SafeGetScriptVar(string name)
+  {
+    object value;
+    TryGetScriptVar(name, out value);
+    return value;
+  }
+
+  public void SetScriptVar(string name, object value)
+  {
+    if(scriptData == null)
+    {
+      scriptData = new Dictionary<string, object>(4);
+    }
+
+    scriptData[name] = value;
+  }
+
+  public bool TryGetScriptVar(string name, out object value)
+  {
+    if(scriptData == null)
+    {
+      value = null;
+      return false;
+    }
+    else
+    {
+      return scriptData.TryGetValue(name, out value);
+    }
+  }
+  #endregion
 
   #region Lifetime, visibility, flipping, mobility, pickability, color...
+  public event SceneObjectEventHandler Deleted;
+
   [Category("Rendering")]
   [Description("Gets/sets the base color of the object.")]
   public Color Color
@@ -1070,9 +1117,9 @@ public abstract class SceneObject : GameObject, ISerializable
     get { return HasFlag(Flag.Deleted); }
   }
 
-  public override void Delete()
+  public virtual void Delete()
   {
-    base.Delete();
+    if(Deleted != null) Deleted(this);
 
     if(Mounted) Dismount();
     
@@ -1277,9 +1324,9 @@ public abstract class SceneObject : GameObject, ISerializable
     FlipHorizontal=0x80,
     /// <summary>Determines whether the object is rendered flipped vertically.</summary>
     FlipVertical=0x100,
-    /// <summary>Determines whether pointer (ie, mouse pointer) events (eg, OnMouseEnter, OnMouseLeave) will be fired.
+    /*/// <summary>Determines whether pointer (ie, mouse pointer) events (eg, OnMouseEnter, OnMouseLeave) will be fired.
     /// </summary>
-    EnablePointerEvents=0x200,
+    EnablePointerEvents=0x200,*/
     /// <summary>Determines whether the engine will never move this object. The object's location can be changed
     /// manually, of course.
     /// </summary>
@@ -1456,6 +1503,11 @@ public abstract class SceneObject : GameObject, ISerializable
   /// zero, the object is deleted.
   /// </summary>
   double lifetime;
+
+  /// <summary>A possibly-null dictionary that contains script data associated with this object.</summary>
+  Dictionary<string, object> scriptData;
+  /// <summary>The object's name. This may be null.</summary>
+  string name;
 
   /// <summary>The object's color.</summary>
   Color color = Color.White;

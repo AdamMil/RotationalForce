@@ -19,20 +19,27 @@ public enum LoopType : byte
 
 public struct AnimationData
 {
-  /// <summary>The position within the frame, in seconds.</summary>
-  public double Position;
+  /// <summary>The offset within the frame, in seconds.</summary>
+  public double Offset;
   /// <summary>The zero-based index of the frame we're currently on.</summary>
   public int Frame;
-  /// <summary>An object to use for storing additional data associated with the animation state.</summary>
-  /// <remarks>The <see cref="Animation"/> object may use this as necessary to optimize the rendering or simulation.</remarks>
-  public object ExtraData;
-  /// <summary>Indicates whether the animation has completed.</summary>
+  /// <summary>Indicates whether the animation has completed. If the animation loops, this indicates that the animation
+  /// has begun to loop. The flag can be cleared at any time and checked again for another completion notification.
+  /// </summary>
   public bool Complete;
 }
 
 #region Animation
-public abstract class Animation : UniqueObject
+[ResourceKey]
+public abstract class Animation : Resource
 {
+  protected Animation(string resourceName)
+  {
+    this.Name = resourceName;
+  }
+
+  protected Animation(ISerializable dummy) { } // special constructor used during deserialization
+
   [Category("Behavior")]
   [Description("Determines how the animation interpolates between frames.")]
   [DefaultValue(InterpolationMode.Linear)]
@@ -50,7 +57,7 @@ public abstract class Animation : UniqueObject
     get { return looping; }
     set { looping = value; }
   }
-  
+
   protected internal abstract void Render(ref AnimationData data);
   protected internal abstract void Simulate(ref AnimationData data, double timeDelta);
 
@@ -84,44 +91,136 @@ public abstract class AnimationFrame
 #region AnimatedObject
 public class AnimatedObject : SceneObject
 {
+  /// <summary>Gets the animation object referenced by <see cref="AnimationName"/>.</summary>
   [Browsable(false)]
   public Animation Animation
   {
-    get { return animation; }
+    get { return animationHandle == null ? null : animationHandle.Resource; }
+  }
+
+  /// <summary>Gets or sets the name of the animation displayed in this animated object.</summary>
+  [Category("Animation")]
+  [Description("The name of the animation resource displayed in this animated object.")]
+  [DefaultValue(null)]
+  public string AnimationName
+  {
+    get { return animationName; }
     set
     {
-      if(value != animation)
+      if(!string.Equals(value, animationName, System.StringComparison.Ordinal))
       {
-        animation = value;
-        data = new AnimationData(); // reset the animation data when the animation changes
+        animationName = value;
+
+        if(string.IsNullOrEmpty(animationName))
+        {
+          animationHandle = null;
+        }
+        else
+        {
+          animationHandle = Engine.GetResource<Animation>(animationName);
+        }
       }
+    }
+  }
+
+  /// <summary>Gets or sets the index of the animation frame that will be displayed within the object. If set to -1,
+  /// a random animation frame will be chosen the next time the animation is advanced.
+  /// </summary>
+  [Category("Animation")]
+  [Description("The index of the animation frame that is currently displayed within the object. If set to -1, a "+
+    "random animation frame will be chosen the next time the animation is advanced.")]
+  [DefaultValue(0)]
+  public int AnimationFrame
+  {
+    get { return data.Frame; }
+    set
+    {
+      if(value < -1) throw new ArgumentOutOfRangeException("Animation frame cannot be less than -1.");
+      data.Frame = value;
+    }
+  }
+
+  /// <summary>Gets or sets the offset into the current animation frame, in seconds.</summary>
+  [Category("Animation")]
+  [Description("The offset into the current animation frame, in seconds.")]
+  [DefaultValue(0.0)]
+  public double FrameOffset
+  {
+    get { return data.Offset; }
+    set
+    {
+      if(value < 0) throw new ArgumentOutOfRangeException("Frame offset cannot be negative.");
+      EngineMath.AssertValidFloat(value);
+      data.Offset = value;
+    }
+  }
+
+  [Category("Animation")]
+  [Description("The speed of this animation, expressed as a multiple of the animation's normal speed.")]
+  [DefaultValue(1.0)]
+  public double AnimationSpeed
+  {
+    get { return animationSpeed; }
+    set
+    {
+      if(value < 0) throw new ArgumentOutOfRangeException("Animation speed cannot be negative.");
+      EngineMath.AssertValidFloat(value);
+      animationSpeed = value;
+    }
+  }
+  
+  /// <summary>Gets or sets whether the animation is paused.</summary>
+  [Category("Animation")]
+  [Description("Whether the animation is paused.")]
+  [DefaultValue(false)]
+  public bool AnimationPaused
+  {
+    get { return paused; }
+    set { paused = value; }
+  }
+
+  protected override void Deserialize(DeserializationStore store)
+  {
+    base.Deserialize(store);
+
+    if(!string.IsNullOrEmpty(animationName)) // reload the animation handle if we had one before
+    {
+      animationHandle = Engine.GetResource<Animation>(animationName);
     }
   }
 
   protected override void RenderContent()
   {
-    if(animation != null)
+    if(Animation != null)
     {
-      animation.Render(ref data);
+      Animation.Render(ref data);
     }
     else
     {
-      base.RenderContent(); // use default rendering if there's no animation
+      base.RenderContent(); // use default rendering if there's no animation set
     }
   }
 
   protected internal override void Simulate(double timeDelta)
   {
     base.Simulate(timeDelta);
-    if(animation != null) animation.Simulate(ref data, timeDelta);
+
+    if(!paused && Animation != null)
+    {
+      Animation.Simulate(ref data, timeDelta * animationSpeed);
+    }
   }
 
   /// <summary>The object's current animation.</summary>
-  Animation animation;
+  [NonSerialized] ResourceHandle<Animation> animationHandle;
+  /// <summary>The name of the object's animation.</summary>
+  string animationName;
   /// <summary>An object that contains our state within the animation.</summary>
   AnimationData data;
   /// <summary>The object's animation speed, expressed as a multiple.</summary>
-  double animationSpeed;
+  double animationSpeed = 1.0;
+  /// <summary>Whether the animation is currently paused.</summary>
+  bool paused;
 }
 #endregion
 

@@ -91,7 +91,7 @@ public abstract class UniqueObject : ISerializable
   }
   #endregion
   
-  uint id;
+  [NonSerialized] uint id;
 
   /// <summary>Retrieves a pooled object, given its ID. The object must exist in the pool, or an exception will occur.</summary>
   internal static UniqueObject GetPooledObject(uint id)
@@ -987,7 +987,9 @@ public static class Serializer
   /// </summary>
   public static void BeginBatch()
   {
+    if(inBatch) throw new InvalidOperationException("Serialization batches cannot be nested.");
     UniqueObject.ResetObjectPool();
+    inBatch = true;
   }
 
   /// <summary>Resets the pool of known objects. This should be called before each block of
@@ -998,7 +1000,9 @@ public static class Serializer
   /// </summary>
   public static void EndBatch()
   {
+    if(!inBatch) throw new InvalidOperationException("A serialization batch was not begun.");
     UniqueObject.ResetObjectPool();
+    inBatch = false;
   }
 
   #region Serialization
@@ -1646,6 +1650,7 @@ public static class Serializer
   
   static readonly Dictionary<string,Type> typeDict;
   static readonly Type[] iserializableTypeArray = new Type[1] { typeof(ISerializable) };
+  static bool inBatch;
 }
 #endregion
 

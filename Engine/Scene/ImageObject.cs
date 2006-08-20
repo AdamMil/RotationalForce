@@ -35,7 +35,9 @@ public class StaticImageObject : SceneObject
 
   protected override void Deserialize(DeserializationStore store)
   {
-    if(!string.IsNullOrEmpty(imageMapName))
+    base.Deserialize(store);
+
+    if(!string.IsNullOrEmpty(imageMapName)) // reload the image map handle if we had one before
     {
       mapHandle = Engine.GetImageMap(imageMapName, out frameNumber);
     }
@@ -43,7 +45,7 @@ public class StaticImageObject : SceneObject
 
   protected override void RenderContent()
   {
-    ImageMap imageMap = mapHandle == null ? null : mapHandle.ImageMap;
+    ImageMap imageMap = mapHandle == null ? null : mapHandle.Resource;
 
     // use default rendering if the image map is null or the frame number is invalid
     if(imageMap == null || frameNumber >= imageMap.Frames.Count)
@@ -69,7 +71,7 @@ public class StaticImageObject : SceneObject
   }
 
   string imageMapName;
-  [NonSerialized] ImageMapHandle mapHandle;
+  [NonSerialized] ResourceHandle<ImageMap> mapHandle;
   [NonSerialized] int frameNumber;
 }
 

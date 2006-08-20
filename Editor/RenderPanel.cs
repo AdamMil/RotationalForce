@@ -133,7 +133,7 @@ sealed class GLBuffer : IDisposable
           }
           catch(Exception e)
           {
-            EditorApp.Log("Buffer creation failed. Error was: "+e.ToString());
+            EditorApp.Log("Buffer creation failures. Error was: "+e.ToString());
             EditorApp.Log("Retrying with device-independent bitmaps.");
 
             osbCreator = new OsbCreator(bestFormat, bestPfd, false);
@@ -143,7 +143,7 @@ sealed class GLBuffer : IDisposable
         }
         catch(Exception e)
         {
-          EditorApp.Log("Buffer creation failed. Error was: "+e.ToString());
+          EditorApp.Log("Buffer creation failures. Error was: "+e.ToString());
           if(tries == 0)
           {
             EditorApp.Log("Asking the card what pixel format we should be using.");

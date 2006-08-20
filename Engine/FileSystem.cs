@@ -13,6 +13,8 @@ namespace RotationalForce.Engine
 /// </remarks>
 public static class StandardPath
 {
+  /// <summary>The directory from which animations will be loaded.</summary>
+  public const string Animations = "anim/";
   /// <summary>The directory from which image data will be loaded.</summary>
   public const string Images = "images/";
   /// <summary>The directory in which map files will be stored.</summary>

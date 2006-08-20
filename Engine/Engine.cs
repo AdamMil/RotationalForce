@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using GameLib.Interop.OpenGL;
 using GLVideo = GameLib.Video.Video;
 using SurfaceFlag = GameLib.Video.SurfaceFlag;
@@ -24,6 +25,125 @@ public interface ITicker
   void Tick(double timeDelta);
 }
 
+#region Resource
+public abstract class Resource : UniqueObject, IDisposable
+{
+  ~Resource()
+  {
+    Dispose(true);
+  }
+
+  /// <summary>Gets or sets the friendly name of this resource. This is the name by which objects will reference the
+  /// resource.
+  /// </summary>
+  public string Name
+  {
+    get { return name; }
+    set
+    {
+      if(string.IsNullOrEmpty(value))
+      {
+        throw new ArgumentException("Resource name cannot be null or empty.");
+      }
+      if(!string.Equals(name, value, StringComparison.Ordinal))
+      {
+        string oldName = name;
+        name = value;
+        Engine.OnResourceNameChanged(this, oldName);
+      }
+    }
+  }
+
+  public void Dispose()
+  {
+    GC.SuppressFinalize(this);
+    Dispose(false);
+  }
+
+  protected virtual void Dispose(bool finalizing)
+  {
+    Engine.OnResourceDisposed(this);
+  }
+
+  string name;
+}
+#endregion
+
+#region ResourceHandle
+/// <summary>This class exists to support collections of resource handles that point to arbitrary resources.
+/// This class should not need to be used directly by user code. Do not derive from this class to create a new resource
+/// handle. Use <see cref="ResourceHandle"/> instead.
+/// </summary>
+public abstract class ResourceHandleBase : NonSerializableObject
+{
+  internal abstract void ClearResource();
+  internal abstract void DisposeResource();
+  internal abstract Resource GetResource();
+}
+
+/// <summary>Represents a handle to a named resource. All concrete resource handles should be instances of this class.
+/// </summary>
+/// <remarks>The purpose of this class is to allow the engine to change the resource and have objects update
+/// automatically. The objects hold a reference to the <see cref="ResourceHandle"/> rather than the resource, and
+/// the engine will take care of updating the handles.
+/// </remarks>
+public sealed class ResourceHandle<T> : ResourceHandleBase where T : Resource
+{
+  /// <param name="resource">The initial resource value.</param>
+  internal ResourceHandle(T resource)
+  {
+    SetResource(resource);
+  }
+
+  /// <summary>Gets the resource referenced by the handle. This will be null if the resource associated
+  /// with the name was deleted.
+  /// </summary>
+  public T Resource
+  {
+    get { return resource; }
+  }
+
+  internal override void ClearResource()
+  {
+    SetResource(null);
+  }
+
+  /// <summary>Disposes the resource if it supports <see cref="IDisposable"/>, and clears the resource pointer.</summary>
+  internal override void DisposeResource()
+  {
+    IDisposable disp = resource as IDisposable;
+    if(disp != null)
+    {
+      disp.Dispose();
+    }
+    resource = null;
+  }
+
+  internal override Resource GetResource()
+  {
+    return resource;
+  }
+
+  /// <summary>Called to set the resource referenced by this handled.</summary>
+  internal void SetResource(T newResource)
+  {
+    resource = newResource;
+  }
+
+  T resource;
+}
+#endregion
+
+#region ResourceKeyAttribute
+[AttributeUsage(AttributeTargets.Class, Inherited=false)]
+public class ResourceKeyAttribute : Attribute
+{
+}
+#endregion
+
+enum ResourceType { Image, Animation }
+
+#region Engine
 public static class Engine
 {
   public static IFileSystem FileSystem
@@ -31,23 +151,42 @@ public static class Engine
     get { return fileSystem; }
   }
 
-  public static void Initialize(IFileSystem fileSystem, bool autoLoadImageMaps)
+  public static void Initialize(IFileSystem fileSystem, bool autoLoadResources)
   {
+    if(initialized)
+    {
+      throw new InvalidOperationException("The engine has already been initialized. If you want to re-initialize it, "+
+                                          "call Deinitialize first.");
+    }
+
     if(fileSystem == null) throw new ArgumentNullException();
     Engine.fileSystem = fileSystem;
     GLVideo.Initialize();
-    
-    if(autoLoadImageMaps)
+    initialized = true;
+
+    try
     {
-      LoadImageMapFiles();
+      if(autoLoadResources)
+      {
+        LoadResources<ImageMap>(StandardPath.Images, "*.map"); // load images first because animations may depend on them
+        LoadResources<Animation>(StandardPath.Animations, "*.anim");
+      }
+    }
+    catch
+    {
+      Deinitialize();
+      throw;
     }
   }
 
   public static void Deinitialize()
   {
+    AssertInitialized();
     GLVideo.Deinitialize();
     fileSystem = null;
-    UnloadImageMaps();
+    UnloadResources();
+    resources.Clear();
+    initialized = false;
   }
 
   public static void CreateWindow(int width, int height, string windowTitle, ScreenFlag flags)
@@ -130,32 +269,13 @@ public static class Engine
   }
 
   #region Image maps
-  public static void AddImageMap(ImageMap map)
-  {
-    if(string.IsNullOrEmpty(map.Name))
-    {
-      throw new ArgumentException("The image map must have a name before it can be added.");
-    }
-
-    ImageMapHandle handle;
-    imageMaps.TryGetValue(map.Name, out handle);
-    if(handle != null)
-    {
-      handle.ReplaceMap(map);
-    }
-    else
-    {
-      imageMaps[map.Name] = new ImageMapHandle(map);
-    }
-  }
-
-  public static ImageMapHandle GetImageMap(string mapName)
+  public static ResourceHandle<ImageMap> GetImageMap(string mapName)
   {
     int dummy;
     return GetImageMap(mapName, out dummy);
   }
 
-  public static ImageMapHandle GetImageMap(string mapName, out int frameNumber)
+  public static ResourceHandle<ImageMap> GetImageMap(string mapName, out int frameNumber)
   {
     if(string.IsNullOrEmpty(mapName))
     {
@@ -173,40 +293,107 @@ public static class Engine
       mapName = mapName.Substring(0, hashPos);
     }
 
-    ImageMapHandle map = imageMaps[mapName];
+    ResourceHandle<ImageMap> map = GetResource<ImageMap>(mapName);
 
-    if(hashPos != -1 && (frameNumber < 0 || frameNumber >= map.ImageMap.Frames.Count))
+    if(hashPos != -1 && (frameNumber < 0 || frameNumber >= map.Resource.Frames.Count))
     {
       throw new ArgumentException("Image map '"+mapName+"' does not have a frame numbered "+frameNumber);
     }
 
     return map;    
   }
+  #endregion
 
-  public static ICollection<ImageMapHandle> GetImageMaps()
+  #region Resources
+  /// <summary>Adds a resource to the resource registry. This method will overwrite any resource of the same name
+  /// and type.
+  /// </summary>
+  public static void AddResource<T>(Resource resource) where T : Resource
   {
-    return imageMaps.Values;
-  }
+    AssertInitialized();
 
-  public static void RemoveImageMap(string name)
-  {
-    if(!string.IsNullOrEmpty(name))
+    if(resource == null) throw new ArgumentNullException();
+    if(string.IsNullOrEmpty(resource.Name))
     {
-      imageMaps.Remove(name);
+      throw new ArgumentException("The resource must have a name before it can be added.");
+    }
+
+    string key = GetResourcePrefix(resource) + resource.Name;
+
+    ResourceHandle<T> handle;
+    if(TryGetHandle(key, out handle))
+    {
+      handle.SetResource((T)resource);
+    }
+    else
+    {
+      resources[key] = new ResourceHandle<T>((T)resource);
     }
   }
 
-  static void LoadImageMapFiles()
+  /// <summary>Retrieves a resource with the given name.</summary>
+  public static ResourceHandle<T> GetResource<T>(string name) where T : Resource
   {
-    foreach(string mapFile in fileSystem.GetFiles(StandardPath.Images, "*.map", true))
+    AssertInitialized();
+    return (ResourceHandle<T>)resources[GetResourcePrefix(typeof(T)) + name];
+  }
+
+  /// <summary>Retrieves all the resources of a given type.</summary>
+  public static ICollection<ResourceHandle<T>> GetResources<T>() where T : Resource
+  {
+    AssertInitialized();
+
+    List<ResourceHandle<T>> handles = new List<ResourceHandle<T>>();
+    foreach(ResourceHandleBase baseHandle in resources.Values)
+    {
+      ResourceHandle<T> handle = baseHandle as ResourceHandle<T>;
+      if(handle != null) handles.Add(handle);
+    }
+    return handles;
+  }
+
+  static string GetResourcePrefix(Type resourceType)
+  {
+    Type keyType;
+    if(!resourceKeyTypes.TryGetValue(resourceType, out keyType))
+    {
+      keyType = resourceType;
+      // find the parent type with the ResourceKey attribute
+      while(keyType != null && keyType.GetCustomAttributes(typeof(ResourceKeyAttribute), false).Length == 0)
+      {
+        keyType = keyType.BaseType;
+      }
+
+      if(keyType == null)
+      {
+        throw new ArgumentException("Could not find a class marked with ResourceKeyAttribute in the inheritence chain.");
+      }
+      
+      resourceKeyTypes.Add(resourceType, keyType);
+    }
+
+    return keyType.FullName + ":";
+  }
+
+  static string GetResourcePrefix<T>(T resource) where T : Resource
+  {
+    return GetResourcePrefix(resource.GetType());
+  }
+
+  static void LoadResources<T>(string basePath, string wildcard) where T : Resource
+  {
+    foreach(string file in fileSystem.GetFiles(basePath, wildcard, true))
     {
       Serializer.BeginBatch();
       try
       {
-        ImageMap map = Serializer.Deserialize(fileSystem.OpenForRead(mapFile)) as ImageMap;
-        if(map != null)
+        using(Stream stream = fileSystem.OpenForRead(file))
         {
-          AddImageMap(map);
+          T resource = Serializer.Deserialize(stream) as T;
+          if(resource != null)
+          {
+            AddResource<T>(resource);
+          }
         }
       }
       catch { }
@@ -214,47 +401,72 @@ public static class Engine
     }
   }
 
-  internal static void OnImageMapDisposed(ImageMap map)
+  internal static void OnResourceDisposed(Resource resource)
   {
-    ImageMapHandle handle;
-    if(!string.IsNullOrEmpty(map.Name) && imageMaps.TryGetValue(map.Name, out handle) && handle.ImageMap == map)
+    ResourceHandleBase handle;
+    if(TryGetHandle(resource, out handle))
     {
-      handle.ReplaceMap(null);
+      handle.ClearResource();
     }
   }
 
-  internal static void OnImageMapNameChanged(ImageMap map, string oldName)
+  internal static void OnResourceNameChanged(Resource resource, string oldName)
   {
-    ImageMapHandle handle;
-    if(!string.IsNullOrEmpty(oldName) && imageMaps.TryGetValue(oldName, out handle) && handle.ImageMap == map)
+    ResourceHandleBase handle;
+    if(TryGetHandle(resource, out handle))
     {
-      imageMaps.Remove(oldName);
-      imageMaps.Add(map.Name, handle);
+      string prefix = GetResourcePrefix(resource);
+      resources.Remove(prefix + oldName);
+      resources.Add(prefix + resource.Name, handle);
     }
-    #if DEBUG
+  }
+
+  static bool TryGetHandle<T>(Resource resource, out T handle) where T : ResourceHandleBase
+  {
+    return TryGetHandle(GetResourcePrefix(resource), resource.Name, out handle) && handle.GetResource() == resource;
+  }
+
+  static bool TryGetHandle<T>(string prefix, string resourceName, out T handle) where T : ResourceHandleBase
+  {
+    if(!string.IsNullOrEmpty(resourceName) && TryGetHandle(prefix + resourceName, out handle))
+    {
+      return true;
+    }
     else
     {
-      foreach(KeyValuePair<string, ImageMapHandle> de in imageMaps)
-      {
-        if(de.Value.ImageMap == map) throw new ArgumentException("Old image map name doesn't match old image map.");
-      }
+      handle = null;
+      return false;
     }
-    #endif
   }
 
-  static void UnloadImageMaps()
+  static bool TryGetHandle<T>(string key, out T handle) where T : ResourceHandleBase
   {
-    foreach(ImageMapHandle handle in imageMaps.Values)
+    ResourceHandleBase baseHandle;
+    handle = resources.TryGetValue(key, out baseHandle) ? (T)baseHandle : null;
+    return handle != null;
+  }
+
+  static void UnloadResources()
+  {
+    foreach(ResourceHandleBase baseHandle in resources.Values)
     {
-      // calling dispose will automatically clear the handle's pointer
-      if(handle.ImageMap != null) handle.ImageMap.Dispose();
+      baseHandle.DisposeResource();
     }
+    resources.Clear();
   }
   #endregion
+  
+  static void AssertInitialized()
+  {
+    if(!initialized) throw new InvalidOperationException("The engine has not been initialized yet.");
+  }
 
-  static Dictionary<string,ImageMapHandle> imageMaps = new Dictionary<string,ImageMapHandle>();
+  static Dictionary<string,ResourceHandleBase> resources = new Dictionary<string,ResourceHandleBase>();
+  static Dictionary<Type,Type> resourceKeyTypes = new Dictionary<Type,Type>(8);
   static List<ITicker> tickers = new List<ITicker>();
   static IFileSystem fileSystem;
+  static bool initialized;
 }
+#endregion
 
 } // namespace RotationalForce.Engine
