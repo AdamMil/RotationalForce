@@ -84,12 +84,12 @@ public class SceneEditor : Form, IEditorForm
   {
     get
     {
-      string name = level.Name;
+      string name = levelFile;
       if(string.IsNullOrEmpty(name))
       {
-        name = "Untitled";
+        name = "Level - Untitled";
       }
-      return "Level - " + name;
+      return "Level - " + Path.GetFileNameWithoutExtension(name);
     }
   }
 
@@ -107,7 +107,7 @@ public class SceneEditor : Form, IEditorForm
     desktop.BackColor = Color.Empty; // we want the whole background to come from the sceneview
     desktop.AddChild(sceneView);
 
-    level = Project.CreateLevel();
+    levelFile = null;
     InvalidateRender();
     isModified = false;
   }
@@ -115,21 +115,13 @@ public class SceneEditor : Form, IEditorForm
   public bool Open()
   {
     OpenFileDialog fd = new OpenFileDialog();
-    fd.DefaultExt       = "xml";
+    fd.DefaultExt       = "scene";
     fd.InitialDirectory = Project.LevelsPath;
-    fd.Filter           = "Level files (.xml)|*.xml";
+    fd.Filter           = "Level files (.scene)|*.scene";
     
     if(fd.ShowDialog() == DialogResult.OK)
     {
-      string levelPath = Path.Combine(Path.GetDirectoryName(fd.FileName),
-                                      Path.GetFileNameWithoutExtension(fd.FileName)) + ".scene";
-      if(!File.Exists(levelPath))
-      {
-        MessageBox.Show("Unable to find "+levelPath, "Scene not found", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        return false;
-      }
-      
-      using(SexpReader sr = new SexpReader(new StreamReader(levelPath, System.Text.Encoding.UTF8)))
+      using(SexpReader sr = new SexpReader(new StreamReader(fd.FileName, System.Text.Encoding.UTF8)))
       {
         Serializer.BeginBatch();
         sceneView = (SceneViewControl)Serializer.Deserialize(sr);
@@ -141,7 +133,7 @@ public class SceneEditor : Form, IEditorForm
       desktop.BackColor = Color.Empty; // we want the whole background to come from the sceneview
       desktop.AddChild(sceneView);
 
-      level = Project.LoadLevel(fd.FileName);
+      levelFile = fd.FileName;
       InvalidateRender();
       isModified = false;
       return true;
@@ -152,26 +144,20 @@ public class SceneEditor : Form, IEditorForm
 
   public bool Save(bool newFile)
   {
-    string fileName = level.File;
+    string fileName = levelFile;
 
     if(string.IsNullOrEmpty(fileName))
     {
       newFile  = true;
-      fileName = level.Name;
-      if(string.IsNullOrEmpty(fileName))
-      {
-        fileName = "level 1";
-      }
-
-      fileName = Project.GetLevelPath(fileName+".xml");
+      fileName = Project.GetLevelPath(fileName+"level 1.scene");
     }
 
     if(newFile)
     {
       SaveFileDialog fd = new SaveFileDialog();
-      fd.DefaultExt = "xml";
+      fd.DefaultExt = "scene";
       fd.FileName   = Path.GetFileName(fileName);
-      fd.Filter     = "Levels (*.xml)|*.xml";
+      fd.Filter     = "Levels (*.scene)|*.scene";
       fd.InitialDirectory = Path.GetDirectoryName(fileName);
       fd.OverwritePrompt  = true;
       fd.Title = "Save level as...";
@@ -184,10 +170,6 @@ public class SceneEditor : Form, IEditorForm
       fileName = fd.FileName;
     }
 
-    fileName = Path.GetFullPath(fileName);
-    level.Save(fileName);
-
-    fileName = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName)) + ".scene";
     using(StreamWriter sw = new StreamWriter(fileName, false, System.Text.Encoding.UTF8))
     {
       Serializer.BeginBatch();
@@ -196,6 +178,7 @@ public class SceneEditor : Form, IEditorForm
       Serializer.EndBatch();
     }
     
+    levelFile = fileName;
     isModified = false;
     return true;
   }
@@ -936,11 +919,12 @@ public class SceneEditor : Form, IEditorForm
           destAnim.Frames[0].AddPolygon(poly);
         }
 
-        ObjectTool.SelectObject(destObj, true);
         Scene.RemoveObject(srcObj);
-        ObjectTool.SubTool = ObjectTool.VectorTool;
-        ObjectTool.VectorTool.RecalculateObjectBounds();
+
+        VectorSubTool.RecalculateObjectBounds(destObj);
+        ObjectTool.SelectObject(destObj, true);
         ObjectTool.RecalculateAndInvalidateSelectedBounds();
+        ObjectTool.SubTool = ObjectTool.VectorTool;
         Editor.InvalidateRender();
         EditorApp.MainForm.StatusText = "Objects joined.";
         return true;
@@ -2629,16 +2613,23 @@ public class SceneEditor : Form, IEditorForm
         ObjectTool.RecalculateAndInvalidateSelectedBounds();
       }
 
-      internal void RecalculateObjectBounds()
+      void RecalculateObjectBounds()
       {
+        RecalculateObjectBounds(SelectedObject);
+      }
+
+      internal static void RecalculateObjectBounds(AnimatedObject obj)
+      {
+        VectorAnimation anim = (VectorAnimation)obj.Animation;
         // calculate the minimum bounding box to contain the points, assign the bounding box, and then readjust the
         // position of all points so that they fit within the new bounding box without moving
 
         double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue; // our local-space bounds
-        foreach(VectorAnimation.Polygon poly in SelectedFrame.Polygons)
+        foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
         {
           foreach(VectorAnimation.Vertex vertex in poly.Vertices)
           {
+            vertex.Position = obj.LocalToScene(vertex.Position);
             if(vertex.Position.X < x1) x1 = vertex.Position.X;
             if(vertex.Position.Y < y1) y1 = vertex.Position.Y;
             if(vertex.Position.X > x2) x2 = vertex.Position.X;
@@ -2646,27 +2637,17 @@ public class SceneEditor : Form, IEditorForm
           }
         }
 
-        Vector localBounds = new Vector(x2-x1, y2-y1);
-        double localSize   = Math.Max(localBounds.X, localBounds.Y);
-        double localScale  = 2/localSize;
-        Vector offset      = (new Vector(localSize, localSize) - localBounds) * 0.5 * localScale + new Vector(-1, -1);
-
-        // we'll make the new bounds a square for ease-of-use, so find the longest axis. the new data will be centered
+        // we'll make the new bounds a square so that texturing looks natural, etc. so find the longest axis. the new data will be centered
         // within the object.
-        Vector sceneBounds = SelectedObject.LocalToScene(localBounds);
-        double sceneSize   = Math.Max(sceneBounds.X, sceneBounds.Y);
-        SelectedObject.Position = SelectedObject.LocalToScene(new GLPoint(x1+localBounds.X*0.5, y1+localBounds.Y*0.5));
-        SelectedObject.Size     = new Vector(sceneSize, sceneSize);
+        double sceneSize = Math.Max(x2-x1, y2-y1);
+        obj.Size     = new Vector(sceneSize, sceneSize);
+        obj.Position = new GLPoint(x1+(x2-x1)*0.5, y1+(y2-y1)*0.5);
 
-        foreach(VectorAnimation.Polygon poly in SelectedFrame.Polygons)
+        foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
         {
           for(int i=0; i<poly.Vertices.Count; i++)
           {
-            VectorAnimation.Vertex vertex = poly.Vertices[i];
-            // find the offset of the point within the old local bounds, scale it to be from 0 to 2, and offset it to
-            // be from -1 to 1, centered in the object.
-            Vector newPos = (new Vector(vertex.Position.X - x1, vertex.Position.Y - y1) * localScale + offset);
-            vertex.Position = newPos.ToPoint();
+            poly.Vertices[i].Position = obj.SceneToLocal(poly.Vertices[i].Position);
           }
         }
       }
@@ -3162,11 +3143,10 @@ public class SceneEditor : Form, IEditorForm
       }
       else if(EditorApp.Clipboard.Type == ObjectType.Polygons)
       {
-        AnimatedObject obj = new AnimatedObject();
-        VectorAnimation anim = new VectorAnimation();
+        VectorAnimation anim = new VectorAnimation(Editor.Project.GetNewAnimationName());
+        Engine.Engine.AddResource<Animation>(anim);
         anim.AddFrame(new VectorAnimation.Frame());
-        obj.Animation = anim;
-        
+
         double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
         foreach(VectorAnimation.Polygon poly in EditorApp.Clipboard.Deserialize())
         {
@@ -3179,9 +3159,11 @@ public class SceneEditor : Form, IEditorForm
           }
           anim.Frames[0].AddPolygon(poly);
         }
-        
-        obj.Size     = new Vector(x2-x1, y2-y1);
-        obj.Position = new GLPoint(x1+obj.Width*0.5, y1+obj.Height*0.5);
+
+        AnimatedObject obj = new AnimatedObject();
+        obj.AnimationName = anim.Name;
+        obj.Size          = new Vector(x2-x1, y2-y1);
+        obj.Position      = new GLPoint(x1+obj.Width*0.5, y1+obj.Height*0.5);
 
         // vertices on the clipboard are stored in scene units, so convert them back to local units
         foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
@@ -3192,6 +3174,7 @@ public class SceneEditor : Form, IEditorForm
           }
         }
         
+        VectorSubTool.RecalculateObjectBounds(obj);
         objects = new object[] { obj };
       }
       else
@@ -3309,7 +3292,8 @@ public class SceneEditor : Form, IEditorForm
 
     void CreateShape(Point at, bool breakVertices)
     {
-      VectorAnimation anim = new VectorAnimation();
+      VectorAnimation anim = new VectorAnimation(Editor.Project.GetNewAnimationName());
+      Engine.Engine.AddResource<Animation>(anim);
 
       VectorAnimation.Frame frame = new VectorAnimation.Frame();
       anim.AddFrame(frame);
@@ -3335,15 +3319,15 @@ public class SceneEditor : Form, IEditorForm
 
       AnimatedObject obj = new AnimatedObject();
       double size = Math.Max(SceneView.CameraArea.Width, SceneView.CameraArea.Height);
-      obj.Animation = anim;
-      obj.Layer     = Editor.CurrentLayer;
-      obj.Position  = SceneView.ClientToScene(at);
-      obj.Size      = new Vector(size/10, size/10);
+      obj.AnimationName = anim.Name;
+      obj.Layer         = Editor.CurrentLayer;
+      obj.Position      = SceneView.ClientToScene(at);
+      obj.Size          = new Vector(size/10, size/10);
 
+      SubTool = SpatialTool;
       Scene.AddObject(obj);
       Editor.InvalidateRender();
       SelectObject(obj, true);
-
       SubTool = VectorTool;
     }
 
@@ -3657,11 +3641,11 @@ public class SceneEditor : Form, IEditorForm
       if(zoomIn) // zooming in
       {
         SceneView.CameraPosition = SceneView.ClientToScene(e.Location);
-        SceneView.CameraSize    /= zoomFactor;
+        SceneView.CameraZoom    *= zoomFactor;
       }
       else // zooming out
       {
-        SceneView.CameraSize *= zoomFactor;
+        SceneView.CameraZoom /= zoomFactor;
       }
 
       Editor.InvalidateView();
@@ -3816,7 +3800,7 @@ public class SceneEditor : Form, IEditorForm
         Serializer.EndBatch();
       }
 
-      Engine.Engine.AddImageMap(md.ImageMap);
+      Engine.Engine.AddResource<ImageMap>(md.ImageMap);
       SetToolboxItem(new StaticImageItem(md.ImageMap));
       md.ImageMap.InvalidateMode(); // since the image map is being used in a new context now, reset its texture mode
       InvalidateRender();
@@ -4200,9 +4184,9 @@ public class SceneEditor : Form, IEditorForm
   {
     // since we can't easily propogate texture modes between rendering contexts, we'll simply reset the mode whenever
     // we get focus
-    foreach(ImageMapHandle handle in Engine.Engine.GetImageMaps())
+    foreach(ResourceHandle<ImageMap> handle in Engine.Engine.GetResources<ImageMap>())
     {
-      if(handle.ImageMap != null) handle.ImageMap.InvalidateMode();
+      if(handle.Resource != null) handle.Resource.InvalidateMode();
     }
   }
 
@@ -4338,8 +4322,8 @@ public class SceneEditor : Form, IEditorForm
 
   DesktopControl desktop;
   SceneViewControl sceneView;
-  Project.Level level;
   GLTexture2D traceImage;
+  string levelFile;
   int systemDefinedIconCount;
   bool isModified, isClosed;
   
@@ -4484,7 +4468,7 @@ sealed class StaticImageItem : ToolboxItem
   
   public ImageMap GetImageMap()
   {
-    return Engine.Engine.GetImageMap(imageMapName).ImageMap;
+    return Engine.Engine.GetImageMap(imageMapName).Resource;
   }
 
   public override SceneObject CreateSceneObject(SceneViewControl sceneView)

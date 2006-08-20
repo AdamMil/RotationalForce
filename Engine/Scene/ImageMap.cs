@@ -35,40 +35,10 @@ public enum TextureWrap : byte
 }
 #endregion
 
-#region ImageMapHandle
-/// <summary>Represents a handle to a named image map.</summary>
-/// <remarks>The purpose of this class is to allow the engine to change the ImageMap and have objects update
-/// automatically. The objects hold a reference to the <see cref="ImageMapHandle"/> rather than the image map, and
-/// the engine will take care of updating the handles.
-/// </remarks>
-public sealed class ImageMapHandle : NonSerializableObject
-{
-  internal ImageMapHandle(ImageMap map)
-  {
-    if(map == null) throw new ArgumentNullException();
-    ReplaceMap(map);
-  }
-  
-  /// <summary>Gets the <see cref="ImageMap"/> referenced by the handle. This will be null if the image map associated
-  /// with the name was deleted.
-  /// </summary>
-  public ImageMap ImageMap
-  {
-    get { return map; }
-  }
-
-  internal void ReplaceMap(ImageMap map)
-  {
-    this.map = map;
-  }
-
-  ImageMap map;
-}
-#endregion
-
 #region ImageMap
 /// <summary>The base class for image maps, which represent one or more image frames within a single OpenGL texture.</summary>
-public abstract class ImageMap : UniqueObject, IDisposable
+[ResourceKey]
+public abstract class ImageMap : Resource
 {
   protected ImageMap(string mapName, string imageFile)
   {
@@ -82,11 +52,6 @@ public abstract class ImageMap : UniqueObject, IDisposable
   /// necessary to allow the ImageMap to be deserialized, because it does not have a default constructor.
   /// </remarks>
   protected ImageMap(ISerializable dummy) { }
-
-  ~ImageMap()
-  {
-    Dispose(true);
-  }
 
   #region Frame
   public sealed class Frame
@@ -165,27 +130,6 @@ public abstract class ImageMap : UniqueObject, IDisposable
   public string ImageFile
   {
     get { return imageFile; }
-  }
-
-  /// <summary>Gets or sets the friendly name of this image map. This is the name by which objects will reference the
-  /// image map.
-  /// </summary>
-  public string Name
-  {
-    get { return name; }
-    set
-    {
-      if(string.IsNullOrEmpty(value))
-      {
-        throw new ArgumentException("Image map name cannot be null or empty.");
-      }
-      if(!string.Equals(name, value, StringComparison.Ordinal))
-      {
-        string oldName = name;
-        name = value;
-        Engine.OnImageMapNameChanged(this, oldName);
-      }
-    }
   }
 
   /// <summary>Gets or sets how texture coordinates outside the range of 0 to 1 will be handled.</summary>
@@ -279,13 +223,6 @@ public abstract class ImageMap : UniqueObject, IDisposable
     return pt;
   }
 
-  /// <summary>Releases the OpenGL resources held by this image map.</summary>
-  public void Dispose()
-  {
-    GC.SuppressFinalize(this);
-    Dispose(false);
-  }
-
   /// <summary>Informs the image map that the contents of the image file have changed and should be reloaded.</summary>
   public virtual void InvalidateImage()
   {
@@ -316,10 +253,8 @@ public abstract class ImageMap : UniqueObject, IDisposable
   /// <summary>Called when the image map is being disposed.</summary>
   /// <param name="finalizing">True if the object is being finalized.</param>
   /// <remarks>Derived classes can override this to release additional resources, but should always call the base.</remarks>
-  protected virtual void Dispose(bool finalizing)
+  protected override void Dispose(bool finalizing)
   {
-    Engine.OnImageMapDisposed(this);
-
     if(textureID != 0)
     {
       uint currentTexture;
@@ -334,6 +269,8 @@ public abstract class ImageMap : UniqueObject, IDisposable
       GL.glDeleteTexture(textureID);
       textureID = 0;
     }
+
+    base.Dispose(finalizing);
   }
 
   /// <summary>Called to ensure that the frames and texture data are recalculated if necessary.</summary>
@@ -420,7 +357,7 @@ public abstract class ImageMap : UniqueObject, IDisposable
   [NonSerialized] protected uint textureID;
 
   double leftEdge, rightEdge, topEdge, bottomEdge;
-  string imageFile, name;
+  string imageFile;
   float priority = 0.5f;
   FilterMode filterMode;
   TextureWrap textureWrap = TextureWrap.Clamp;

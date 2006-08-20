@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Xml;
 using System.Text;
@@ -10,7 +11,7 @@ namespace RotationalForce.Editor
 
 sealed class Project
 {
-  const string Images = "images", Audio = "audio", Levels = "levels", EditorData = "editorData";
+  const string Images = StandardPath.Images, Animations = StandardPath.Animations, Levels = StandardPath.Maps, EditorData = "editorData";
 
   Project(string basePath)
   {
@@ -30,56 +31,6 @@ sealed class Project
       path += Path.DirectorySeparatorChar;
     }
   }
-
-  #region Level
-  public class Level
-  {
-    internal Level(Project project)
-    {
-      this.project = project;
-    }
-
-    public string File
-    {
-      get { return file; }
-    }
-    
-    public string Name
-    {
-      get { return Xml.Attr(levelNode, "name"); }
-    }
-
-    public void Save(string filename)
-    {
-      string path = Path.GetFullPath(filename);
-      levelNode.OwnerDocument.Save(path);
-      file = path;
-    }
-
-    internal void CreateNew()
-    {
-      XmlDocument doc = new XmlDocument();
-      levelNode = doc.CreateElement("RotationalForce.Level");
-      doc.AppendChild(levelNode);
-    }
-    
-    internal void Load(string filename)
-    {
-      XmlDocument doc = new XmlDocument();
-      doc.Load(filename);
-      levelNode = doc.DocumentElement;
-      if(levelNode.LocalName != "RotationalForce.Level")
-      {
-        throw new ArgumentException("This is not a level file!");
-      }
-      file = Path.GetFullPath(filename);
-    }
-
-    Project project;
-    XmlElement levelNode;
-    string file;
-  }
-  #endregion
 
   public string BasePath
   {
@@ -106,18 +57,20 @@ sealed class Project
     get { return Path.Combine(EngineDataPath, Levels); }
   }
 
-  public Level CreateLevel()
+  public string GetNewAnimationName()
   {
-    Level level = new Level(this);
-    level.CreateNew();
-    return level;
-  }
+    XmlAttribute nextAnim = projectNode.Attributes["nextAnimation"];
+    if(nextAnim == null)
+    {
+      nextAnim = projectNode.SetAttributeNode("nextAnimation", null);
+      nextAnim.Value = "0";
+    }
 
-  public Level LoadLevel(string filename)
-  {
-    Level level = new Level(this);
-    level.Load(filename);
-    return level;
+    int nextIndex = int.Parse(nextAnim.Value);
+    nextAnim.Value = (nextIndex+1).ToString(CultureInfo.InvariantCulture);
+    OnProjectModified();
+
+    return "_anim" + nextIndex.ToString(CultureInfo.InvariantCulture);
   }
 
   public string GetEnginePath(string filename)
@@ -138,12 +91,12 @@ sealed class Project
 
   public ImageMap GetImageMap(string enginePath)
   {
-    foreach(ImageMapHandle handle in Engine.Engine.GetImageMaps())
+    foreach(ResourceHandle<ImageMap> handle in Engine.Engine.GetResources<ImageMap>())
     {
-      if(handle.ImageMap != null &&
-         string.Equals(enginePath, handle.ImageMap.ImageFile, StringComparison.OrdinalIgnoreCase))
+      if(handle.Resource != null &&
+         string.Equals(enginePath, handle.Resource.ImageFile, StringComparison.OrdinalIgnoreCase))
       {
-        return handle.ImageMap;
+        return handle.Resource;
       }
     }
 
@@ -155,6 +108,17 @@ sealed class Project
     return NormalizePath(Path.GetFullPath(filename)).StartsWith(NormalizePath(path)+"data/");
   }
 
+  public void Save()
+  {
+    if(!projectModified) return;
+
+    using(StreamWriter projectFile = new StreamWriter(Path.Combine(path, "rfproject.xml"), false, Encoding.UTF8))
+    {
+      projectNode.OwnerDocument.Save(projectFile);
+      projectModified = false;
+    }
+  }
+
   public static Project Create(string basePath)
   {
     if(string.IsNullOrEmpty(basePath) || !Directory.Exists(basePath))
@@ -164,7 +128,7 @@ sealed class Project
 
     string engineDataPath = Path.Combine(basePath, "data");
     Directory.CreateDirectory(Path.Combine(engineDataPath, Images));
-    Directory.CreateDirectory(Path.Combine(engineDataPath, Audio));
+    Directory.CreateDirectory(Path.Combine(engineDataPath, Animations));
     Directory.CreateDirectory(Path.Combine(engineDataPath, Levels));
     Directory.CreateDirectory(Path.Combine(engineDataPath, EditorData));
 
@@ -201,6 +165,11 @@ sealed class Project
       path = path.Replace(Path.AltDirectorySeparatorChar, '/');
     }
     return path.ToLowerInvariant();
+  }
+
+  void OnProjectModified()
+  {
+    projectModified = true;
   }
 
   XmlElement projectNode;

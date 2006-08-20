@@ -81,7 +81,6 @@ static class Video
   }
 
   static Rectangle viewport;
-  static double pixelScale;
   static int screenHeight;
 }
 
