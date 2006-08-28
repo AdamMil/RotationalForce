@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
@@ -345,7 +346,7 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.SplitContainer mainSplitter;
     System.Windows.Forms.ListViewGroup listViewGroup1 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Shapes", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
     System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     System.Windows.Forms.ContextMenuStrip propertyGridMenu;
@@ -895,30 +896,39 @@ public class SceneEditor : Form, IEditorForm
       {
         if(e.Button != MouseButtons.Left) return false;
 
-        AnimatedObject destObj = ObjectTool.ObjectUnderPoint(e.Location) as AnimatedObject;
+        VectorObject destObj = ObjectTool.ObjectUnderPoint(e.Location) as VectorObject;
         if(destObj == null) return false;
         
-        VectorAnimation destAnim = destObj.Animation as VectorAnimation;
-        if(destAnim == null) return false;
+        VectorShape destShape = destObj.Shape;
+        if(destShape == null) return false;
 
-        if(destObj == SelectedObjects[0])
+        VectorObject srcObj = (VectorObject)SelectedObjects[0];
+
+        if(destObj == srcObj)
         {
           MessageBox.Show("You can't join an object with itself.", "Hmm...", MessageBoxButtons.OK,
                           MessageBoxIcon.Exclamation);
           return true;
         }
 
-        AnimatedObject   srcObj = (AnimatedObject)SelectedObjects[0];
-        VectorAnimation srcAnim = (VectorAnimation)srcObj.Animation;
-        foreach(VectorAnimation.Polygon poly in srcAnim.Frames[0].Polygons)
+        if(destObj.Shape == srcObj.Shape)
         {
-          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+          MessageBox.Show("You can't join two instances of the same shape.", "Hmm...", MessageBoxButtons.OK,
+                          MessageBoxIcon.Exclamation);
+          return true;
+        }
+
+        foreach(VectorShape.Polygon poly in srcObj.Shape.GetPolygons())
+        {
+          foreach(VectorShape.Vertex vertex in poly.Vertices)
           {
             vertex.Position = destObj.SceneToLocal(srcObj.LocalToScene(vertex.Position));
           }
-          destAnim.Frames[0].AddPolygon(poly);
         }
 
+        VectorShape.Node newNode = srcObj.Shape.RootNode;
+        srcObj.Shape.RootNode = null;
+        VectorSubTool.AddNodeToRoot(newNode, destShape);
         Scene.RemoveObject(srcObj);
 
         VectorSubTool.RecalculateObjectBounds(destObj);
@@ -2174,12 +2184,12 @@ public class SceneEditor : Form, IEditorForm
       {
         Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
 
-        AnimatedObject selectedObject = null;
+        VectorObject selectedObject = null;
         foreach(SceneObject obj in ObjectTool.selectedObjects)
         {
           if(IsValidObject(obj))
           {
-            selectedObject = obj as AnimatedObject;
+            selectedObject = obj as VectorObject;
             break;
           }
         }
@@ -2200,7 +2210,7 @@ public class SceneEditor : Form, IEditorForm
       {
         Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
         DeselectPoints();
-        selectedPoly = 0;
+        selectedPoly = null;
       }
 
       public override bool Copy()
@@ -2209,9 +2219,9 @@ public class SceneEditor : Form, IEditorForm
         {
           using(MemoryStream stream = new MemoryStream())
           {
-            VectorAnimation.Polygon poly = SelectedPoly.Clone();
+            VectorShape.Polygon poly = SelectedPoly.Clone();
             // vertices are stored on the clipboard in scene coordinates
-            foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+            foreach(VectorShape.Vertex vertex in poly.Vertices)
             {
               vertex.Position = SelectedObject.LocalToScene(vertex.Position);
             }
@@ -2297,7 +2307,7 @@ public class SceneEditor : Form, IEditorForm
           {
             if(SelectObject(e.Location, SelectMode.DeselectPoints) && selectedPoints.Count == 1)
             {
-              VectorAnimation.Vertex vertex = SelectedPoly.Vertices[selectedPoints[0]];
+              VectorShape.Vertex vertex = SelectedPoly.Vertices[selectedPoints[0]];
               vertex.Split = !vertex.Split;
               ObjectTool.InvalidateSelectedBounds(true);
             }
@@ -2330,8 +2340,8 @@ public class SceneEditor : Form, IEditorForm
               }
             }
 
-            // if it only has one frame, it can be joined with another vector object
-            if(SelectedAnimation.Frames.Count == 1)
+            // if it has no animations, it can be joined with another vector object
+            if(SelectedShape.Animations.Count == 0)
             {
               menu.MenuItems.Add("Join with another object",
                                  delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.JoinTool; });
@@ -2344,13 +2354,14 @@ public class SceneEditor : Form, IEditorForm
               menu.MenuItems.Add("Convert spline polygon to vertex polygon", menu_ConvertPolyToVertexPoly);
             }
 
+            ReadOnlyCollection<VectorShape.PolygonNode> polygons = SelectedShape.GetPolygonNodes();
             // if it has multiple polygons, the order of the current polygon can be changed
-            if(SelectedFrame.Polygons.Count > 1)
+            if(polygons.Count > 1)
             {
               bool hasSpline = false;
-              for(int i=0; i<SelectedFrame.Polygons.Count; i++)
+              foreach(VectorShape.PolygonNode polyNode in polygons)
               {
-                if(SelectedFrame.Polygons[i].HasSpline)
+                if(polyNode.Polygon.HasSpline)
                 {
                   hasSpline = true;
                   break;
@@ -2366,11 +2377,11 @@ public class SceneEditor : Form, IEditorForm
               menu.MenuItems.Add("Delete selected polygon",
                                  delegate(object s, EventArgs a) { DeleteSelectedPolygon(); });
 
-              if(selectedPoly != 0)
+              if(selectedPoly != polygons[0].Name)
               {
                 menu.MenuItems.Add("Move polygon towards back", delegate(object s, EventArgs a) { MovePolygon(-1); });
               }
-              if(selectedPoly != SelectedFrame.Polygons.Count-1)
+              if(selectedPoly != polygons[polygons.Count-1].Name)
               {
                 menu.MenuItems.Add("Move polygon towards front", delegate(object s, EventArgs a) { MovePolygon(1); });
               }
@@ -2419,9 +2430,10 @@ public class SceneEditor : Form, IEditorForm
           // if no points or all the points are selected, move the whole polygon or object
           if(selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count)
           {
-            if(SelectedFrame.Polygons.Count == 1) // if there's only one polygon, drag the whole object
+            if(SelectedShape.GetPolygons().Count == 1) // if there's only one polygon, drag the whole object
             {
               dragPoints.Add(SelectedObject.Position);
+              dragMode = DragMode.MoveObject;
             }
             else // otherwise, just drag the one polygon
             {
@@ -2429,6 +2441,7 @@ public class SceneEditor : Form, IEditorForm
               {
                 dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[i].Position));
               }
+              dragMode = DragMode.MoveVertices;
             }
           }
           else // otherwise, just drag the selected points
@@ -2437,9 +2450,9 @@ public class SceneEditor : Form, IEditorForm
             {
               dragPoints.Add(SelectedObject.LocalToScene(SelectedPoly.Vertices[selectedPoint].Position));
             }
+            dragMode = DragMode.MoveVertices;
           }
           
-          dragMode = DragMode.MoveVertices;
           return true;
         }
         else if(e.Button == MouseButtons.Right) // for right drags, clone and move vertices
@@ -2462,10 +2475,10 @@ public class SceneEditor : Form, IEditorForm
             return false;
           }
 
-          // get the size of the polygon in scene coordinates, so we can scale the texture movement by the mouse
+          // get the size of the polygon in scene coordinates, so we can scaling the texture movement by the mouse
           // movement.
           double x1 = double.MaxValue, y1 = double.MaxValue, x2 = double.MinValue, y2 = double.MinValue;
-          foreach(VectorAnimation.Vertex vertex in SelectedPoly.Vertices)
+          foreach(VectorShape.Vertex vertex in SelectedPoly.Vertices)
           {
             GLPoint pt = vertex.Position;
             if(pt.X < x1) x1 = pt.X;
@@ -2512,6 +2525,10 @@ public class SceneEditor : Form, IEditorForm
         {
           DragVertices(e);
         }
+        else if(dragMode == DragMode.MoveObject)
+        {
+          DragObject(e);
+        }
         else if(dragMode == DragMode.MoveTexture)
         {
           DragTexture(e);
@@ -2528,13 +2545,11 @@ public class SceneEditor : Form, IEditorForm
 
       public override void MouseDragEnd(MouseDragEventArgs e)
       {
-        // if we were moving the whole object, just invalidate the render
-        if((selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count) &&
-         SelectedFrame.Polygons.Count == 1)
+        if(dragMode == DragMode.MoveObject) // if we were moving the whole object, invalidate the render
         {
           Editor.InvalidateRender();
         }
-        else // otherwise, we'll need to recalculate the object bounds
+        else if(dragMode == DragMode.MoveVertices) // if we moved a vertex, recalculate the object bounds
         {
           ObjectTool.InvalidateSelectedBounds(true);
           RecalculateObjectBounds();
@@ -2566,6 +2581,30 @@ public class SceneEditor : Form, IEditorForm
         ObjectTool.InvalidateSelectedBounds(true);
       }
 
+      void DragObject(MouseDragEventArgs e)
+      {
+        ObjectTool.InvalidateSelectedBounds(true);
+
+        Size clientDist = new Size(e.X-e.Start.X, e.Y-e.Start.Y);
+
+        if(Control.ModifierKeys == Keys.Shift)
+        {
+          if(Math.Abs(clientDist.Width) > Math.Abs(clientDist.Height))
+          {
+            clientDist.Height = 0;
+          }
+          else
+          {
+            clientDist.Width = 0;
+          }
+        }
+
+        Vector sceneDist = SceneView.ClientToScene(clientDist);
+        SelectedObject.Position = dragPoints[0] + sceneDist;
+
+        ObjectTool.RecalculateAndInvalidateSelectedBounds();
+      }
+
       void DragVertices(MouseDragEventArgs e)
       {
         ObjectTool.InvalidateSelectedBounds(true);
@@ -2589,16 +2628,9 @@ public class SceneEditor : Form, IEditorForm
         // move the selected polygon/object if no points or all points are selected
         if(selectedPoints.Count == 0 || selectedPoints.Count == SelectedPoly.Vertices.Count)
         {
-          if(SelectedFrame.Polygons.Count == 1) // if there's only one polygon, move the whole object
+          for(int i=0; i<SelectedPoly.Vertices.Count; i++)
           {
-            SelectedObject.Position = dragPoints[0] + sceneDist;
-          }
-          else // otherwise, move the selected polygon
-          {
-            for(int i=0; i<SelectedPoly.Vertices.Count; i++)
-            {
-              SelectedPoly.Vertices[i].Position = SelectedObject.SceneToLocal(dragPoints[i] + sceneDist);
-            }
+            SelectedPoly.Vertices[i].Position = SelectedObject.SceneToLocal(dragPoints[i] + sceneDist);
           }
         }
         else // otherwise, just move the selected points
@@ -2618,16 +2650,34 @@ public class SceneEditor : Form, IEditorForm
         RecalculateObjectBounds(SelectedObject);
       }
 
-      internal static void RecalculateObjectBounds(AnimatedObject obj)
+      internal static void AddNodeToRoot(VectorShape.Node srcNode, VectorShape destShape)
       {
-        VectorAnimation anim = (VectorAnimation)obj.Animation;
+        VectorShape.GroupNode group = destShape.RootNode as VectorShape.GroupNode;
+        if(group == null)
+        {
+          VectorShape.Node root = destShape.RootNode;
+          group = new VectorShape.GroupNode("group");
+          destShape.UniquifyNames(group);
+
+          destShape.RootNode = null;
+          group.AddChild(root);
+          destShape.RootNode = group;
+        }
+        
+        destShape.UniquifyNames(srcNode);
+        group.AddChild(srcNode);
+      }
+
+      internal static void RecalculateObjectBounds(VectorObject obj)
+      {
+        VectorShape shape = (VectorShape)obj.Shape;
         // calculate the minimum bounding box to contain the points, assign the bounding box, and then readjust the
         // position of all points so that they fit within the new bounding box without moving
 
         double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue; // our local-space bounds
-        foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
+        foreach(VectorShape.Polygon poly in shape.GetPolygons())
         {
-          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+          foreach(VectorShape.Vertex vertex in poly.Vertices)
           {
             vertex.Position = obj.LocalToScene(vertex.Position);
             if(vertex.Position.X < x1) x1 = vertex.Position.X;
@@ -2643,7 +2693,7 @@ public class SceneEditor : Form, IEditorForm
         obj.Size     = new Vector(sceneSize, sceneSize);
         obj.Position = new GLPoint(x1+(x2-x1)*0.5, y1+(y2-y1)*0.5);
 
-        foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
+        foreach(VectorShape.Polygon poly in shape.GetPolygons())
         {
           for(int i=0; i<poly.Vertices.Count; i++)
           {
@@ -2654,7 +2704,7 @@ public class SceneEditor : Form, IEditorForm
 
       public override void PaintDecoration(Graphics g)
       {
-        VectorAnimation.Polygon poly = SelectedPoly;
+        VectorShape.Polygon poly = SelectedPoly;
         if(poly != null)
         {
           Point[] points = new Point[poly.Vertices.Count];
@@ -2692,29 +2742,29 @@ public class SceneEditor : Form, IEditorForm
       enum DragMode
       {
         MoveVertices,
+        MoveObject,
         MoveTexture,
         RotateTexture,
         ZoomTexture
       }
 
-      VectorAnimation SelectedAnimation
+      VectorShape SelectedShape
       {
-        get { return SelectedObject == null ? null : SelectedObject.Animation as VectorAnimation; }
+        get { return SelectedObject == null ? null : SelectedObject.Shape; }
       }
 
-      VectorAnimation.Frame SelectedFrame
+      VectorObject SelectedObject
       {
-        get { return SelectedObject == null ? null : SelectedAnimation.Frames[0]; }
-      }
-
-      AnimatedObject SelectedObject
-      {
-        get { return (AnimatedObject)ObjectTool.SelectedObject; }
+        get { return (VectorObject)ObjectTool.SelectedObject; }
       }
       
-      VectorAnimation.Polygon SelectedPoly
+      VectorShape.Polygon SelectedPoly
       {
-        get { return SelectedObject == null ? null : SelectedFrame.Polygons[selectedPoly]; }
+        get
+        {
+          return SelectedObject == null ? null
+                                        : ((VectorShape.PolygonNode)SelectedShape.GetNode(selectedPoly)).Polygon;
+        }
       }
 
       void CloneAndSelectPoint(int vertexIndex)
@@ -2760,21 +2810,17 @@ public class SceneEditor : Form, IEditorForm
 
       void DeleteSelectedPolygon()
       {
-        if(SelectedFrame.Polygons.Count == 1)
+        SelectedShape.RemoveNode(selectedPoly);
+
+        ReadOnlyCollection<VectorShape.PolygonNode> polygons = SelectedShape.GetPolygonNodes();
+        if(polygons.Count == 0)
         {
           DeleteSelectedObject();
         }
         else
         {
-          int selection = selectedPoly;
-          SelectedFrame.RemovePolygon(selectedPoly);
-          selectedPoly = 0;
-
-          if(selection >= SelectedFrame.Polygons.Count)
-          {
-            selection--;
-          }
-          SelectPolygon(selection);
+          selectedPoly = null;
+          SelectPolygon(polygons[0].Name);
           OnDeleted();
         }
       }
@@ -2796,7 +2842,7 @@ public class SceneEditor : Form, IEditorForm
         {
           DeselectPoints();
           ObjectTool.DeselectObjects();
-          selectedPoly = 0;
+          selectedPoly = null;
           OnSelectionChanged();
         }
       }
@@ -2809,11 +2855,11 @@ public class SceneEditor : Form, IEditorForm
 
       public static bool IsValidObject(SceneObject obj)
       {
-        AnimatedObject animObj = obj as AnimatedObject;
-        if(animObj != null)
+        VectorObject vectorObj = obj as VectorObject;
+        if(vectorObj != null)
         {
-          VectorAnimation anim = animObj.Animation as VectorAnimation;
-          if(anim == null || anim.Frames.Count == 0)
+          VectorShape shape = vectorObj.Shape;
+          if(shape == null || shape.RootNode == null)
           {
             return false;
           }
@@ -2826,15 +2872,16 @@ public class SceneEditor : Form, IEditorForm
 
       void MovePolygon(int offset) // offset is assumed to be -1 or 1
       {
-        if(offset == -1 && selectedPoly > 0 ||
+        throw new NotImplementedException();
+        /*if(offset == -1 && selectedPoly > 0 ||
          offset == 1 && selectedPoly < SelectedFrame.Polygons.Count-1)
         {
-          VectorAnimation.Polygon poly = SelectedPoly;
+          VectorShape.Polygon poly = SelectedPoly;
           SelectedFrame.RemovePolygon(selectedPoly);
           SelectedFrame.InsertPolygon(selectedPoly + offset, poly);
           SelectPolygon(selectedPoly + offset);
           ObjectTool.InvalidateSelectedBounds(true);
-        }
+        }*/
       }
 
       void SelectAllPoints()
@@ -2858,7 +2905,7 @@ public class SceneEditor : Form, IEditorForm
         foreach(SceneObject obj in Scene.PickRectangle(SceneView.ClientToScene(clientRect),
                                                        Editor.GetPickerOptions()))
         {
-          if(IsValidObject(obj) && TrySelectObjectAndPoint((AnimatedObject)obj, pt, mode))
+          if(IsValidObject(obj) && TrySelectObjectAndPoint((VectorObject)obj, pt, mode))
           {
             return true;
           }
@@ -2876,9 +2923,9 @@ public class SceneEditor : Form, IEditorForm
         return PointUnderCursor(SelectedObject, selectedPoly, pt);
       }
       
-      int PointUnderCursor(AnimatedObject obj, int polyIndex, Point pt)
+      int PointUnderCursor(VectorObject obj, string polyName, Point pt)
       {
-        VectorAnimation.Polygon poly = ((VectorAnimation)obj.Animation).Frames[0].Polygons[polyIndex];
+        VectorShape.Polygon poly = ((VectorShape.PolygonNode)obj.Shape.GetNode(polyName)).Polygon;
         for(int i=0; i<poly.Vertices.Count; i++)
         {
           // compare vertices in window space
@@ -2892,13 +2939,13 @@ public class SceneEditor : Form, IEditorForm
         return -1;
       }
 
-      bool SelectPolygonAndPoint(AnimatedObject obj, int polyIndex, Point pt, SelectMode mode)
+      bool SelectPolygonAndPoint(VectorObject obj, string polyName, Point pt, SelectMode mode)
       {
-        int pointIndex = PointUnderCursor(obj, polyIndex, pt);
+        int pointIndex = PointUnderCursor(obj, polyName, pt);
         if(pointIndex != -1)
         {
           SelectObject(obj);
-          SelectPolygon(polyIndex);
+          SelectPolygon(polyName);
           if((mode&SelectMode.Toggle) != 0 && selectedPoints.Contains(pointIndex))
           {
             selectedPoints.Remove(pointIndex);
@@ -2918,22 +2965,22 @@ public class SceneEditor : Form, IEditorForm
         return false;
       }
 
-      void SelectObject(AnimatedObject obj)
+      void SelectObject(VectorObject obj)
       {
         if(obj != SelectedObject)
         {
           ObjectTool.SelectObject(obj, true);
           ObjectTool.InvalidateSelectedBounds(false);
-          selectedPoly = -1;
-          SelectPolygon(0);
+          selectedPoly = null;
+          SelectPolygon(SelectedShape.GetPolygonNodes()[0].Name);
         }
       }
 
-      void SelectPolygon(int polyIndex)
+      void SelectPolygon(string polyName)
       {
-        if(polyIndex != selectedPoly)
+        if(polyName != selectedPoly)
         {
-          selectedPoly = polyIndex;
+          selectedPoly = polyName;
           DeselectPoints();
         }
       }
@@ -2956,23 +3003,24 @@ public class SceneEditor : Form, IEditorForm
         }
       }
 
-      bool TrySelectObjectAndPoint(AnimatedObject obj, Point pt, SelectMode mode)
+      bool TrySelectObjectAndPoint(VectorObject obj, Point pt, SelectMode mode)
       {
         GLPoint localPoint = obj.SceneToLocal(SceneView.ClientToScene(pt));
 
         // scan the polygons from the top down
-        VectorAnimation.Frame frame = ((VectorAnimation)obj.Animation).Frames[0];
-        for(int polyIndex=frame.Polygons.Count-1; polyIndex >= 0; polyIndex--)
+        List<VectorShape.PolygonNode> polygons = new List<VectorShape.PolygonNode>(obj.Shape.GetPolygonNodes());
+        for(int polyIndex=polygons.Count-1; polyIndex >= 0; polyIndex--)
         {
+          string polyName = polygons[polyIndex].Name;
           // if the polygon contains the point, select it and then 
-          if(PolygonContains(frame.Polygons[polyIndex], localPoint))
+          if(PolygonContains(polygons[polyIndex].Polygon, localPoint))
           {
             SelectObject(obj);
-            SelectPolygon(polyIndex);
-            SelectPolygonAndPoint(obj, polyIndex, pt, mode);
+            SelectPolygon(polyName);
+            SelectPolygonAndPoint(obj, polyName, pt, mode);
             return true;
           }
-          else if(SelectPolygonAndPoint(obj, polyIndex, pt, mode))
+          else if(SelectPolygonAndPoint(obj, polyName, pt, mode))
           {
             return true;
           }
@@ -3023,22 +3071,27 @@ public class SceneEditor : Form, IEditorForm
       void menu_ConvertPolyToVertexPoly(object sender, EventArgs e)
       {
         DeselectPoints();
-        VectorAnimation.Polygon vertexPoly = SelectedPoly.CloneAsVertexPolygon();
-        SelectedFrame.RemovePolygon(selectedPoly);
-        SelectedFrame.InsertPolygon(selectedPoly, vertexPoly);
-        UpdatePropertyGrid();
+        ConvertPolyToVertexPoly(SelectedPoly);
       }
 
       void menu_ConvertShapeToVertexShape(object sender, EventArgs e)
       {
         DeselectPoints();
-        for(int i=0; i<SelectedFrame.Polygons.Count; i++)
+        foreach(VectorShape.Polygon poly in SelectedShape.GetPolygons())
         {
-          VectorAnimation.Polygon vertexPoly = SelectedFrame.Polygons[i].CloneAsVertexPolygon();
-          SelectedFrame.RemovePolygon(i);
-          SelectedFrame.InsertPolygon(i, vertexPoly);
+          ConvertPolyToVertexPoly(poly);
         }
-        UpdatePropertyGrid();
+      }
+      
+      void ConvertPolyToVertexPoly(VectorShape.Polygon poly)
+      {
+        VectorShape.Polygon vertexPoly = poly.CloneAsVertexPolygon();
+
+        poly.ClearVertices();
+        foreach(VectorShape.Vertex vertex in vertexPoly.Vertices)
+        {
+          poly.AddVertex(vertex);
+        }
       }
 
       void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
@@ -3050,17 +3103,17 @@ public class SceneEditor : Form, IEditorForm
       List<GLPoint> dragPoints = new List<GLPoint>();
       Vector dragVector;
       double dragZoom, dragRotation, dragSize;
-      int selectedPoly;
+      string selectedPoly;
       DragMode dragMode;
 
       /// <summary>Determines whether the specified polygon contains the given point.</summary>
-      static bool PolygonContains(VectorAnimation.Polygon poly, GLPoint point)
+      static bool PolygonContains(VectorShape.Polygon poly, GLPoint point)
       {
         if(poly.Vertices.Count < 3) return false; // if it's not a proper polygon, it won't contain the point.
 
         // create a GameLib polygon, since it has the appropriate functionality already
         GLPoly glPoly = new GLPoly(poly.Vertices.Count);
-        foreach(VectorAnimation.Vertex vertex in poly.Vertices)
+        foreach(VectorShape.Vertex vertex in poly.Vertices)
         {
           glPoly.AddPoint(vertex.Position);
         }
@@ -3143,37 +3196,28 @@ public class SceneEditor : Form, IEditorForm
       }
       else if(EditorApp.Clipboard.Type == ObjectType.Polygons)
       {
-        VectorAnimation anim = new VectorAnimation(Editor.Project.GetNewAnimationName());
-        Engine.Engine.AddResource<Animation>(anim);
-        anim.AddFrame(new VectorAnimation.Frame());
+        VectorShape.Polygon poly = (VectorShape.Polygon)EditorApp.Clipboard.Deserialize()[0]; // there's only one polygon on the clipboard
+        GLRect bounds = poly.GetBounds();
 
-        double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
-        foreach(VectorAnimation.Polygon poly in EditorApp.Clipboard.Deserialize())
-        {
-          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
-          {
-            if(vertex.Position.X < x1) x1 = vertex.Position.X;
-            if(vertex.Position.X > x2) x2 = vertex.Position.X;
-            if(vertex.Position.Y < y1) y1 = vertex.Position.Y;
-            if(vertex.Position.Y > y2) y2 = vertex.Position.Y;
-          }
-          anim.Frames[0].AddPolygon(poly);
-        }
+        VectorObject obj = new VectorObject();
+        obj.Size      = bounds.Size;
+        obj.Position  = EngineMath.GetCenterPoint(bounds);
 
-        AnimatedObject obj = new AnimatedObject();
-        obj.AnimationName = anim.Name;
-        obj.Size          = new Vector(x2-x1, y2-y1);
-        obj.Position      = new GLPoint(x1+obj.Width*0.5, y1+obj.Height*0.5);
+        VectorShape shape = new VectorShape(Editor.Project.GetNewShapeName());
+        Engine.Engine.AddResource<VectorShape>(shape);
+        obj.ShapeName = shape.Name;
+
+        VectorShape.PolygonNode polyNode = new VectorShape.PolygonNode("poly");
+        shape.RootNode = polyNode;
 
         // vertices on the clipboard are stored in scene units, so convert them back to local units
-        foreach(VectorAnimation.Polygon poly in anim.Frames[0].Polygons)
+        foreach(VectorShape.Vertex vertex in poly.Vertices)
         {
-          foreach(VectorAnimation.Vertex vertex in poly.Vertices)
-          {
-            vertex.Position = obj.SceneToLocal(vertex.Position);
-          }
+          VectorShape.Vertex copy = vertex.Clone();
+          copy.Position = obj.SceneToLocal(copy.Position);
+          polyNode.Polygon.AddVertex(copy);
         }
-        
+
         VectorSubTool.RecalculateObjectBounds(obj);
         objects = new object[] { obj };
       }
@@ -3292,37 +3336,34 @@ public class SceneEditor : Form, IEditorForm
 
     void CreateShape(Point at, bool breakVertices)
     {
-      VectorAnimation anim = new VectorAnimation(Editor.Project.GetNewAnimationName());
-      Engine.Engine.AddResource<Animation>(anim);
+      VectorShape shape = new VectorShape(Editor.Project.GetNewShapeName());
+      Engine.Engine.AddResource<VectorShape>(shape);
 
-      VectorAnimation.Frame frame = new VectorAnimation.Frame();
-      anim.AddFrame(frame);
+      VectorShape.PolygonNode polyNode = new VectorShape.PolygonNode("poly");
+      shape.RootNode = polyNode;
 
-      VectorAnimation.Polygon poly = new VectorAnimation.Polygon();
-      frame.AddPolygon(poly);
-
-      VectorAnimation.Vertex vertex = new VectorAnimation.Vertex();
+      VectorShape.Vertex vertex = new VectorShape.Vertex();
       vertex.Color    = GetInverseBackgroundColor();
       vertex.Position = new GLPoint(-1, -1);
       vertex.Split    = breakVertices;
-      poly.AddVertex(vertex);
+      polyNode.Polygon.AddVertex(vertex);
 
       vertex = vertex.Clone();
       vertex.Position = new GLPoint(1, -1);
-      poly.AddVertex(vertex);
+      polyNode.Polygon.AddVertex(vertex);
       vertex = vertex.Clone();
       vertex.Position = new GLPoint(1, 1);
-      poly.AddVertex(vertex);
+      polyNode.Polygon.AddVertex(vertex);
       vertex = vertex.Clone();
       vertex.Position = new GLPoint(-1, 1);
-      poly.AddVertex(vertex);
+      polyNode.Polygon.AddVertex(vertex);
 
-      AnimatedObject obj = new AnimatedObject();
+      VectorObject obj = new VectorObject();
       double size = Math.Max(SceneView.CameraArea.Width, SceneView.CameraArea.Height);
-      obj.AnimationName = anim.Name;
-      obj.Layer         = Editor.CurrentLayer;
-      obj.Position      = SceneView.ClientToScene(at);
-      obj.Size          = new Vector(size/10, size/10);
+      obj.ShapeName = shape.Name;
+      obj.Layer     = Editor.CurrentLayer;
+      obj.Position  = SceneView.ClientToScene(at);
+      obj.Size      = new Vector(size/10, size/10);
 
       SubTool = SpatialTool;
       Scene.AddObject(obj);
@@ -4330,7 +4371,7 @@ public class SceneEditor : Form, IEditorForm
   static GLBuffer iconBuffer = new GLBuffer(32, 32);
 }
 
-enum ToolboxCategory { StaticImages, AnimatedImages, VectorAnimations, Miscellaneous }
+enum ToolboxCategory { StaticImages, AnimatedImages, VectorShapes, Miscellaneous }
 
 #region ToolboxList
 public class ToolboxList : ListView
