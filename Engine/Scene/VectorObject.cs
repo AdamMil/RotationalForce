@@ -656,7 +656,7 @@ public class VectorShape : Resource
   }
   #endregion
 
-  #region Nodes
+  #region Node classes
   #region Node
   /// <summary>Represents a node in the vector shape's hierarchical geometry.</summary>
   public abstract class Node
@@ -844,6 +844,21 @@ public class VectorShape : Resource
         shape.OnNodeRemoved(children[index]);
       }
       children.RemoveAt(index);
+    }
+
+    /// <summary>Removes a child node from this group. The node must exist.</summary>
+    public void RemoveChild(Node node)
+    {
+      for(int i=0; i<children.Count; i++)
+      {
+        if(children[i] == node)
+        {
+          RemoveChild(i);
+          return;
+        }
+      }
+      
+      throw new ArgumentException("The given node does not exist in this group.");
     }
 
     public override Rectangle GetBounds()
@@ -2138,6 +2153,7 @@ public class VectorShape : Resource
   }
   #endregion
 
+  #region Node management
   /// <summary>Gets or sets the root node in the geometry of this vector shape.</summary>
   public Node RootNode
   {
@@ -2166,6 +2182,127 @@ public class VectorShape : Resource
     }
   }
 
+  /// <summary>Gets the node with the given name.</summary>
+  public Node GetNode(string nodeName)
+  {
+    return nodeMap[nodeName];
+  }
+
+  /// <summary>Returns the <see cref="GroupNode"/> that contains the given node, or null if the node is not contained
+  /// within any group, meaning that it must be the root node. The node must exist in the tree.
+  /// </summary>
+  public GroupNode GetParentNode(Node node)
+  {
+    if(node == null) throw new ArgumentNullException();
+    if(node == rootNode) return null;
+    
+    GroupNode group = GetParentNode(node, rootNode as GroupNode);
+    if(group != null) return group;
+    throw new ArgumentException("The given node does not exist in this tree.");
+  }
+
+  /// <summary>Gets a list of all polygons in the shape.</summary>
+  public ReadOnlyCollection<Polygon> GetPolygons()
+  {
+    ReadOnlyCollection<PolygonNode> polyNodes = GetPolygonNodes();
+    List<Polygon> polygons = new List<Polygon>(polyNodes.Count);
+    foreach(PolygonNode polyNode in polyNodes)
+    {
+      polygons.Add(polyNode.Polygon);
+    }
+    return new ReadOnlyCollection<Polygon>(polygons);
+  }
+
+  /// <summary>Gets a list of all polygon nodes in the shape.</summary>
+  public ReadOnlyCollection<PolygonNode> GetPolygonNodes()
+  {
+    List<PolygonNode> nodes = new List<PolygonNode>();
+
+    if(rootNode != null)
+    {
+      foreach(Node node in EnumerateNodes(rootNode))
+      {
+        PolygonNode polyNode = node as PolygonNode;
+        if(polyNode != null) nodes.Add(polyNode);
+      }
+    }
+    
+    return new ReadOnlyCollection<PolygonNode>(nodes);
+  }
+  
+  /// <summary>Removes a node from the tree. The node must exist in the tree.</summary>
+  public void RemoveNode(string nodeName)
+  {
+    Node node = GetNode(nodeName);
+    GroupNode parent = GetParentNode(node);
+    if(parent != null)
+    {
+      parent.RemoveChild(node);
+    }
+    else
+    {
+      RootNode = null;
+    }
+  }
+
+  /// <summary>
+  /// Alters the names of the nodes in the given tree so that they don't conflict with any nodes in this shape's tree.
+  /// </summary>
+  public void UniquifyNames(Node tree)
+  {
+    Dictionary<string,Node> map = new Dictionary<string,Node>(nodeMap);
+    foreach(Node node in EnumerateNodes(tree))
+    {
+      string name = node.Name;
+      int  suffix = 2;
+
+      while(map.ContainsKey(name))
+      {
+        name = node.Name + suffix++;
+      }
+
+      map.Add(name, node);
+      node.Name = name;
+    }
+  }
+
+  /// <summary>Returns an object that can enumerate all nodes in the given tree.</summary>
+  static IEnumerable<Node> EnumerateNodes(Node tree)
+  {
+    if(tree == null) yield break;
+    
+    yield return tree;
+
+    foreach(Node child in tree.Children)
+    {
+      foreach(Node node in EnumerateNodes(child))
+      {
+        yield return child;
+      }
+    }
+  }
+  
+  static GroupNode GetParentNode(Node node, GroupNode group)
+  {
+    if(group == null) return null;
+
+    foreach(Node child in group.Children)
+    {
+      if(node == child) return group;
+
+      GroupNode childGroup = child as GroupNode;
+      if(childGroup != null)
+      {
+        GroupNode result = GetParentNode(node, childGroup);
+        if(result != null) return result;
+      }
+    }
+    
+    return null;
+  }
+  #endregion
+
+  #region Animation management
   /// <summary>Gets a read-only collection of the animations in this shape.</summary>
   public ICollection<Animation> Animations
   {
@@ -2232,6 +2369,7 @@ public class VectorShape : Resource
       return anims.TryGetValue(animationName, out animation);
     }
   }
+  #endregion
 
   protected override void Deserialize(DeserializationStore store)
   {

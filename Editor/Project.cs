@@ -57,20 +57,20 @@ sealed class Project
     get { return Path.Combine(EngineDataPath, Levels); }
   }
 
-  public string GetNewAnimationName()
+  public string GetNewShapeName()
   {
-    XmlAttribute nextAnim = projectNode.Attributes["nextAnimation"];
-    if(nextAnim == null)
+    XmlAttribute nextShape = projectNode.Attributes["nextShape"];
+    if(nextShape == null)
     {
-      nextAnim = projectNode.SetAttributeNode("nextAnimation", null);
-      nextAnim.Value = "0";
+      nextShape = projectNode.SetAttributeNode("nextShape", null);
+      nextShape.Value = "0";
     }
 
-    int nextIndex = int.Parse(nextAnim.Value);
-    nextAnim.Value = (nextIndex+1).ToString(CultureInfo.InvariantCulture);
+    int nextIndex = int.Parse(nextShape.Value);
+    nextShape.Value = (nextIndex+1).ToString(CultureInfo.InvariantCulture);
     OnProjectModified();
 
-    return "_anim" + nextIndex.ToString(CultureInfo.InvariantCulture);
+    return "_shape" + nextIndex.ToString(CultureInfo.InvariantCulture);
   }
 
   public string GetEnginePath(string filename)
