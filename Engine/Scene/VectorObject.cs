@@ -10,72 +10,918 @@ using Color = System.Drawing.Color;
 namespace RotationalForce.Engine
 {
 
-#region VectorAnimation
-public sealed class VectorAnimation : Animation
+public delegate void VectorAnimationEventHandler(VectorObject obj, VectorAnimationData animData);
+
+#region VectorShape
+/// <summary>Represents a vector shape, along with any animations that apply to that shape.</summary>
+/// <remarks>A vector shape is composed of two parts: a hierarchical shape geometry, and one or more animations that
+/// can morph that geometry. The shape geometry is stored as a tree of nodes, which are either group nodes or polygon
+/// nodes. Group nodes simply contain other nodes. Polygon nodes are leaf nodes which render a polygon. Animations can
+/// morph the geometry by either rotating, translating, and/or scaling nodes, or by replacing a polygon with another.
+/// Multiple animations can be applied to the same shape simultaneously.
+/// </remarks>
+[ResourceKey]
+public class VectorShape : Resource
 {
-  public VectorAnimation(string resourceName) : base(resourceName) { }
+  public VectorShape() { }
 
-  VectorAnimation(ISerializable dummy) : base(dummy) { } // special constructor used during deserialization
-  
-  #region Frame
-  public sealed class Frame : AnimationFrame
+  public VectorShape(string resourceName)
   {
-    /// <summary>Determines whether the polygons from this frame are interpolated into the next frame.</summary>
-    [Category("Behavior")]
-    [Description("Determines whether the polygons from this frame are interpolated into the next frame.")]
-    [DefaultValue(true)]
-    public bool Interpolate
+    this.Name = resourceName;
+  }
+
+  #region Animation
+  /// <summary>Represents an animation of a vector shape.</summary>
+  /// <remarks>An animation is composed of frames. Each frame can contain one or more modifiers that morph the geometry
+  /// of the vector shape.
+  /// </remarks>
+  public sealed class Animation
+  {
+    public Animation() { }
+
+    public Animation(string name)
     {
-      get { return interpolate; }
-      set { interpolate = value; }
+      Name = name;
     }
 
-    [Browsable(false)]
-    public ReadOnlyCollection<Polygon> Polygons
+    /// <summary>Gets or sets the name of the animation. This must be non-empty and unique within the shape.</summary>
+    [Description("The name of the animation. This must be unique within the shape.")]
+    public string Name
     {
-      get { return new ReadOnlyCollection<Polygon>(polygons); }
-    }
-
-    public void AddPolygon(Polygon polygon)
-    {
-      if(polygon == null) throw new ArgumentNullException("polygon");
-      InsertPolygon(polygons.Count, polygon);
-    }
-
-    public void ClearPolygons()
-    {
-      polygons.Clear();
-    }
-
-    public void InsertPolygon(int index, Polygon polygon)
-    {
-      if(polygon == null) throw new ArgumentNullException("frame");
-      polygons.Insert(index, polygon);
-    }
-
-    public void RemovePolygon(int index)
-    {
-      polygons.RemoveAt(index);
-    }
-
-    public void Render(ref AnimationData data)
-    {
-      for(int i=0; i<polygons.Count; i++)
+      get { return name; }
+      set
       {
-        polygons[i].Render();
+        if(string.IsNullOrEmpty(value)) throw new ArgumentException("Animation name cannot be empty.");
+
+        if(!string.Equals(value, name, StringComparison.Ordinal))
+        {
+          if(shape != null)
+          {
+            shape.AssertValidAndUniqueAnimationName(value);
+          }
+
+          name = value;
+        }
       }
     }
 
-    /// <summary>The polygons that make up this animation frame.</summary>
-    List<Polygon> polygons = new List<Polygon>(4);
-    /// <summary>Determines whether this frame will be interpolated into the next frame.</summary>
-    bool interpolate = true;
-    /// <summary>Determines whether the frame has changed and cached rendering information must be recalculated.</summary>
+    /// <summary>Gets or sets the algorithm used to interpolate between frames.</summary>
+    [Description("Determines how the animation interpolates values between frames.")]
+    [DefaultValue(InterpolationMode.Linear)]
+    public InterpolationMode Interpolation
+    {
+      get { return interpolation; }
+      set { interpolation = value; }
+    }
+
+    /// <summary>Gets or sets how the animation loops, if at all.</summary>
+    [Description("Determines how the animation loops, if at all.")]
+    [DefaultValue(LoopType.NoLoop)]
+    public LoopType Looping
+    {
+      get { return looping; }
+      set { looping = value; }
+    }
+
+    /// <summary>A read-only collection of <see cref="Frame"/> objects that make up this animation.</summary>
+    [Browsable(false)]
+    public ReadOnlyCollection<Frame> Frames
+    {
+      get { return new ReadOnlyCollection<Frame>(frames); }
+    }
+
+    /// <summary>Adds a frame to the end of the animation.</summary>
+    public void AddFrame(Frame frame)
+    {
+      InsertFrame(frames.Count, frame);
+    }
+
+    /// <summary>Inserts a frame into the animation.</summary>
+    public void InsertFrame(int index, Frame frame)
+    {
+      if(frame == null) throw new ArgumentNullException();
+      if(frame.Animation != null) throw new ArgumentException("Frame already belongs to an animation.");
+      frame.Animation = this;
+      frames.Insert(index, frame);
+      InvalidateModifierData();
+    }
+
+    /// <summary>Removes a frame from the animation.</summary>
+    public void RemoveFrame(int index)
+    {
+      Frame frame = frames[index];
+      frame.Animation = null;
+      frames.RemoveAt(index);
+      InvalidateModifierData();
+    }
+
+    /// <summary>Advances an animation by a given amount of time.</summary>
+    public void Simulate(double timeDelta, ref VectorAnimationData data)
+    {
+      throw new NotImplementedException();
+    }
+
+    /// <summary>Gets or sets the <see cref="VectorShape"/> that owns this animation.</summary>
+    internal VectorShape Shape
+    {
+      get { return shape; }
+      set
+      {
+        if(value != shape)
+        {
+          shape = value;
+          InvalidateModifierData();
+        }
+      }
+    }
+
+    /// <summary>Applies data from the modifiers for the current frame to the nodes of the vector shape.</summary>
+    /// <remarks>The data applied to the nodes, which will be used to morph their rendering, will only last until the
+    /// next render, and must be reapplied after each rendering.
+    /// </remarks>
+    internal void ApplyModifiers(ref AnimationData data)
+    {
+      EnsureModifierData();
+
+      int frameIndex = data.Frame;          // get the current frame index
+      Frame frame    = frames[frameIndex];  // and the associated Frame
+      double delta;
+
+      if(frame.Interpolated) // if the frame is interpolated, calculate how far along we are in the frame from 0-1
+      {
+        delta = data.Offset / frame.FrameTime; // this is the linear offset into the frame, from 0-1
+        // if a non-catmull interpolation is applied, we can optimize by precalculating a value that can be used with
+        // linear interpolation
+        if(interpolation != InterpolationMode.Catmull)
+        {
+          delta = EngineMath.CalculateLinearDelta(delta, interpolation);
+        }
+      }
+      else
+      {
+        delta = 0;
+      }
+
+      for(int modIndex=0; modIndex<modifierData.Length; modIndex++) // for each node that has modifier data
+      {
+        Node affectedNode = modifierData[modIndex].Key;
+        ModifierData modData = modifierData[modIndex].Value;
+
+        if(modData.Polygons != null) // apply polygon changes if there are any
+        {
+          ((PolygonNode)affectedNode).tempPoly = modData.Polygons[frameIndex];
+
+          // if polygon changes were all that there were, then we're done with this node.
+          if(modData.Rotations == null && modData.Scalings == null && modData.Translations == null) continue;
+        }
+
+        // we combine the modifier values with the existing values not because there may be multiple modifiers on the
+        // same node (that possibility is already factored into the modData collection), but because there may be
+        // multiple animations being applied to the same shape
+
+        if(!frame.Interpolated) // if the frame is not interpolated, apply the full values of the frame's modifiers
+        {
+          if(modData.Rotations != null)
+          {
+            affectedNode.tempRotation += modData.Rotations[frameIndex];
+          }
+          if(modData.Scalings != null)
+          {
+            affectedNode.tempScaling.X *= modData.Scalings[frameIndex].X;
+            affectedNode.tempScaling.Y *= modData.Scalings[frameIndex].Y;
+          }
+          if(modData.Translations != null)
+          {
+            affectedNode.tempTranslation += modData.Translations[frameIndex];
+          }
+        }
+        // otherwise, if it's not catmull interpolation, we can use the linear interpolation value calculated above
+        else if(interpolation != InterpolationMode.Catmull)
+        {
+          int nextFrameIndex = GetFrameIndex(frameIndex + 1); // we'll interpolate between this frame and the next
+
+          if(modData.Rotations != null)
+          {
+            affectedNode.tempRotation +=
+                EngineMath.Interpolate(modData.Rotations[frameIndex], modData.Rotations[nextFrameIndex], delta);
+          }
+
+          if(modData.Scalings != null)
+          {
+            Vector scale = modData.Scalings[frameIndex], nextScale = modData.Scalings[nextFrameIndex];
+            affectedNode.tempScaling.X *= EngineMath.Interpolate(scale.X, nextScale.X, delta);
+            affectedNode.tempScaling.Y *= EngineMath.Interpolate(scale.Y, nextScale.Y, delta);
+          }
+
+          if(modData.Translations != null)
+          {
+            Vector translation = modData.Translations[frameIndex],
+               nextTranslation = modData.Translations[nextFrameIndex];
+            affectedNode.tempTranslation.X += EngineMath.Interpolate(translation.X, nextTranslation.X, delta);
+            affectedNode.tempTranslation.Y += EngineMath.Interpolate(translation.Y, nextTranslation.Y, delta);
+          }
+        }
+        // otherwise, it's catmull interpolation, meaning that we need values from four frames instead of two
+        else
+        {
+          // square and cube the delta value beforehand so it doesn't need to be done per value
+          double deltaSquared = delta*delta, deltaCubed = deltaSquared*delta;
+          // get the indices of the four frames to be used in the calculation
+          int prevFrame = GetFrameIndex(frameIndex-1), endFrame = GetFrameIndex(frameIndex+1),
+              nextFrame = GetFrameIndex(frameIndex+2);
+          // get the three distances (in time) between those four frames
+          double frameTime0 = frames[prevFrame].FrameTime, frameTime1 = frames[frameIndex].FrameTime,
+                 frameTime2 = frames[endFrame].FrameTime;
+
+          if(modData.Rotations != null)
+          {
+            CatmullInterpolator ci =
+                new CatmullInterpolator(modData.Rotations[prevFrame], modData.Rotations[frameIndex],
+                                        modData.Rotations[endFrame],  modData.Rotations[nextFrame],
+                                        frameTime0, frameTime1, frameTime2);
+            affectedNode.tempRotation += ci.Interpolate(delta, deltaSquared, deltaCubed);
+          }
+
+          if(modData.Scalings != null)
+          {
+            Vector scale0 = modData.Scalings[prevFrame], scale1 = modData.Scalings[frameIndex],
+                   scale2 = modData.Scalings[endFrame],  scale3 = modData.Scalings[nextFrame];
+            CatmullInterpolator ci = new CatmullInterpolator(scale0.X, scale1.X, scale2.X, scale3.X,
+                                                             frameTime0, frameTime1, frameTime2);
+            affectedNode.tempScaling.X *= ci.Interpolate(delta, deltaSquared, deltaCubed);
+            ci = new CatmullInterpolator(scale0.Y, scale1.Y, scale2.Y, scale3.Y,
+                                         frameTime0, frameTime1, frameTime2);
+            affectedNode.tempScaling.Y *= ci.Interpolate(delta, deltaSquared, deltaCubed);
+          }
+
+          if(modData.Translations != null)
+          {
+            Vector trans0 = modData.Translations[prevFrame], trans1 = modData.Translations[frameIndex],
+                   trans2 = modData.Translations[endFrame],  trans3 = modData.Translations[nextFrame];
+            CatmullInterpolator ci = new CatmullInterpolator(trans0.X, trans1.X, trans2.X, trans3.X,
+                                                             frameTime0, frameTime1, frameTime2);
+            affectedNode.tempTranslation.X += ci.Interpolate(delta, deltaSquared, deltaCubed);
+            ci = new CatmullInterpolator(trans0.Y, trans1.Y, trans2.Y, trans3.Y,
+                                         frameTime0, frameTime1, frameTime2);
+            affectedNode.tempTranslation.Y += ci.Interpolate(delta, deltaSquared, deltaCubed);
+          }
+        }
+      }
+    }
+
+    internal void InvalidateModifierData()
+    {
+      modifierData = null;
+    }
+
+    internal void OnDeserialized()
+    {
+      // reset the frames' Animation pointers, which are not serialized. this is done here instead of in an
+      // implementation of ISerializable.Deserialize because the containing shape must be fully deserialized first.
+      foreach(Frame frame in frames)
+      {
+        frame.Animation = this;
+      }
+    }
+
+    struct ModifierData
+    {
+      public ModifierData(double[] rotation, Vector[] scaling, Vector[] translation, Polygon[] polygons)
+      {
+        Rotations    = rotation;
+        Scalings     = scaling;
+        Translations = translation;
+        Polygons     = polygons;
+      }
+
+      public double[] Rotations;
+      public Vector[] Scalings, Translations;
+      public Polygon[] Polygons;
+    }
+
+    void EnsureModifierData()
+    {
+      if(modifierData != null) return;
+
+      List<KeyValuePair<Node,ModifierData>> data = new List<KeyValuePair<Node,ModifierData>>(shape.nodeMap.Count);
+
+      foreach(KeyValuePair<string,Node> de in shape.nodeMap) // for each node in the geometry
+      {
+        // these arrays will hold the effective rotation, scaling, translation, and polygon of the node for each frame
+        // after all modifications have been applied. if a node has no rotations, etc, over the course of the
+        // animation, the array will be null.
+        double[] rotation = null;
+        Vector[] scaling = null, translation = null;
+        Polygon[] polygons = null;
+
+        for(int frameIndex=0; frameIndex<frames.Count; frameIndex++)
+        {
+          // if any of the arrays are not null, propogate the value from the last frame to the current frame
+          if(rotation != null)
+          {
+            rotation[frameIndex] = rotation[frameIndex-1];
+          }
+          if(scaling != null)
+          {
+            scaling[frameIndex] = scaling[frameIndex-1];
+          }
+          if(translation != null)
+          {
+            translation[frameIndex] = translation[frameIndex-1];
+          }
+          if(polygons != null)
+          {
+            polygons[frameIndex] = polygons[frameIndex-1];
+          }
+
+          foreach(Modifier modifier in frames[frameIndex].Modifiers)
+          {
+            // if the modifier does not apply to the current node, skip it
+            if(!string.Equals(modifier.TargetNode, de.Key, StringComparison.Ordinal)) continue;
+
+            // if it's a polygon-replacement modifier, add the new polygon to the array
+            PolygonReplacer replacer = modifier as PolygonReplacer;
+            if(replacer != null)
+            {
+              if(polygons == null)
+              {
+                polygons = new Polygon[frames.Count];
+              }
+              polygons[frameIndex] = replacer.Polygon;
+            }
+
+            // otherwise, if it's a node modifier, apply its rotation, scaling, and translation
+            NodeModifier mod = modifier as NodeModifier;
+            if(mod != null)
+            {
+              if(mod.Rotation != 0)
+              {
+                if(rotation == null)
+                {
+                  rotation = new double[frames.Count];
+                }
+                rotation[frameIndex] += mod.Rotation;
+              }
+
+              if(mod.Scaling.X != 1 || mod.Scaling.Y != 1)
+              {
+                if(scaling == null)
+                {
+                  scaling = new Vector[frames.Count];
+                  // scaling is done by multiplication, so the identity value is not zero, but one. initialize to that.
+                  for(int i=0; i<=frameIndex; i++)
+                  {
+                    scaling[i] = new Vector(1, 1);
+                  }
+                }
+
+                scaling[frameIndex] =
+                  new Vector(scaling[frameIndex].X*mod.Scaling.X, scaling[frameIndex].Y*mod.Scaling.Y);
+              }
+
+              if(mod.Translation.X != 0 || mod.Translation.Y != 0)
+              {
+                if(translation == null)
+                {
+                  translation = new Vector[frames.Count];
+                }
+                translation[frameIndex] += mod.Translation;
+              }
+            }
+          }
+        }
+
+        // if any modifier of any frame referenced this node, add the modifier data
+        if(rotation != null || scaling != null || translation != null || polygons != null)
+        {
+          data.Add(new KeyValuePair<Node,ModifierData>(de.Value,
+                           new ModifierData(rotation, scaling, translation, polygons)));
+        }
+      }
+      
+      modifierData = data.ToArray();
+    }
+
+    /// <summary>Converts a possibly-invalid frame index to a valid one based on the animation's loop type.</summary>
+    int GetFrameIndex(int index)
+    {
+      if(frames.Count == 0) throw new ArgumentOutOfRangeException();
+
+      switch(looping)
+      {
+        case LoopType.NoLoop: // if no looping, clamp frame indexes
+          if(index < 0) index = 0;
+          else if(index >= frames.Count) index = frames.Count - 1;
+          break;
+
+        case LoopType.Repeat: // if repeating, wrap frame indexes
+          if(index < 0)
+          {
+            do index += frames.Count; while(index < 0);
+          }
+          else if(index >= frames.Count)
+          {
+            do index -= frames.Count; while(index >= frames.Count);
+          }
+          break;
+
+        case LoopType.PingPong: // for pingpong loops, bounce the index between the edges until it becomes valid
+          while(true)
+          {
+            if(index < 0)
+            {
+              index = -index;
+            }
+            else if(index >= frames.Count)
+            {
+              index = frames.Count - (index - frames.Count);
+            }
+            else break;
+          }
+          break;
+
+        default:
+          throw new NotImplementedException();
+      }
+
+      return index;
+    }
+
+    List<Frame> frames = new List<Frame>(4);
+    [NonSerialized] KeyValuePair<Node,ModifierData>[] modifierData;
+    [NonSerialized] VectorShape shape;
+    string name;
+    InterpolationMode interpolation;
+    LoopType looping;
   }
   #endregion
 
+  #region Frame
+  /// <summary>Represents a frame within a vector animation.</summary>
+  public sealed class Frame : AnimationFrame
+  {
+    /// <summary>Gets or sets whether this frame is interpolated into the next frame in the animation.</summary>
+    [Description("Determines whether this frame is interpolated into the next frame in the animation. Interpolation "+
+      "produces smoother animations at the cost of some performance.")]
+    [DefaultValue(true)]
+    public bool Interpolated
+    {
+      get { return interpolated; }
+      set { interpolated = value; }
+    }
+
+    [Browsable(false)]
+    public ReadOnlyCollection<Modifier> Modifiers
+    {
+      get { return new ReadOnlyCollection<Modifier>(modifiers); }
+    }
+
+    /// <summary>Adds a modifier to this frame.</summary>
+    public void AddModifier(Modifier modifier)
+    {
+      InsertModifier(modifiers.Count, modifier);
+    }
+
+    /// <summary>Inserts a modifier into this frame.</summary>
+    public void InsertModifier(int index, Modifier modifier)
+    {
+      if(modifier == null) throw new ArgumentNullException();
+      if(modifier.anim != null) throw new ArgumentException("Modifier already belongs to an animation.");
+      if(anim != null && anim.Shape != null)
+      {
+        anim.Shape.AssertValidNodeName(modifier.TargetNode);
+      }
+
+      modifier.anim = anim;
+      modifiers.Insert(index, modifier);
+      InvalidateModifierData();
+    }
+
+    /// <summary>Removes a modifier from this frame.</summary>
+    public void RemoveModifier(int index)
+    {
+      Modifier mod = modifiers[index];
+      mod.anim = null;
+      modifiers.RemoveAt(index);
+      InvalidateModifierData();
+    }
+
+    /// <summary>Gets or sets the animation that owns this frame.</summary>
+    internal Animation Animation
+    {
+      get { return anim; }
+      set
+      {
+        if(value != anim)
+        {
+          if(value != null && value.Shape != null)
+          {
+            foreach(Modifier mod in modifiers) // validate that each modifier references a valid node name
+            {
+              value.Shape.AssertValidNodeName(mod.TargetNode);
+            }
+          }
+
+          anim = value;
+
+          foreach(Modifier mod in modifiers) // update the animation pointers of all the modifiers
+          {
+            mod.anim = value;
+          }
+        }
+      }
+    }
+
+    // invalidate the animation's modifier data if this frame is changed
+    void InvalidateModifierData()
+    {
+      if(anim != null) anim.InvalidateModifierData();
+    }
+
+    /// <summary>A list containing the modifiers within this frame.</summary>
+    List<Modifier> modifiers = new List<Modifier>(4);
+    /// <summary>A reference to the animation that owns this frame.</summary>
+    [NonSerialized] Animation anim;
+    /// <summary>Whether or not this frame is interpolated into the next frame.</summary>
+    bool interpolated = true;
+  }
+  #endregion
+
+  #region Modifier
+  /// <summary>Represents a modifier within an animation frame.</summary>
+  public abstract class Modifier
+  {
+    internal Modifier() { } // disallow external subclassing
+
+    /// <summary>Gets or sets the name of the node to which this modifier applies.</summary>
+    public string TargetNode
+    {
+      get { return targetNode; }
+      set
+      {
+        if(!string.Equals(targetNode, value, StringComparison.Ordinal))
+        {
+          if(anim != null && anim.Shape != null)
+          {
+            anim.Shape.AssertValidNodeName(value);
+          }
+
+          targetNode = value;
+        }
+      }
+    }
+
+    /// <summary>Informs the animation that the modifier data has changed.</summary>
+    protected void OnModifierDataChanged()
+    {
+      if(anim != null) anim.InvalidateModifierData();
+    }
+
+    [NonSerialized] internal Animation anim;
+    string targetNode;
+  }
+
+  /// <summary>Represents a modifier that changes the rotation, scaling, or position of a node.</summary>
+  public sealed class NodeModifier : Modifier
+  {
+    /// <summary>The amount the node should be rotated, in degrees. Note that rotations outside the range of 0-360
+    /// should not be normalized.
+    /// </summary>
+    /// <remarks>-90 degrees is not the same as 270 degrees. Although the end result will be the same, the rotation
+    /// may be interpolated along the way, meaning that the direction and speed of the rotation depend on the sign
+    /// and magnitude of this value.
+    /// </remarks>
+    public double Rotation
+    {
+      get { return rotation; }
+      set
+      {
+        EngineMath.AssertValidFloat(value);
+        if(value != rotation)
+        {
+          rotation = value;
+          OnModifierDataChanged();
+        }
+      }
+    }
+
+    /// <summary>A pair of scaling factors to be applied to the node. The pair (1, 1) will result in no scaling, while
+    /// (2, 0.5) will double the size in the X dimension while halving the size in the Y dimension.
+    /// </summary>
+    public Vector Scaling
+    {
+      get { return scaling; }
+      set
+      {
+        EngineMath.AssertValidFloats(value.X, value.Y);
+        if(value != scaling)
+        {
+          scaling = value;
+          OnModifierDataChanged();
+        }
+      }
+    }
+
+    /// <summary>The distance that the node will be translated, in local coordinates.</summary>
+    public Vector Translation
+    {
+      get { return translation; }
+      set
+      {
+        EngineMath.AssertValidFloats(value.X, value.Y);
+        if(value != translation)
+        {
+          translation = value;
+          OnModifierDataChanged();
+        }
+      }
+    }
+
+    Vector scaling = new Vector(1, 1), translation;
+    double rotation;
+  }
+
+  /// <summary>Represents a modifier that replaces a node's polygon. This modifier can only be applied to
+  /// <see cref="PolygonNode"/> objects.
+  /// </summary>
+  public sealed class PolygonReplacer : Modifier
+  {
+    /// <summary>Gets a reference to the polygon that will serve as the replacement.</summary>
+    public Polygon Polygon
+    {
+      get { return poly; }
+    }
+
+    Polygon poly = new Polygon();
+  }
+  #endregion
+
+  #region Nodes
+  #region Node
+  /// <summary>Represents a node in the vector shape's hierarchical geometry.</summary>
+  public abstract class Node
+  {
+    internal Node() { } // disallow external derivation
+
+    internal Node(string name)
+    {
+      if(string.IsNullOrEmpty(name)) throw new ArgumentException("Node name cannot be empty.");
+      this.name = name;
+    }
+
+    /// <summary>Gets a collection containing the children of this node.</summary>
+    public abstract ReadOnlyCollection<Node> Children { get; }
+
+    /// <summary>Gets or sets the node's name. This must be unique within a shape.</summary>
+    public string Name
+    {
+      get { return name; }
+      set
+      {
+        if(!string.Equals(name, value, StringComparison.Ordinal))
+        {
+          if(shape != null)
+          {
+            shape.AssertValidAndUniqueNodeName(value);
+          }
+          name = value;
+        }
+      }
+    }
+
+    /// <summary>Gets or sets the origin point of the node, which is the point around which the node will be rotated.
+    /// The point is specified in local coordinates relative to the center of the node.
+    /// </summary>
+    public Point Origin
+    {
+      get { return origin; }
+      set
+      {
+        EngineMath.AssertValidFloats(origin.X, origin.Y);
+        origin = value;
+      }
+    }
+
+    /// <summary>Gets the bounding area of the node, in local coordinates.</summary>
+    public abstract Rectangle GetBounds();
+
+    /// <summary>Renders the content of this node and calls <see cref="Render"/> on its children.</summary>
+    protected abstract void RenderContent();
+
+    /// <summary>Renders this node and its children. Assumes all desired modifiers have been applied.</summary>
+    internal void Render()
+    {
+      bool pushedMatrix = false; // indicates whether we've pushed the GL matrix stack
+
+      // if scaling is applied to this node, scale the matrix and reset the scaling.
+      if(tempScaling.X != 1 || tempScaling.Y != 1)
+      {
+        if(!pushedMatrix)
+        {
+          GL.glPushMatrix();
+          pushedMatrix = true;
+        }
+
+        GL.glScaled(tempScaling.X, tempScaling.Y, 1);
+
+        tempScaling = new Vector(1, 1);
+      }
+
+      // if rotation is applied to this node, rotate the matrix and reset the rotation.
+      if(tempRotation != 0)
+      {
+        if(!pushedMatrix)
+        {
+          GL.glPushMatrix();
+          pushedMatrix = true;
+        }
+
+        // if the effective origin is the center, we can simply rotate
+        if(effectiveOrigin.X == 0 && effectiveOrigin.Y == 0)
+        {
+          GL.glRotated(tempRotation, 0, 0, 1);
+        }
+        else // otherwise we must translate there and back
+        {
+          GL.glTranslated(effectiveOrigin.X, effectiveOrigin.Y, 0);
+          GL.glRotated(tempRotation, 0, 0, 1);
+          GL.glTranslated(-effectiveOrigin.X, -effectiveOrigin.Y, 0);
+        }
+        
+        tempRotation = 0;
+      }
+
+      // if translation is applied to this node, translate the matrix and reset the translation
+      if(tempTranslation.X != 0 || tempTranslation.Y != 0)
+      {
+        if(!pushedMatrix)
+        {
+          GL.glPushMatrix();
+          pushedMatrix = true;
+        }
+
+        GL.glTranslated(tempTranslation.X, tempTranslation.Y, 0);
+        
+        tempTranslation = new Vector();
+      }
+      
+      RenderContent(); // render the content of this node with the transformations applied
+      
+      if(pushedMatrix) // then, pop the GL matrix if we pushed it
+      {
+        GL.glPopMatrix();
+      }
+    }
+
+    /// <summary>Called to recalculate the effective origins points of the nodes when the geometry changes.</summary>
+#warning RecalculateEffectiveOrigins is never called
+    internal void RecalculateEffectiveOrigins()
+    {
+      effectiveOrigin = EngineMath.GetCenterPoint(GetBounds()) + new Vector(origin);
+
+      foreach(Node node in Children)
+      {
+        node.RecalculateEffectiveOrigins();
+      }
+    }
+
+    /// <summary>A reference to the shape that owns this node.</summary>
+    [NonSerialized] internal VectorShape shape;
+
+    /// <summary>The node's name.</summary>
+    string name;
+    /// <summary>The origin point relative to the center of the geometry.</summary>
+    Point origin;
+    /// <summary>The absolute origin point in local space.</summary>
+    Point effectiveOrigin;
+
+    // these are only used temporarily, for the current render
+    [NonSerialized] internal Vector tempScaling = new Vector(1, 1), tempTranslation;
+    [NonSerialized] internal double tempRotation;
+  }
+  #endregion
+
+  #region GroupNode
+  /// <summary>Represents a node that groups other nodes together.</summary>
+  public sealed class GroupNode : Node
+  {
+    public GroupNode() { }
+    public GroupNode(string name) : base(name) { }
+
+    public override ReadOnlyCollection<Node> Children
+    {
+      get { return new ReadOnlyCollection<Node>(children); }
+    }
+
+    /// <summary>Adds a child node to this group.</summary>
+    public void AddChild(Node node)
+    {
+      InsertChild(children.Count, node);
+    }
+
+    /// <summary>Inserts a child node into this group.</summary>
+    public void InsertChild(int index, Node node)
+    {
+      if(node == null) throw new ArgumentNullException();
+      if(shape != null)
+      {
+        shape.AssertValidAndUniqueNodes(node);
+      }
+
+      children.Insert(index, node);
+
+      if(shape != null)
+      {
+        shape.OnNodeAdded(node);
+      }
+    }
+
+    /// <summary>Removes a child node from this group.</summary>
+    public void RemoveChild(int index)
+    {
+      if(shape != null)
+      {
+        shape.OnNodeRemoved(children[index]);
+      }
+      children.RemoveAt(index);
+    }
+
+    public override Rectangle GetBounds()
+    {
+      if(children.Count == 0)
+      {
+        return new Rectangle();
+      }
+      else
+      {
+        Rectangle rect = children[0].GetBounds();
+        for(int i=1; i<children.Count; i++)
+        {
+          rect.Unite(children[i].GetBounds());
+        }
+        return rect;
+      }
+    }
+
+    protected override void RenderContent()
+    {
+      for(int i=0; i<children.Count; i++)
+      {
+        children[i].Render();
+      }
+    }
+
+    /// <summary>A list of the group's child nodes.</summary>
+    List<Node> children = new List<Node>(4);
+  }
+  #endregion
+
+  #region PolygonNode
+  /// <summary>Represents a node that renders a polygon.</summary>
+  public sealed class PolygonNode : Node
+  {
+    public PolygonNode() { }
+    public PolygonNode(string name) : base(name) { }
+
+    public override ReadOnlyCollection<Node> Children
+    {
+      get { return new ReadOnlyCollection<Node>(EmptyNodeList); } // polygons are leaf nodes and never have children
+    }
+    
+    /// <summary>Gets the base <see cref="Polygon"/> that will be rendered by this node.</summary>
+    /// <remarks>The actual polygon rendered may be altered by a <see cref="PolygonReplacer"/> modifier.</remarks>
+    public Polygon Polygon
+    {
+      get { return basePoly; }
+    }
+
+    public override Rectangle GetBounds()
+    {
+      return basePoly.GetBounds();
+    }
+
+    protected override void RenderContent()
+    {
+      if(tempPoly == null)
+      {
+        tempPoly = basePoly;
+      }
+      tempPoly.Render();
+      tempPoly = null;
+    }
+
+    /// <summary>The polygon that will be used during the next render.</summary>
+    [NonSerialized] internal Polygon tempPoly;
+    /// <summary>The polygon that will be rendered by default.</summary>
+    Polygon basePoly = new Polygon();
+
+    static readonly Node[] EmptyNodeList = new Node[0];
+  }
+  #endregion
+  #endregion
+
   #region Polygon
-  public sealed class Polygon : UniqueObject // polygons can be shared between animation frames
+  public sealed class Polygon : ISerializable
   {
     #region Blending
     /// <summary>Determines whether blending is explicitly enabled for this polygon.</summary>
@@ -171,7 +1017,7 @@ public sealed class VectorAnimation : Animation
         }
       }
     }
-    
+
     /// <summary>Gets or sets whether the texture coordinates for vertices in this polygon
     /// will be autogenerated based on the <see cref="TextureOffset"/> and <see cref="TextureRotation."/>
     /// </summary>
@@ -290,7 +1136,7 @@ public sealed class VectorAnimation : Animation
         }
       }
     }
-    
+
     /// <summary>Gets or sets the texture repeat factor.</summary>
     /// <remarks>This affects how many times the texture will wrap within the local space of the polygon. Higher values
     /// will cause the texture to wrap more times. The value must be positive. The default is 1.
@@ -363,7 +1209,7 @@ public sealed class VectorAnimation : Animation
         }
       }
     }
-    
+
     /// <summary>Gets or sets the number of points into which each spline is subdivided.</summary>
     /// <remarks>Each spline curve is linearly subdivided into a number of points. These points are then passed through
     /// the LOD process to exclude the points that are unnecessary. Increasing the number of subdivision points will
@@ -392,10 +1238,17 @@ public sealed class VectorAnimation : Animation
     #endregion
 
     #region ISerializable
-    protected override void Deserialize(DeserializationStore store)
+    Type ISerializable.TypeToSerialize
     {
-      InvalidateGeometry(); // we don't save subdivision or tessellation info, so they'll need to be recalculated
-      
+      get { return GetType(); }
+    }
+
+    void ISerializable.BeforeSerialize(SerializationStore store) { }
+    void ISerializable.BeforeDeserialize(DeserializationStore store) { }
+    void ISerializable.Serialize(SerializationStore store) { }
+
+    void ISerializable.Deserialize(DeserializationStore store)
+    {
       // the vertices' Polygon pointer was not saved, so reset them here
       foreach(Vertex vertex in vertices)
       {
@@ -449,12 +1302,12 @@ public sealed class VectorAnimation : Animation
       poly.Texture               = Texture;
       poly.TextureOffset         = TextureOffset;
       poly.TextureRotation       = TextureRotation;
-      
+
       foreach(Vertex vertex in vertices)
       {
         poly.AddVertex(vertex.Clone());
       }
-      
+
       return poly;
     }
 
@@ -463,7 +1316,7 @@ public sealed class VectorAnimation : Animation
     {
       Polygon poly = Clone();
       poly.ClearVertices();
-      
+
       if(tessellationDirty) Tessellate();
       if(texCoordsDirty) GenerateTextureCoordinates();
 
@@ -476,8 +1329,28 @@ public sealed class VectorAnimation : Animation
         vertex.Split        = true;
         poly.AddVertex(vertex);
       }
-      
+
       return poly;
+    }
+
+    public Rectangle GetBounds()
+    {
+      if(vertices.Count == 0)
+      {
+        return new Rectangle();
+      }
+      else
+      {
+        double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
+        foreach(Vertex vertex in vertices)
+        {
+          if(vertex.Position.X < x1) x1 = vertex.Position.X;
+          if(vertex.Position.X > x2) x2 = vertex.Position.X;
+          if(vertex.Position.Y < y1) y1 = vertex.Position.Y;
+          if(vertex.Position.Y > y2) y2 = vertex.Position.Y;
+        }
+        return new Rectangle(x1, y1, x2-x1, y2-y1);
+      }
     }
 
     public void AddVertex(Vertex vertex)
@@ -521,7 +1394,7 @@ public sealed class VectorAnimation : Animation
       {
         GenerateTextureCoordinates();
       }
-      
+
       bool blendWasDisabled = false; // is blending currently disabled? (meaning we need to enabled it?)
 
       if(blendEnabled) // first set up the blending parameters
@@ -671,7 +1544,7 @@ public sealed class VectorAnimation : Animation
       // invalidating the geometry means the subpoints will be invalidated, including the stored texture coordinates
       InvalidateTextureCoords();
     }
-    
+
     void InvalidateTextureCoords()
     {
       if(genTextureCoords)
@@ -742,7 +1615,7 @@ public sealed class VectorAnimation : Animation
       // a value that can be multiplied to rescale the coordinates to -1/2 TextureRepeat to 1/2 TextureRepeat.
       xFactor = yFactor = textureRepeat / Math.Max(x2-x1, y2-y1);
 
-      // now take this value and apply the aspect ratio to get the scale factors for both dimensions. if the texture
+      // now take this value and apply the aspect ratio to get the scaling factors for both dimensions. if the texture
       // is twice as wide as it is high, the x coordinates will stretch half as quickly to compensate
       if(textureAspect > 1) // texture is wider than it is high
       {
@@ -753,7 +1626,7 @@ public sealed class VectorAnimation : Animation
         yFactor *= textureAspect;
       }
 
-      // scale the texture coordinates by the scale factors
+      // scale the texture coordinates by the scaling factors
       for(int i=0; i<texCoords.Length; i++)
       {
         texCoords[i].X *= xFactor;
@@ -768,7 +1641,7 @@ public sealed class VectorAnimation : Animation
       {
         subPoints[i].TextureCoord = texCoords[i] + offset;
       }
-      
+
       texCoordsDirty = false;
     }
 
@@ -781,13 +1654,13 @@ public sealed class VectorAnimation : Animation
       public Point Position, TextureCoord;
       public Color Color;
     }
-    
+
     struct SubdivisionState
     {
       public SubPoint FirstPoint;
       public SubPoint BasePoint, PrevPoint;
-      public double   PrevAngle, Deviation;
-      public int      PointsConsidered;
+      public double PrevAngle, Deviation;
+      public int PointsConsidered;
     }
 
     /// <summary>Takes a <see cref="SubPoint"/> and adds to the subdivision array if it is necessary for the given LOD.</summary>
@@ -810,7 +1683,7 @@ public sealed class VectorAnimation : Animation
         double newAngle = Math2D.AngleBetween(subState.PrevPoint.Position, subPoint.Position);
         // get the difference between that angle and the last angle
         double delta = newAngle - subState.PrevAngle;
-        
+
         // if the delta's magnitude is greater than 180 degrees (pi), it's better to consider it as a smaller change
         // in the opposite direction. for instance, a 350 degree change is considered to be a -10 degree change.
         // this makes sure that -10 and 350 are treated as identical deltas.
@@ -856,7 +1729,7 @@ public sealed class VectorAnimation : Animation
         }
         subPoints = newPoints;
       }
-      
+
       subPoints[numSubPoints++] = subPoint; // add the point and increment the point count
     }
 
@@ -892,14 +1765,14 @@ public sealed class VectorAnimation : Animation
         if(offset < 0) return startPoint;            // if the offset is negative, we know it's out of bounds.
         int rightLength = vertices.Count-startPoint; // calculate the number of points in the right group of indices.
         if(offset < rightLength) return startPoint + offset; // if 'offset' is fewer, then it hasn't wrapped around and
-                                                             // the index is the 'startPoint' plus the 'offset'
+        // the index is the 'startPoint' plus the 'offset'
         offset -= rightLength;                    // otherwise it has wrapped, so subtract the number of points on
-                                                  // the right side to rebase the offset from the 0-based left side.
+        // the right side to rebase the offset from the 0-based left side.
         if(offset > endPoint) return endPoint;    // if the offset is greater than the index of the endpoint, clamp it.
         return offset;                            // otherwise, the offset is valid, so return it as an index.
       }
     }
-    
+
     /// <summary>Gets a control point index for a closed spline given the start point of the current segment and the
     /// offset into that segment.
     /// </summary>
@@ -966,7 +1839,7 @@ public sealed class VectorAnimation : Animation
             // to create a clamped b-spline, we pretend that there are three of each first and last control point
             for(int i=-2; i < splineLength; i++)
             {
-              int i0 = GetClampedIndex(  i, breakPoint, lastEdge), i1 = GetClampedIndex(i+1, breakPoint, lastEdge),
+              int i0 = GetClampedIndex(i, breakPoint, lastEdge), i1 = GetClampedIndex(i+1, breakPoint, lastEdge),
                   i2 = GetClampedIndex(i+2, breakPoint, lastEdge), i3 = GetClampedIndex(i+3, breakPoint, lastEdge);
               SubdivideSegment(i0, i1, i2, i3);
             }
@@ -975,7 +1848,7 @@ public sealed class VectorAnimation : Animation
           breakPoint = lastEdge; // advance 'breakPoint' to the next broken point to continue the loop
         } while(examined < vertices.Count);
       }
-      
+
       FlushSubPoints(); // finally, notify the LOD system that we are done so it can add any last points.
     }
 
@@ -998,6 +1871,15 @@ public sealed class VectorAnimation : Animation
                               b2*vertices[i2].Position.X + b3*vertices[i3].Position.X;
         subPoint.Position.Y = b0*vertices[i0].Position.Y + b1*vertices[i1].Position.Y +
                               b2*vertices[i2].Position.Y + b3*vertices[i3].Position.Y;
+
+        // if we're not autogenerating texture coordinates, we'll interpolate the user-supplied ones
+        if(!genTextureCoords)
+        {
+          subPoint.TextureCoord.X = b0*vertices[i0].TextureCoord.X + b1*vertices[i1].TextureCoord.X +
+                                    b2*vertices[i2].TextureCoord.X + b3*vertices[i3].TextureCoord.X;
+          subPoint.TextureCoord.Y = b0*vertices[i0].TextureCoord.Y + b1*vertices[i1].TextureCoord.Y +
+                                    b2*vertices[i2].TextureCoord.Y + b3*vertices[i3].TextureCoord.Y;
+        }
 
         if(shadeModel == ShadeModel.Flat) // if it's a flat shade model, we don't need to interpolate the color
         {
@@ -1158,7 +2040,7 @@ public sealed class VectorAnimation : Animation
     /// <summary>Determines whether texture coordinates and aspect ratio will be autogenerated.</summary>
     bool genTextureCoords = true, genTextureAspect = true;
     /// <summary>Determines whether the cached tessellation or subdivision information needs to be recalculated.</summary>
-    [NonSerialized] bool tessellationDirty, texCoordsDirty;
+    [NonSerialized] bool tessellationDirty = true, texCoordsDirty = true;
   }
   #endregion
 
@@ -1235,6 +2117,9 @@ public sealed class VectorAnimation : Animation
 
     [NonSerialized] internal Polygon Polygon;
 
+    /// <summary>Called when a change was made to the vertex that would invalidate the cached geometric information
+    /// held by the owning polygon.
+    /// </summary>
     void InvalidateGeometry()
     {
       if(Polygon != null) Polygon.InvalidateGeometry();
@@ -1242,58 +2127,463 @@ public sealed class VectorAnimation : Animation
 
     /// <summary>This vertex's position within the polygon.</summary>
     Point position;
-    /// <summary>This vertex's texture coordinate. It will only be used if a texture is specified in the parent
-    /// polygon.
+    /// <summary>
+    /// This vertex's texture coordinate. It will only be used if a texture is specified in the parent polygon.
     /// </summary>
     Point textureCoord;
     /// <summary>The vertex's color.</summary>
     Color color;
+    /// <summary>Whether this vertex splits the spline shape.</summary>
     bool split;
   }
   #endregion
 
+  /// <summary>Gets or sets the root node in the geometry of this vector shape.</summary>
+  public Node RootNode
+  {
+    get { return rootNode; }
+    set
+    {
+      if(value != rootNode)
+      {
+        if(value != null)
+        {
+          AssertValidNodeTree(value);
+        }
+
+        if(rootNode != null)
+        {
+          OnNodeRemoved(rootNode);
+        }
+
+        rootNode = value;
+
+        if(value != null)
+        {
+          OnNodeAdded(value);
+        }
+      }
+    }
+  }
+
+  /// <summary>Gets a read-only collection of the animations in this shape.</summary>
+  public ICollection<Animation> Animations
+  {
+    get
+    {
+      return anims == null ? (ICollection<Animation>)new ReadOnlyCollection<Animation>(EmptyAnimationList)
+                           : anims.Values;
+    }
+  }
+
+  /// <summary>Adds a new animation to the vector shape. The animation must have a unique name.</summary>
+  public void AddAnimation(Animation animation)
+  {
+    if(animation == null) throw new ArgumentNullException();
+    if(animation.Shape != null) throw new ArgumentException("Animation already belongs to a shape.");
+
+    if(anims == null)
+    {
+      anims = new Dictionary<string,Animation>(4);
+    }
+    else
+    {
+      AssertValidAndUniqueAnimationName(animation.Name);
+    }
+
+    anims.Add(animation.Name, animation);
+    animation.Shape = this;
+  }
+
+  /// <summary>Gets an animation given its name. The animation must exist or an exception will occur.</summary>
+  public Animation GetAnimation(string animationName)
+  {
+    return anims[animationName];
+  }
+
+  /// <summary>Removes an animation, given its name.</summary>
+  public void RemoveAnimation(string animationName)
+  {
+    if(anims != null)
+    {
+      Animation anim;
+      if(anims.TryGetValue(animationName, out anim))
+      {
+        anim.Shape = null;
+        anims.Remove(animationName);
+        if(anims.Count == 0) // free the list if the count drops to zero
+        {
+          anims = null;
+        }
+      }
+    }
+  }
+
+  /// <summary>Attempts to retrieve an animation given its name.</summary>
+  public bool TryGetAnimation(string animationName, out Animation animation)
+  {
+    if(anims == null)
+    {
+      animation = null;
+      return false;
+    }
+    else
+    {
+      return anims.TryGetValue(animationName, out animation);
+    }
+  }
+
+  protected override void Deserialize(DeserializationStore store)
+  {
+    base.Deserialize(store);
+    
+    if(rootNode != null) // restore the node map and the nodes' shape pointers, neither of which are serialized
+    {
+      OnNodeAdded(rootNode);
+    }
+    
+    if(anims != null)
+    {
+      foreach(Animation anim in anims.Values)
+      {
+        anim.Shape = this;     // restore the animations' Shape pointer, which was not serialized
+        anim.OnDeserialized(); // and invoke OnDeserialized(), so the animations can restore necessary pointers
+      }
+    }
+  }
+
+  /// <summary>Renders this shape. Assumes all desired modifiers have been applied to the nodes.</summary>
+  internal void Render()
+  {
+    if(rootNode != null)
+    {
+      rootNode.Render();
+    }
+  }
+
+  internal void AssertValidAndUniqueAnimationName(string animationName)
+  {
+    if(anims.ContainsKey(animationName)) throw new ArgumentException("Animation name must be unique within a shape.");
+  }
+
+  internal void AssertValidAndUniqueNodeName(string name)
+  {
+    AssertValidAndUniqueNodeName(name, nodeMap);
+  }
+  
+  internal void AssertValidAndUniqueNodes(Node node)
+  {
+    AssertValidAndUniqueNodes(node, nodeMap);
+  }
+
+  internal void AssertValidNodeName(string name)
+  {
+    if(name == null || !nodeMap.ContainsKey(name)) throw new ArgumentException("Node name '"+name+"' does not exist.");
+  }
+
+  internal void AssertValidNodeTree(Node node)
+  {
+    AssertValidAndUniqueNodes(node, new Dictionary<string,Node>());
+  }
+
+  internal void OnNodeAdded(Node node)
+  {
+    node.shape = this; // update the node's shape pointer
+    nodeMap.Add(node.Name, node); // add it to the node map
+    
+    foreach(Node child in node.Children) // and do the same with its descendants
+    {
+      OnNodeAdded(child);
+    }
+  }
+  
+  internal void OnNodeRemoved(Node node)
+  {
+    node.shape = null; // clear the node's shape pointer
+    nodeMap.Remove(node.Name); // remove it from the node map
+    
+    foreach(Node child in node.Children) // and do the same with its descendants
+    {
+      OnNodeRemoved(child);
+    }
+  }
+
+  /// <summary>A possibly-null dictionary containing the animations within this shape.</summary>
+  Dictionary<string,Animation> anims;
+  /// <summary>A dictionary node names to node objects.</summary>
+  [NonSerialized] Dictionary<string,Node> nodeMap = new Dictionary<string,Node>();
+  /// <summary>The root node of the vector shape hierarchy.</summary>
+  Node rootNode;
+
+  static void AssertValidAndUniqueNodeName(string name, Dictionary<string,Node> nodeMap)
+  {
+    if(string.IsNullOrEmpty(name)) throw new ArgumentException("Node name cannot be empty.");
+    if(nodeMap.ContainsKey(name)) throw new ArgumentException("Node name '"+name+"' must be unique within a shape.");
+  }
+
+  static void AssertValidAndUniqueNodes(Node node, Dictionary<string,Node> nodeMap)
+  {
+    AssertValidAndUniqueNodeName(node.Name, nodeMap);
+    if(node.shape != null) throw new ArgumentException("Node already belongs to a shape.");
+
+    foreach(Node child in node.Children)
+    {
+      AssertValidAndUniqueNodes(child, nodeMap);
+    }
+  }
+
+  static readonly Animation[] EmptyAnimationList = new Animation[0];
+}
+#endregion
+
+#region VectorAnimationData
+/// <summary>Represents the animation state of a vector animation.</summary>
+public struct VectorAnimationData
+{
+  public VectorAnimationData(string animationName)
+  {
+    AnimationName = animationName;
+    Completed     = null;
+    Animation     = null;
+    AnimationData = new AnimationData();
+  }
+
+  /// <summary>Raised whenever the animation completes, including when it loops.</summary>
+  public event VectorAnimationEventHandler Completed;
+
+  /// <summary>The animation's name.</summary>
+  public string AnimationName;
+  /// <summary>The <see cref="AnimationData"/> containing the position within the animation.</summary>
+  public AnimationData AnimationData;
+  
+  /// <summary>A pointer to the actual animation object.</summary>
+  [NonSerialized] internal VectorShape.Animation Animation;
+}
+#endregion
+
+#region VectorObject
+/// <summary>A scene object that renders a <see cref="VectorShape"/>, possibly with one more animations applied.</summary>
+/// <remarks>Multiple animations can be applied to a vector object, to modify the vector shape. The order in which
+/// these animations are applied may matter, so the order can be specified if necessary. A given animation can only be
+/// added to the object once, however. Adding an animation that already exists on the object will replace that
+/// animation.
+/// </remarks>
+public class VectorObject : SceneObject
+{
+  /// <summary>Gets the <see cref="VectorShape"/> referenced by <see cref="ShapeName"/>.</summary>
   [Browsable(false)]
-  public ReadOnlyCollection<Frame> Frames
+  public VectorShape Shape
   {
-    get { return new ReadOnlyCollection<Frame>(frames); }
+    get { return shapeHandle == null ? null : shapeHandle.Resource; }
   }
 
-  public void AddFrame(Frame frame)
+  /// <summary>Gets or sets the name of the animation displayed in this animated object.</summary>
+  [Category("Shape")]
+  [Description("The name of the shape resource displayed in this vector object.")]
+  [DefaultValue(null)]
+  public string ShapeName
   {
-    if(frame == null) throw new ArgumentNullException("frame");
-    frames.Add(frame);
+    get { return shapeName; }
+    set
+    {
+      if(!string.Equals(value, shapeName, System.StringComparison.Ordinal))
+      {
+        shapeName = value;
+
+        if(string.IsNullOrEmpty(shapeName))
+        {
+          shapeHandle = null;
+        }
+        else
+        {
+          shapeHandle = Engine.GetResource<VectorShape>(shapeName);
+        }
+        
+        if(appliedAnims != null && Shape != null)
+        {
+          for(int i=0; i<appliedAnims.Count; i++)
+          {
+            VectorAnimationData data = appliedAnims[i];
+            if(!Shape.TryGetAnimation(data.AnimationName, out data.Animation))
+            {
+              appliedAnims.Clear();
+              throw new ArgumentException("No such animation in shape: "+data.AnimationName);
+            }
+            appliedAnims[i] = data;
+          }
+        }
+      }
+    }
   }
 
-  public void ClearFrames()
+  #region Applied animations
+  /// <summary>Gets a read-only collection of the animations currently applied to this object.</summary>
+  public ReadOnlyCollection<VectorAnimationData> Animations
   {
-    frames.Clear();
+    get
+    {
+      return new ReadOnlyCollection<VectorAnimationData>(
+                   appliedAnims == null ? (IList<VectorAnimationData>)EmptyAnimationList : appliedAnims);
+    }
   }
 
-  public void InsertFrame(int index, Frame frame)
+  /// <summary>Adds an animation to the object, given its name. The animation will play from the beginning.</summary>
+  /// <remarks>If the named animation is already playing, it will be removed first.</remarks>
+  public void AddAnimation(string animationName)
   {
-    if(frame == null) throw new ArgumentNullException("frame");
-    frames.Insert(index, frame);
+    InsertAnimation(appliedAnims == null ? 0 : appliedAnims.Count, animationName);
   }
 
-  public void RemoveFrame(int index)
+  /// <summary>Adds an animation to the object, given a <see cref="VectorAnimationData"/> object.</summary>
+  /// <remarks>If the named animation is already playing, it will be removed first.</remarks>
+  public void AddAnimation(VectorAnimationData data)
   {
-    frames.RemoveAt(index);
+    InsertAnimation(appliedAnims == null ? 0 : appliedAnims.Count, data);
   }
 
-  protected internal override void Render(ref AnimationData data)
+  /// <summary>Removes all animations from the object.</summary>
+  public void ClearAnimations()
   {
-    int frame = EngineMath.Clip(data.Frame, 0, Frames.Count-1);
-    if(frame == -1) return;
-    frames[frame].Render(ref data);
+    if(appliedAnims != null) appliedAnims.Clear();
   }
 
-  protected internal override void Simulate(ref AnimationData data, double timeDelta)
+  /// <summary>Inserts an animation, given its name.</summary>
+  /// <remarks>If the named animation is already playing, it will be removed first.</remarks>
+  public void InsertAnimation(int index, string animationName)
   {
-    throw new NotImplementedException();
+    InsertAnimation(index, new VectorAnimationData(animationName));
   }
 
-  /// <summary>The frames that make up this animation.</summary>
-  List<Frame> frames = new List<Frame>(4);
+  /// <summary>Inserts an animation to the object, given a <see cref="VectorAnimationData"/> object.</summary>
+  /// <remarks>If the named animation is already playing, it will be removed first.</remarks>
+  public void InsertAnimation(int index, VectorAnimationData data)
+  {
+    if(Shape == null)
+    {
+      if(string.IsNullOrEmpty(data.AnimationName)) throw new ArgumentException("Animation name cannot be empty.");
+      data.Animation = null;
+    }
+    else
+    {
+      if(!Shape.TryGetAnimation(data.AnimationName, out data.Animation))
+      {
+        throw new ArgumentException("No such animation: "+data.AnimationName);
+      }
+    }
+    
+    if(appliedAnims == null)
+    {
+      appliedAnims = new List<VectorAnimationData>(4);
+    }
+    else
+    {
+      // first remove the existing animation if it already exists.
+      for(int i=0; i<appliedAnims.Count; i++)
+      {
+        if(string.Equals(data.AnimationName, appliedAnims[i].AnimationName, StringComparison.Ordinal))
+        {
+          // but if the user wants to insert the animation into the same slot as where it currently exists, we can
+          // simply replace the value in the array and return.
+          if(i == index)
+          {
+            appliedAnims[i] = data;
+            return;
+          }
+          else
+          {
+            appliedAnims.RemoveAt(i);
+            break;
+          }
+        }
+      }
+    }
+
+    appliedAnims.Insert(index, data);
+  }
+
+  /// <summary>Removes a playing animation, given its name.</summary>
+  public void RemoveAnimation(string animationName)
+  {
+    if(appliedAnims != null)
+    {
+      for(int i=0; i<appliedAnims.Count; i++)
+      {
+        if(string.Equals(animationName, appliedAnims[i].AnimationName, StringComparison.Ordinal))
+        {
+          appliedAnims.RemoveAt(i);
+          break;
+        }
+      }
+    }
+  }
+  #endregion
+
+  #region Serialization and Deserialization
+  protected override void Deserialize(DeserializationStore store)
+  {
+    base.Deserialize(store);
+
+    if(!string.IsNullOrEmpty(shapeName)) // reload the shape handle if we had one before
+    {
+      shapeHandle = Engine.GetResource<VectorShape>(shapeName);
+    }
+  }
+  #endregion
+
+  protected override void RenderContent()
+  {
+    if(Shape == null)
+    {
+      base.RenderContent(); // use default rendering if there's no shape set
+    }
+    else
+    {
+      // if animations are being applied, invoke them to temporarily modify the nodes in the shape
+      if(appliedAnims != null)
+      {
+        for(int i=0; i<appliedAnims.Count; i++)
+        {
+          VectorAnimationData data = appliedAnims[i];
+          if(data.Animation == null)
+          {
+            data.Animation = Shape.GetAnimation(data.AnimationName);
+          }
+          data.Animation.ApplyModifiers(ref data.AnimationData);
+        }
+      }
+
+      Shape.Render(); // then render the shape
+    }
+  }
+
+  protected internal override void Simulate(double timeDelta)
+  {
+    base.Simulate(timeDelta);
+
+    // if animations and a shape are applied, update the animation info
+    if(appliedAnims != null && Shape != null)
+    {
+      for(int i=0; i<appliedAnims.Count; i++)
+      {
+        VectorAnimationData data = appliedAnims[i];
+        if(data.Animation == null)
+        {
+          data.Animation = Shape.GetAnimation(data.AnimationName);
+        }
+        data.Animation.Simulate(timeDelta, ref data);
+        appliedAnims[i] = data;
+      }
+    }
+  }
+
+  /// <summary>The object's current shape.</summary>
+  [NonSerialized] ResourceHandle<VectorShape> shapeHandle;
+  /// <summary>The name of the object's shape.</summary>
+  string shapeName;
+  /// <summary>An list of the currently-applied animations.</summary>
+  List<VectorAnimationData> appliedAnims;
+  
+  static readonly VectorAnimationData[] EmptyAnimationList = new VectorAnimationData[0];
 }
 #endregion
 

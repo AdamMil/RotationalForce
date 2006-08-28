@@ -28,20 +28,20 @@ public struct CatmullInterpolator
   /// <summary>Creates a Catmull-Rom interpolator with four sample points and equal timing between the points.</summary>
   /// <remarks>The interpolation will occur from <paramref name="startValue"/> to <paramref name="endValue"/>.</remarks>
   public CatmullInterpolator(double prevValue, double startValue, double endValue, double nextValue)
-    : this(prevValue, startValue, endValue, nextValue, 0, 1, 2, 3) { }
+    : this(prevValue, startValue, endValue, nextValue, 1, 1, 1) { }
 
-  /// <summary>Creates a Catmull-Rom interpolator with four sample points and arbitrary timing between the points.</summary>
-  /// <remarks>The interpolation will occur from <paramref name="startValue"/> to <paramref name="endValue"/>. Each
-  /// sample time must be greater than the previous sample time. That is, the following must be true:
-  /// <c>prevTime &lt; startTime &lt; endTime &lt; nextTime</c>.
+  /// <summary>Creates a Catmull-Rom interpolator with four sample points and arbitrary distance between the points.</summary>
+  /// <remarks>The interpolation will occur from <paramref name="startValue"/> to <paramref name="endValue"/>. The
+  /// three distance parameters are the relative distances between the sample points used to construct the four sample
+  /// values. The distance can be in time, space, or any other measure.
   /// </remarks>
   public CatmullInterpolator(double prevValue, double startValue, double endValue, double nextValue,
-                             double prevTime,  double startTime,  double endTime,  double nextTime)
+                             double prevStartDist, double startEndDist, double endNextDist)
   {
-    double tanTmp = (endValue-startValue) / (endTime-startTime);
+    double tanTmp = (endValue-startValue) / startEndDist;
 
-    this.tanStart   = (((startValue - prevValue) / (startTime - prevTime)) + tanTmp) * 0.5;
-    this.tanEnd     = (tanTmp + ((nextValue - endValue) / (nextTime - endTime))) * 0.5;
+    this.tanStart   = (((startValue - prevValue) / prevStartDist) + tanTmp) * 0.5;
+    this.tanEnd     = (tanTmp + ((nextValue - endValue) / endNextDist)) * 0.5;
     this.startValue = startValue;
     this.endValue   = endValue;
   }
@@ -148,38 +148,7 @@ public static class EngineMath
     return new Point(rect.X + rect.Width/2, rect.Y + rect.Height/2);
   }
 
-  // TODO: these can probably be optimized by only interpolating values that aren't already equal
-  #region Interpolate
-  public static Rectangle Interpolate(ref Rectangle start, ref Rectangle end, double delta, InterpolationMode mode)
-  {
-    delta = CalculateDelta(delta, mode);
-    return new Rectangle(Interpolate(start.X, end.X, delta), Interpolate(start.Y, end.Y, delta),
-                         Interpolate(start.Width, end.Width, delta), Interpolate(start.Height, end.Height, delta));
-  }
-
-  public static Point Interpolate(ref Point start, ref Point end, double delta, InterpolationMode mode)
-  {
-    delta = CalculateDelta(delta, mode);
-    return new Point(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
-  }
-
-  public static Vector Interpolate(ref Vector start, ref Vector end, double delta, InterpolationMode mode)
-  {
-    delta = CalculateDelta(delta, mode);
-    return new Vector(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
-  }
-
-  public static double Interpolate(double start, double end, double delta, InterpolationMode mode)
-  {
-    return Interpolate(start, end, CalculateDelta(delta, mode));
-  }
-
-  static double Interpolate(double start, double end, double delta)
-  {
-    return start + (end-start)*delta; // linear interpolatation
-  }
-  
-  static double CalculateDelta(double linearDelta, InterpolationMode mode)
+  public static double CalculateLinearDelta(double linearDelta, InterpolationMode mode)
   {
     if(linearDelta < 0) return 0;
     else if(linearDelta >= 1) return 1;
@@ -215,11 +184,42 @@ public static class EngineMath
 
     return linearDelta;
   }
+
+  // TODO: these can possibly be optimized by only interpolating values that aren't already equal
+  #region Interpolate
+  public static Rectangle Interpolate(ref Rectangle start, ref Rectangle end, double delta, InterpolationMode mode)
+  {
+    delta = CalculateLinearDelta(delta, mode);
+    return new Rectangle(Interpolate(start.X, end.X, delta), Interpolate(start.Y, end.Y, delta),
+                         Interpolate(start.Width, end.Width, delta), Interpolate(start.Height, end.Height, delta));
+  }
+
+  public static Point Interpolate(ref Point start, ref Point end, double delta, InterpolationMode mode)
+  {
+    delta = CalculateLinearDelta(delta, mode);
+    return new Point(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
+  }
+
+  public static Vector Interpolate(ref Vector start, ref Vector end, double delta, InterpolationMode mode)
+  {
+    delta = CalculateLinearDelta(delta, mode);
+    return new Vector(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
+  }
+
+  public static double Interpolate(double start, double end, double delta, InterpolationMode mode)
+  {
+    return Interpolate(start, end, CalculateLinearDelta(delta, mode));
+  }
+
+  public static double Interpolate(double start, double end, double delta)
+  {
+    return start + (end-start)*delta; // linear interpolatation
+  }
   #endregion
 
   public static double InterpolateNormalizedAngle(double start, double end, double delta, InterpolationMode mode)
   {
-    delta = CalculateDelta(delta, mode);
+    delta = CalculateLinearDelta(delta, mode);
 
     if(Math.Abs(start - end) <= 180)
     {

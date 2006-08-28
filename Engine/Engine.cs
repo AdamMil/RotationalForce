@@ -71,18 +71,17 @@ public abstract class Resource : UniqueObject, IDisposable
 
 #region ResourceHandle
 /// <summary>This class exists to support collections of resource handles that point to arbitrary resources.
-/// This class should not need to be used directly by user code. Do not derive from this class to create a new resource
-/// handle. Use <see cref="ResourceHandle"/> instead.
+/// This class should not need to be used directly by user code. Use <see cref="ResourceHandle"/> instead.
 /// </summary>
 public abstract class ResourceHandleBase : NonSerializableObject
 {
+  internal ResourceHandleBase() { } // prevent external derivation
   internal abstract void ClearResource();
   internal abstract void DisposeResource();
   internal abstract Resource GetResource();
 }
 
-/// <summary>Represents a handle to a named resource. All concrete resource handles should be instances of this class.
-/// </summary>
+/// <summary>Represents a handle to a named resource.</summary>
 /// <remarks>The purpose of this class is to allow the engine to change the resource and have objects update
 /// automatically. The objects hold a reference to the <see cref="ResourceHandle"/> rather than the resource, and
 /// the engine will take care of updating the handles.
@@ -90,7 +89,7 @@ public abstract class ResourceHandleBase : NonSerializableObject
 public sealed class ResourceHandle<T> : ResourceHandleBase where T : Resource
 {
   /// <param name="resource">The initial resource value.</param>
-  internal ResourceHandle(T resource)
+  internal ResourceHandle(T resource) // prevent external creation
   {
     SetResource(resource);
   }
@@ -135,13 +134,17 @@ public sealed class ResourceHandle<T> : ResourceHandleBase where T : Resource
 #endregion
 
 #region ResourceKeyAttribute
+/// <summary>Used to mark classes that form groups of named resources.</summary>
+/// <remarks>As an example, the abstract <see cref="ImageMap"/> class is marked with this attribute, and the
+/// concrete classes <see cref="FullImageMap"/> and <see cref="TiledImageMap"/> derive from it. The effect is that
+/// all image maps, regardless of which concrete type they are, can be accessed through the base type. Otherwise, the
+/// different types of image maps would not be grouped together and could not be retrieved without knowing their types.
+/// </remarks>
 [AttributeUsage(AttributeTargets.Class, Inherited=false)]
 public class ResourceKeyAttribute : Attribute
 {
 }
 #endregion
-
-enum ResourceType { Image, Animation }
 
 #region Engine
 public static class Engine
