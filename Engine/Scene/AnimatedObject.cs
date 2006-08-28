@@ -10,9 +10,7 @@ public enum LoopType : byte
   /// <summary>The animation does not loop, and stops at the end.</summary>
   NoLoop,
   /// <summary>The animation restarts from the beginning after it reaches the end.</summary>
-  Forward,
-  /// <summary>The animation plays backwards and restarts at the end after reaching the beginning.</summary>
-  Reverse,
+  Repeat,
   /// <summary>The animation plays forwards and backwards, changing direction when it reaches the beginning or end.</summary>
   PingPong
 }
@@ -23,10 +21,12 @@ public struct AnimationData
   public double Offset;
   /// <summary>The zero-based index of the frame we're currently on.</summary>
   public int Frame;
-  /// <summary>Indicates whether the animation has completed. If the animation loops, this indicates that the animation
-  /// has begun to loop. The flag can be cleared at any time and checked again for another completion notification.
+  /// <summary>Indicates how many times the animation has completed. If the animation ends or loops, this counter will
+  /// be incremented. This counter can be cleared at any time without affecting the animation.
   /// </summary>
-  public bool Complete;
+  public ushort Complete;
+  /// <summary>Indicates whether the animation is currently running in reverse.</summary>
+  public bool Reverse;
 }
 
 #region Animation
