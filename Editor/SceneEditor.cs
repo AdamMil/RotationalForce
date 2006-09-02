@@ -39,6 +39,7 @@ public class SceneEditor : Form, IEditorForm
   private ToolStripMenuItem editPasteMenuItem;
   private ToolStripMenuItem editUnloadTraceItem;
   private ToolStripMenuItem resetPropertyValueMenuItem;
+  private TreeView treeView;
   private RenderPanel renderPanel;
 
   public SceneEditor()
@@ -346,7 +347,7 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.SplitContainer mainSplitter;
     System.Windows.Forms.ListViewGroup listViewGroup1 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Shapes", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
     System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     System.Windows.Forms.ContextMenuStrip propertyGridMenu;
@@ -360,11 +361,12 @@ public class SceneEditor : Form, IEditorForm
     this.objectList = new RotationalForce.Editor.ToolboxList();
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
-    this.toolBar = new System.Windows.Forms.ToolStrip();
     this.resetPropertyValueMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+    this.toolBar = new System.Windows.Forms.ToolStrip();
     this.statusBar = new System.Windows.Forms.StatusStrip();
     this.mousePosLabel = new System.Windows.Forms.ToolStripStatusLabel();
     this.layerLabel = new System.Windows.Forms.ToolStripStatusLabel();
+    this.treeView = new System.Windows.Forms.TreeView();
     selectTool = new System.Windows.Forms.ToolStripButton();
     layerTool = new System.Windows.Forms.ToolStripButton();
     cameraTool = new System.Windows.Forms.ToolStripButton();
@@ -384,8 +386,8 @@ public class SceneEditor : Form, IEditorForm
     this.rightPane.Panel2.SuspendLayout();
     this.rightPane.SuspendLayout();
     this.objToolBar.SuspendLayout();
-    this.toolBar.SuspendLayout();
     propertyGridMenu.SuspendLayout();
+    this.toolBar.SuspendLayout();
     this.statusBar.SuspendLayout();
     this.SuspendLayout();
     // 
@@ -555,6 +557,7 @@ public class SceneEditor : Form, IEditorForm
     // 
     // rightPane.Panel1
     // 
+    this.rightPane.Panel1.Controls.Add(this.treeView);
     this.rightPane.Panel1.Controls.Add(this.objToolBar);
     this.rightPane.Panel1.Controls.Add(this.objectList);
     // 
@@ -625,20 +628,6 @@ public class SceneEditor : Form, IEditorForm
     this.propertyGrid.TabIndex = 0;
     this.propertyGrid.Visible = false;
     // 
-    // toolBar
-    // 
-    this.toolBar.AutoSize = false;
-    this.toolBar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
-    this.toolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            selectTool,
-            layerTool,
-            cameraTool});
-    this.toolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
-    this.toolBar.Location = new System.Drawing.Point(0, 0);
-    this.toolBar.Name = "toolBar";
-    this.toolBar.Size = new System.Drawing.Size(168, 24);
-    this.toolBar.TabIndex = 1;
-    // 
     // propertyGridMenu
     // 
     propertyGridMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
@@ -653,6 +642,20 @@ public class SceneEditor : Form, IEditorForm
     this.resetPropertyValueMenuItem.Size = new System.Drawing.Size(131, 22);
     this.resetPropertyValueMenuItem.Text = "Reset value";
     this.resetPropertyValueMenuItem.Click += new System.EventHandler(this.resetPropertyValueMenuItem_Click);
+    // 
+    // toolBar
+    // 
+    this.toolBar.AutoSize = false;
+    this.toolBar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
+    this.toolBar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            selectTool,
+            layerTool,
+            cameraTool});
+    this.toolBar.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.Flow;
+    this.toolBar.Location = new System.Drawing.Point(0, 0);
+    this.toolBar.Name = "toolBar";
+    this.toolBar.Size = new System.Drawing.Size(168, 24);
+    this.toolBar.TabIndex = 1;
     // 
     // statusBar
     // 
@@ -677,6 +680,18 @@ public class SceneEditor : Form, IEditorForm
     this.layerLabel.Size = new System.Drawing.Size(47, 17);
     this.layerLabel.Text = "Layer: 0";
     // 
+    // treeView
+    // 
+    this.treeView.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+    this.treeView.HideSelection = false;
+    this.treeView.Location = new System.Drawing.Point(2, 2);
+    this.treeView.Name = "treeView";
+    this.treeView.Size = new System.Drawing.Size(161, 492);
+    this.treeView.TabIndex = 0;
+    this.treeView.Visible = false;
+    // 
     // SceneEditor
     // 
     this.ClientSize = new System.Drawing.Size(772, 523);
@@ -700,9 +715,9 @@ public class SceneEditor : Form, IEditorForm
     this.rightPane.ResumeLayout(false);
     this.objToolBar.ResumeLayout(false);
     this.objToolBar.PerformLayout();
+    propertyGridMenu.ResumeLayout(false);
     this.toolBar.ResumeLayout(false);
     this.toolBar.PerformLayout();
-    propertyGridMenu.ResumeLayout(false);
     this.statusBar.ResumeLayout(false);
     this.statusBar.PerformLayout();
     this.ResumeLayout(false);
@@ -2184,6 +2199,16 @@ public class SceneEditor : Form, IEditorForm
       {
         Editor.propertyGrid.PropertyValueChanged += propertyGrid_PropertyValueChanged;
 
+        Editor.treeView.AfterSelect     += treeView_AfterSelect;
+        Editor.treeView.AfterLabelEdit  += treeView_AfterLabelEdit;
+        Editor.treeView.DragDrop        += treeView_DragDrop;
+        Editor.treeView.DragEnter       += treeView_DragEnter;
+        Editor.treeView.DragOver        += treeView_DragOver;
+        Editor.treeView.ItemDrag        += treeView_ItemDrag;
+        Editor.treeView.KeyDown         += treeView_KeyDown;
+        Editor.treeView.AllowDrop = true;
+        Editor.treeView.LabelEdit = true;
+
         VectorObject selectedObject = null;
         foreach(SceneObject obj in ObjectTool.selectedObjects)
         {
@@ -2208,7 +2233,18 @@ public class SceneEditor : Form, IEditorForm
 
       public override void Deactivate()
       {
+        Editor.treeView.AfterSelect     -= treeView_AfterSelect;
+        Editor.treeView.AfterLabelEdit  -= treeView_AfterLabelEdit;
+        Editor.treeView.DragDrop        -= treeView_DragDrop;
+        Editor.treeView.DragEnter       -= treeView_DragEnter;
+        Editor.treeView.DragOver        -= treeView_DragOver;
+        Editor.treeView.ItemDrag        -= treeView_ItemDrag;
+        Editor.treeView.KeyDown         -= treeView_KeyDown;
+        Editor.treeView.AllowDrop = false;
+        Editor.treeView.LabelEdit = false;
+
         Editor.propertyGrid.PropertyValueChanged -= propertyGrid_PropertyValueChanged;
+        Editor.HideTreeView();
         DeselectPoints();
         selectedPoly = null;
       }
@@ -2553,7 +2589,6 @@ public class SceneEditor : Form, IEditorForm
         {
           ObjectTool.InvalidateSelectedBounds(true);
           RecalculateObjectBounds();
-          ObjectTool.RecalculateAndInvalidateSelectedBounds();
         }
       }
 
@@ -2642,12 +2677,12 @@ public class SceneEditor : Form, IEditorForm
         }
 
         RecalculateObjectBounds();
-        ObjectTool.RecalculateAndInvalidateSelectedBounds();
       }
 
       void RecalculateObjectBounds()
       {
         RecalculateObjectBounds(SelectedObject);
+        ObjectTool.RecalculateAndInvalidateSelectedBounds();
       }
 
       internal static void AddNodeToRoot(VectorShape.Node srcNode, VectorShape destShape)
@@ -2762,8 +2797,8 @@ public class SceneEditor : Form, IEditorForm
       {
         get
         {
-          return SelectedObject == null ? null
-                                        : ((VectorShape.PolygonNode)SelectedShape.GetNode(selectedPoly)).Polygon;
+          return SelectedObject == null || selectedPoly == null
+            ? null : ((VectorShape.PolygonNode)SelectedShape.GetNode(selectedPoly)).Polygon;
         }
       }
 
@@ -2822,6 +2857,7 @@ public class SceneEditor : Form, IEditorForm
           selectedPoly = null;
           SelectPolygon(polygons[0].Name);
           OnDeleted();
+          RepopulateTreeView();
         }
       }
 
@@ -2844,6 +2880,7 @@ public class SceneEditor : Form, IEditorForm
           ObjectTool.DeselectObjects();
           selectedPoly = null;
           OnSelectionChanged();
+          Editor.HideTreeView();
         }
       }
 
@@ -2973,6 +3010,8 @@ public class SceneEditor : Form, IEditorForm
           ObjectTool.InvalidateSelectedBounds(false);
           selectedPoly = null;
           SelectPolygon(SelectedShape.GetPolygonNodes()[0].Name);
+          Editor.ShowTreeView();
+          RepopulateTreeView();
         }
       }
 
@@ -2982,6 +3021,15 @@ public class SceneEditor : Form, IEditorForm
         {
           selectedPoly = polyName;
           DeselectPoints();
+
+          if(!string.IsNullOrEmpty(polyName) && SelectedShape != null)
+          {
+            TreeNode[] nodes = Editor.treeView.Nodes.Find(polyName, true);
+            if(nodes.Length != 0)
+            {
+              Editor.treeView.SelectedNode = nodes[0];
+            }
+          }
         }
       }
 
@@ -3041,6 +3089,41 @@ public class SceneEditor : Form, IEditorForm
         Editor.InvalidateDecoration();
       }
 
+      void RepopulateTreeView()
+      {
+        Editor.treeView.BeginUpdate();
+
+        Editor.treeView.Nodes.Clear();
+        if(SelectedShape != null && SelectedShape.RootNode != null)
+        {
+          RepopulateTreeView(null, SelectedShape.RootNode);
+        }
+        Editor.treeView.ExpandAll();
+
+        Editor.treeView.EndUpdate();
+      }
+      
+      void RepopulateTreeView(TreeNode parentNode, VectorShape.Node node)
+      {
+        TreeNode treeNode = new TreeNode();
+        treeNode.Name = node.Name;
+        treeNode.Text = (node is VectorShape.GroupNode ? "group:" : "poly:") + node.Name;
+
+        if(parentNode == null)
+        {
+          Editor.treeView.Nodes.Add(treeNode);
+        }
+        else
+        {
+          parentNode.Nodes.Add(treeNode);
+        }
+
+        foreach(VectorShape.Node child in node.Children)
+        {
+          RepopulateTreeView(treeNode, child);
+        }
+      }
+
       void UpdatePropertyGrid()
       {
         if(SelectedObject == null)
@@ -3097,6 +3180,159 @@ public class SceneEditor : Form, IEditorForm
       void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
       {
         Editor.InvalidateRender();
+      }
+
+      void treeView_AfterLabelEdit(object sender, NodeLabelEditEventArgs e)
+      {
+        VectorShape.Node node = SelectedShape.GetNode(e.Node.Name);
+        
+        if(e.Label != null && e.Label != e.Node.Name)
+        {
+          try
+          {
+            node.Name   = e.Label; 
+            e.Node.Name = e.Label;
+          }
+          catch(ArgumentException)
+          {
+            MessageBox.Show("Node names must be non-empty and unique within the tree.", "oohneek!");
+          }
+        }
+
+        if(node is VectorShape.PolygonNode)
+        {
+          e.Node.Text = "poly:" + e.Node.Name;
+          SelectPolygon(e.Node.Name);
+        }
+        else
+        {
+          e.Node.Text  = "group:" + e.Node.Name;
+        }
+
+        // we always "cancel" the edit to prevent the framework from overriding the Text we just set
+        e.CancelEdit = true;
+      }
+
+      void treeView_AfterSelect(object sender, TreeViewEventArgs e)
+      {
+        if(e.Action != TreeViewAction.Unknown)
+        {
+          if(e.Node.Text.StartsWith("poly:"))
+          {
+            SelectPolygon(e.Node.Name);
+          }
+          else
+          {
+            SelectPolygon(null);
+          }
+        }
+      }
+
+      void treeView_DragDrop(object sender, DragEventArgs e)
+      {
+        if(!e.Data.GetDataPresent("System.Windows.Forms.TreeNode")) return;
+
+        TreeNode dropNode = (TreeNode)e.Data.GetData("System.Windows.Forms.TreeNode");
+        TreeNode overNode = Editor.treeView.GetNodeAt(Editor.treeView.PointToClient(new Point(e.X, e.Y)));
+
+        VectorShape.Node sdropNode = SelectedShape.GetNode(dropNode.Name);
+        VectorShape.Node soverNode = SelectedShape.GetNode(overNode.Name);
+
+        // dragging a node onto a polygon node (or any node when ctrl is held) places the drop node before it.
+        // however, this of course doesn't work on the root node.
+        if(overNode.Parent != null && (Control.ModifierKeys == Keys.Control || overNode.Text.StartsWith("poly:")))
+        {
+          int index = overNode.Index;
+
+          dropNode.Remove();
+          overNode.Parent.Nodes.Insert(index, dropNode);
+          
+          SelectedShape.RemoveNode(dropNode.Name);
+          SelectedShape.GetParentNode(soverNode).InsertChild(index, sdropNode);
+        }
+        // dragging a node onto a group node places the node at the end of the group
+        else if(overNode.Text.StartsWith("group:"))
+        {
+          dropNode.Remove();
+          overNode.Nodes.Add(dropNode);
+
+          SelectedShape.RemoveNode(dropNode.Name);
+          ((VectorShape.GroupNode)soverNode).AddChild(sdropNode);
+        }
+
+        Editor.InvalidateRender();
+      }
+
+      void treeView_DragEnter(object sender, DragEventArgs e)
+      {
+        if(e.Data.GetDataPresent("System.Windows.Forms.TreeNode"))
+        {
+          e.Effect = DragDropEffects.Move;
+        }
+        else
+        {
+          e.Effect = DragDropEffects.None;
+        }
+      }
+
+      void treeView_DragOver(object sender, DragEventArgs e)
+      {
+        if(!e.Data.GetDataPresent("System.Windows.Forms.TreeNode")) return;
+        
+        TreeNode dropNode = (TreeNode)e.Data.GetData("System.Windows.Forms.TreeNode");
+        TreeNode overNode = Editor.treeView.GetNodeAt(Editor.treeView.PointToClient(new Point(e.X, e.Y)));
+        
+        if(overNode == null || overNode == dropNode)
+        {
+          e.Effect = DragDropEffects.None;
+        }
+        else
+        {
+          e.Effect = DragDropEffects.Move;
+        }
+      }
+
+      void treeView_ItemDrag(object sender, ItemDragEventArgs e)
+      {
+        if(((TreeNode)e.Item).Parent != null) // can't drag the root node
+        {
+          Editor.treeView.DoDragDrop(e.Item, DragDropEffects.Move);
+        }
+      }
+
+      void treeView_KeyDown(object sender, KeyEventArgs e)
+      {
+        if(Editor.treeView.SelectedNode == null) return;
+
+        if(e.KeyCode == Keys.F2) // allow editing of node names when the user presses F2 on a selected node
+        {
+          Editor.treeView.SelectedNode.Text = Editor.treeView.SelectedNode.Name;
+          Editor.treeView.SelectedNode.BeginEdit();
+        }
+        else if(e.KeyCode == Keys.Delete)
+        {
+          if(Editor.treeView.SelectedNode.Parent == null) // if it's the root node, delete the whole object
+          {
+            DeleteSelectedObject();
+          }
+          else
+          {
+            SelectedShape.RemoveNode(Editor.treeView.SelectedNode.Name);
+            Editor.treeView.SelectedNode.Remove();
+            
+            if(SelectedShape.GetPolygons().Count == 0)
+            {
+              DeleteSelectedObject();
+            }
+            else
+            {
+              SelectPolygon(null);
+              OnDeleted();
+            }
+          }
+          
+          Editor.InvalidateRender();
+        }
       }
 
       List<int> selectedPoints = new List<int>();
@@ -4229,6 +4465,20 @@ public class SceneEditor : Form, IEditorForm
     {
       if(handle.Resource != null) handle.Resource.InvalidateMode();
     }
+  }
+
+  void ShowTreeView()
+  {
+    treeView.Visible   = true;
+    objectList.Visible = false;
+    objToolBar.Visible = false;
+  }
+  
+  void HideTreeView()
+  {
+    objToolBar.Visible = true;
+    objectList.Visible = true;
+    treeView.Visible   = false;
   }
 
   void HideRightPane()

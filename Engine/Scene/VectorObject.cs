@@ -683,6 +683,7 @@ public class VectorShape : Resource
           if(shape != null)
           {
             shape.AssertValidAndUniqueNodeName(value);
+            shape.OnNodeRenamed(name, value);
           }
           name = value;
         }
@@ -2277,7 +2278,7 @@ public class VectorShape : Resource
     {
       foreach(Node node in EnumerateNodes(child))
       {
-        yield return child;
+        yield return node;
       }
     }
   }
@@ -2444,6 +2445,13 @@ public class VectorShape : Resource
     {
       OnNodeRemoved(child);
     }
+  }
+  
+  internal void OnNodeRenamed(string oldName, string newName)
+  {
+    Node node = nodeMap[oldName];
+    nodeMap.Remove(oldName);
+    nodeMap.Add(newName, node);
   }
 
   /// <summary>A possibly-null dictionary containing the animations within this shape.</summary>
