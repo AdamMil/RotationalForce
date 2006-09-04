@@ -11,7 +11,8 @@ namespace RotationalForce.Editor
 
 sealed class Project
 {
-  const string Images = StandardPath.Images, Animations = StandardPath.Animations, Levels = StandardPath.Maps, EditorData = "editorData";
+  const string Images = StandardPath.Images, Animations = StandardPath.Animations, Levels = StandardPath.Scenes,
+               EditorData = "editorData", PerLevel = "perLevel";
 
   Project(string basePath)
   {
@@ -30,6 +31,16 @@ sealed class Project
     {
       path += Path.DirectorySeparatorChar;
     }
+  }
+
+  public string AnimationPath
+  {
+    get { return Path.Combine(EngineDataPath, Animations); }
+  }
+
+  public string PerLevelAnimationPath
+  {
+    get { return Path.Combine(AnimationPath, PerLevel); }
   }
 
   public string BasePath
@@ -129,6 +140,7 @@ sealed class Project
     string engineDataPath = Path.Combine(basePath, "data");
     Directory.CreateDirectory(Path.Combine(engineDataPath, Images));
     Directory.CreateDirectory(Path.Combine(engineDataPath, Animations));
+    Directory.CreateDirectory(Path.Combine(Path.Combine(engineDataPath, Animations), PerLevel));
     Directory.CreateDirectory(Path.Combine(engineDataPath, Levels));
     Directory.CreateDirectory(Path.Combine(engineDataPath, EditorData));
 

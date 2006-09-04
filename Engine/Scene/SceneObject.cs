@@ -348,6 +348,15 @@ public abstract class SceneObject : UniqueObject, ISerializable
     EngineMath.AssertValidFloats(localSize.X, localSize.Y);
     return new Vector(localSize.X*0.5*Width, localSize.Y*0.5*Height);
   }
+  
+  public Rectangle LocalToScene(Rectangle localRect)
+  {
+    double x = localRect.X, y = localRect.Y;
+    // LocalToScene(x, y) will flip X and Y. We don't want that to happen, so we cancel it out
+    if(HorizontalFlip) x = -x;
+    if(VerticalFlip)   y = -y;
+    return new Rectangle(LocalToScene(x, y), LocalToScene(localRect.Size));
+  }
 
   public Point SceneToLocal(Point scenePoint) { return SceneToLocal(scenePoint.X, scenePoint.Y); }
 
@@ -375,6 +384,15 @@ public abstract class SceneObject : UniqueObject, ISerializable
   {
     EngineMath.AssertValidFloats(sceneSize.X, sceneSize.Y);
     return new Vector(sceneSize.X*2/Width, sceneSize.Y*2/Height);
+  }
+
+  public Rectangle SceneToLocal(Rectangle sceneRect)
+  {
+    Point pt = SceneToLocal(sceneRect.Location);
+    // SceneToLocal(pt) will flip X and Y. We don't want that to happen, so we cancel it out
+    if(HorizontalFlip) pt.X = -pt.X;
+    if(VerticalFlip)   pt.Y = -pt.Y;
+    return new Rectangle(pt, SceneToLocal(sceneRect.Size));
   }
   #endregion
 
