@@ -1411,7 +1411,7 @@ public class VectorShape : Resource
         GenerateTextureCoordinates();
       }
 
-      bool blendWasDisabled = false; // is blending currently disabled? (meaning we need to enabled it?)
+      bool blendWasDisabled = false; // is blending currently disabled? (meaning we need to enable it?)
 
       if(blendEnabled) // first set up the blending parameters
       {
@@ -2202,39 +2202,15 @@ public class VectorShape : Resource
     throw new ArgumentException("The given node does not exist in this tree.");
   }
 
-  /// <summary>Gets a list of all polygons in the shape.</summary>
-  public ReadOnlyCollection<Polygon> GetPolygons()
-  {
-    ReadOnlyCollection<PolygonNode> polyNodes = GetPolygonNodes();
-    List<Polygon> polygons = new List<Polygon>(polyNodes.Count);
-    foreach(PolygonNode polyNode in polyNodes)
-    {
-      polygons.Add(polyNode.Polygon);
-    }
-    return new ReadOnlyCollection<Polygon>(polygons);
-  }
-
-  /// <summary>Gets a list of all polygon nodes in the shape.</summary>
-  public ReadOnlyCollection<PolygonNode> GetPolygonNodes()
-  {
-    List<PolygonNode> nodes = new List<PolygonNode>();
-
-    if(rootNode != null)
-    {
-      foreach(Node node in EnumerateNodes(rootNode))
-      {
-        PolygonNode polyNode = node as PolygonNode;
-        if(polyNode != null) nodes.Add(polyNode);
-      }
-    }
-    
-    return new ReadOnlyCollection<PolygonNode>(nodes);
-  }
-  
   /// <summary>Removes a node from the tree. The node must exist in the tree.</summary>
   public void RemoveNode(string nodeName)
   {
-    Node node = GetNode(nodeName);
+    RemoveNode(GetNode(nodeName));
+  }
+
+  /// <summary>Removes a node from the tree. The node must exist in the tree.</summary>
+  public void RemoveNode(Node node)
+  {
     GroupNode parent = GetParentNode(node);
     if(parent != null)
     {
@@ -2268,10 +2244,10 @@ public class VectorShape : Resource
   }
 
   /// <summary>Returns an object that can enumerate all nodes in the given tree.</summary>
-  static IEnumerable<Node> EnumerateNodes(Node tree)
+  public static IEnumerable<Node> EnumerateNodes(Node tree)
   {
     if(tree == null) yield break;
-    
+
     yield return tree;
 
     foreach(Node child in tree.Children)
@@ -2282,7 +2258,7 @@ public class VectorShape : Resource
       }
     }
   }
-  
+
   static GroupNode GetParentNode(Node node, GroupNode group)
   {
     if(group == null) return null;

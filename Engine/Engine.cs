@@ -76,7 +76,9 @@ public abstract class Resource : UniqueObject, IDisposable
 public abstract class ResourceHandleBase : NonSerializableObject
 {
   internal ResourceHandleBase() { } // prevent external derivation
+  /// <summary>Clears the resource handle. Called when the resource is manually disposed.</summary>
   internal abstract void ClearResource();
+  /// <summary>Disposes the resource and clears the resource handle.</summary>
   internal abstract void DisposeResource();
   internal abstract Resource GetResource();
 }
@@ -173,6 +175,7 @@ public static class Engine
       {
         LoadResources<ImageMap>(StandardPath.Images, "*.map"); // load images first because animations may depend on them
         LoadResources<Animation>(StandardPath.Animations, "*.anim");
+        LoadResources<VectorShape>(StandardPath.Animations, "*.shape");
       }
     }
     catch
@@ -355,6 +358,21 @@ public static class Engine
     return handles;
   }
 
+  public static void UnloadResource<T>(ResourceHandle<T> handle) where T : Resource
+  {
+    if(handle == null) throw new ArgumentNullException();
+    handle.DisposeResource();
+  }
+
+  public static void UnloadResource<T>(string name, bool removeHandle) where T : Resource
+  {
+    UnloadResource(GetResource<T>(name));
+    if(removeHandle)
+    {
+      resources.Remove(GetResourcePrefix(typeof(T)) + name);
+    }
+  }
+
   static string GetResourcePrefix(Type resourceType)
   {
     Type keyType;
@@ -388,18 +406,19 @@ public static class Engine
     foreach(string file in fileSystem.GetFiles(basePath, wildcard, true))
     {
       Serializer.BeginBatch();
-      try
+      using(SexpReader reader = new SexpReader(fileSystem.OpenForRead(file)))
       {
-        using(Stream stream = fileSystem.OpenForRead(file))
+        while(!reader.EOF)
         {
-          T resource = Serializer.Deserialize(stream) as T;
+          T resource = null;
+          try { resource = Serializer.Deserialize(reader) as T; }
+          catch { }
           if(resource != null)
           {
             AddResource<T>(resource);
           }
         }
       }
-      catch { }
       Serializer.EndBatch();
     }
   }

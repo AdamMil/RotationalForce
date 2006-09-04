@@ -14,11 +14,11 @@ namespace RotationalForce.Engine
 public static class StandardPath
 {
   /// <summary>The directory from which animations will be loaded.</summary>
-  public const string Animations = "anim/";
+  public const string Animations = "anims/";
   /// <summary>The directory from which image data will be loaded.</summary>
   public const string Images = "images/";
   /// <summary>The directory in which map files will be stored.</summary>
-  public const string Maps = "maps/";
+  public const string Scenes = "scenes/";
   /// <summary>The directory from which object data will be loaded.</summary>
   public const string Objects = "objects/";
   /// <summary>The directory in which save files will be stored.</summary>
@@ -98,12 +98,12 @@ public class StandardFileSystem : IFileSystem
     if(directory == null || pattern == null) throw new ArgumentNullException();
     string realDirectory = GetRealPath(directory);
     if(!Directory.Exists(realDirectory)) return new string[0];
-    if(!directory.EndsWith("/")) directory += "/";
     string[] files = Directory.GetFiles(realDirectory, pattern,
                                         recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+
     for(int i=0; i<files.Length; i++)
     {
-      files[i] = directory + Path.GetFileName(files[i]);
+      files[i] = directory + files[i].Substring(realDirectory.Length);
     }
     return files;
   }

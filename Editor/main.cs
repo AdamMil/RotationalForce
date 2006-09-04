@@ -11,7 +11,7 @@ enum ObjectType
 {
   None,
   Objects,
-  Polygons
+  Node
 }
 
 struct ClipboardObject

@@ -162,17 +162,20 @@ sealed class MainForm : Form
 
   bool TryCloseProject()
   {
-    if(project != null)
+    if(project != null && !TryCloseAllWindows())
     {
-      if(TrySaveProjectResources() && TryCloseAllWindows())
+      return false;
+    }
+    else
+    {
+      if(project != null)
       {
         project.Save();
         project = null;
         OnProjectChanged();
       }
+      return true;
     }
-    
-    return true;
   }
 
   bool TryExit()
@@ -184,41 +187,6 @@ sealed class MainForm : Form
     }
 
     return false;
-  }
-
-  bool TrySaveProjectResources()
-  {
-    List<string> failures = new List<string>();
-
-    foreach(ResourceHandle<Animation> anim in Engine.Engine.GetResources<Animation>())
-    {
-      if(anim.Resource != null)
-      {
-        Serializer.BeginBatch();
-        try
-        {
-          string enginePath = StandardPath.Animations + anim.Resource.Name + ".anim";
-          using(StreamWriter sw = new StreamWriter(Project.GetRealPath(enginePath)))
-          {
-            Serializer.Serialize(anim.Resource, sw);
-          }
-        }
-        catch(Exception e)
-        {
-          failures.Add("Failed to save animation " + anim.Resource.Name + " - " + e.ToString());
-          EditorApp.Log("Failed to save animation " + anim.Resource.Name);
-          EditorApp.Log(e);
-        }
-        Serializer.EndBatch();
-      }
-    }
-    
-    foreach(string failure in failures)
-    {
-      MessageBox.Show(failure);
-    }
-
-    return failures.Count == 0;
   }
 
   void UpdateFileMenu()
