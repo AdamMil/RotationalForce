@@ -379,7 +379,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
 
     public override int Compare(SceneObject x, SceneObject y)
     {
-      return y.Layer - x.Layer;
+      return x.Layer - y.Layer;
     }
     
     public static readonly ObjectLayerSorter Instance = new ObjectLayerSorter();

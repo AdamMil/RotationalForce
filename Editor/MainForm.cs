@@ -104,7 +104,10 @@ sealed class MainForm : Form
       
       foreach(ResourceHandle<VectorShape> shape in Engine.Engine.GetResources<VectorShape>()) // vector shapes
       {
-        ToolboxItem.SetItem(new VectorShapeItem(shape.Resource));
+        if(!shape.Resource.Name.StartsWith("_shape")) // if it doesn't look like a level-specific resource name...
+        {
+          ToolboxItem.SetItem(new VectorShapeItem(shape.Resource));
+        }
       }
 
       // object templates

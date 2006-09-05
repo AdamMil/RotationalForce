@@ -114,6 +114,23 @@ public abstract class ImageMap : Resource
     }
   }
 
+  /// <summary>Gets or sets whether the image map will use a color key for the image.</summary>
+  /// <remarks>For images with an alpha channel, this property is ignored. For images without an alpha channel, the
+  /// top-left pixel of the image is used as the transparent color.
+  /// </remarks>
+  public bool UseColorKey
+  {
+    get { return useColorKey; }
+    set
+    {
+      if(useColorKey != value)
+      {
+        useColorKey = value;
+        Invalidate();
+      }
+    }
+  }
+
   /// <summary>Gets a collection of <see cref="Frame">Frames</see> in the image map.</summary>
   public ReadOnlyCollection<Frame> Frames
   {
@@ -361,6 +378,7 @@ public abstract class ImageMap : Resource
   float priority = 0.5f;
   FilterMode filterMode;
   TextureWrap textureWrap = TextureWrap.Clamp;
+  bool useColorKey = true;
   [NonSerialized] bool framesDirty = true, modeDirty = true;
 }
 #endregion
@@ -378,9 +396,13 @@ public sealed class FullImageMap : ImageMap
     using(Surface surface = new Surface(GetImageStream()))
     {
       // if the surface doesn't have an alpha channel, we'll use the color key
-      if(surface.Format.AlphaMask == 0 && surface.Width > 0 && surface.Height > 0)
+      if(UseColorKey && surface.Format.AlphaMask == 0 && surface.Width > 0 && surface.Height > 0)
       {
         surface.SetColorKey(GetColorKey(surface));
+      }
+      else
+      {
+        surface.UsingKey = false;
       }
 
       OpenGL.TexImage2D(surface, out textureSize);
@@ -568,12 +590,13 @@ public sealed class TiledImageMap : ImageMap
       using(Surface newSurface = new Surface(textureSize.Width, textureSize.Height, surface.Format))
       {
         // if the surface doesn't have an alpha channel, we'll use the color key
-        if(surface.Format.AlphaMask == 0)
+        if(UseColorKey && surface.Format.AlphaMask == 0)
         {
           newSurface.SetColorKey(GetColorKey(surface));
-          // but we don't use the key on the source because we want the transparent pixels to be copied, not skipped
-          surface.UsingKey = false;
         }
+
+        // but we don't use the key on the source because we want the transparent pixels to be copied, not skipped
+        surface.UsingKey = false;
 
         if(surface.Format.Depth == 8) // if the image is palettized, copy the palette
         {

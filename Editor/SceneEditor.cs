@@ -115,7 +115,6 @@ public class SceneEditor : Form, IEditorForm
     sceneView.Scene           = new Scene();
 
     localResources.Clear();
-    desktop = new DesktopControl();
     desktop.BackColor = Color.Empty; // we want the whole background to come from the sceneview
     desktop.AddChild(sceneView);
 
@@ -159,7 +158,6 @@ public class SceneEditor : Form, IEditorForm
         }
       }
 
-      desktop = new DesktopControl();
       desktop.BackColor = Color.Empty; // we want the whole background to come from the sceneview
       desktop.AddChild(sceneView);
 
@@ -247,34 +245,7 @@ public class SceneEditor : Form, IEditorForm
       VectorObject vectorObject = sceneObject as VectorObject;
       if(vectorObject != null && !IsLocalResource(vectorObject.ShapeName))
       {
-        string animName = vectorObject.ShapeName;
-
-        // replace slashes with the directory separator character, for systems with different separator characters
-        animName.Replace('\\', Path.DirectorySeparatorChar);
-        animName.Replace('/', Path.DirectorySeparatorChar);
-
-        // replace invalid path characters with a tilde-encoding scheme (assumes tilde is valid...)
-        animName.Replace("~", "~"+((int)'~').ToString("X"));
-        foreach(char c in Path.GetInvalidFileNameChars())
-        {
-          if(c != '\0' && c != Path.DirectorySeparatorChar && c != Path.AltDirectorySeparatorChar)
-          {
-            animName = animName.Replace(c.ToString(), "~"+((int)c).ToString("X"));
-          }
-        }
-
-        // construct the final path
-        string animPath = Path.Combine(Project.AnimationPath, animName+".shape");
-        // ensure that the directory exists (the name can contain slashes, which will create directories)
-        Directory.CreateDirectory(Path.GetDirectoryName(animPath));
-
-        // save the animation
-        using(Stream file = File.Open(animPath, FileMode.Create, FileAccess.Write))
-        {
-          Serializer.BeginBatch();
-          Serializer.Serialize(vectorObject.Shape, file);
-          Serializer.EndBatch();
-        }
+        SaveSharedShape(vectorObject.Shape);
       }
     }
 
@@ -363,6 +334,35 @@ public class SceneEditor : Form, IEditorForm
     get { return (uint)1<<CurrentLayer; }
   }
 
+  uint PickLayerMask
+  {
+    get
+    {
+      uint mask;
+
+      if(pickToCurrentLayer)
+      {
+        mask = 0x80000000;
+        for(int i=31; i>=CurrentLayer; i--)
+        {
+          mask = (mask>>1) | 0x80000000;
+        }
+      }
+      else
+      {
+        mask = CurrentLayerMask;
+      }
+
+      return mask;
+    }
+  }
+
+  bool PickToCurrentLayer
+  {
+    get { return pickToCurrentLayer; }
+    set { pickToCurrentLayer = value; }
+  }
+
   bool RenderToCurrentLayer
   {
     get { return renderToCurrentLayer; }
@@ -415,7 +415,7 @@ public class SceneEditor : Form, IEditorForm
 
   int currentLayer = 0;
   uint visibleLayerMask = 0xffffffff;
-  bool renderToCurrentLayer;
+  bool renderToCurrentLayer, pickToCurrentLayer = true;
   #endregion
 
   string GetLocalAnimationPath(string sceneFile)
@@ -645,7 +645,7 @@ public class SceneEditor : Form, IEditorForm
     mainSplitter.Panel2.Controls.Add(this.rightPane);
     mainSplitter.Panel2.Controls.Add(this.toolBar);
     mainSplitter.Panel2MinSize = 130;
-    mainSplitter.Size = new System.Drawing.Size(772, 523);
+    mainSplitter.Size = new System.Drawing.Size(772, 501);
     mainSplitter.SplitterDistance = 600;
     mainSplitter.TabIndex = 5;
     // 
@@ -657,7 +657,7 @@ public class SceneEditor : Form, IEditorForm
     this.renderPanel.Dock = System.Windows.Forms.DockStyle.Fill;
     this.renderPanel.Location = new System.Drawing.Point(0, 0);
     this.renderPanel.Name = "renderPanel";
-    this.renderPanel.Size = new System.Drawing.Size(600, 523);
+    this.renderPanel.Size = new System.Drawing.Size(600, 501);
     this.renderPanel.TabIndex = 0;
     this.renderPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseWheel);
     this.renderPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.renderPanel_MouseMove);
@@ -691,7 +691,7 @@ public class SceneEditor : Form, IEditorForm
     // 
     this.rightPane.Panel2.Controls.Add(this.propertyGrid);
     this.rightPane.Panel2Collapsed = true;
-    this.rightPane.Size = new System.Drawing.Size(168, 499);
+    this.rightPane.Size = new System.Drawing.Size(168, 477);
     this.rightPane.SplitterDistance = 209;
     this.rightPane.TabIndex = 3;
     // 
@@ -703,7 +703,7 @@ public class SceneEditor : Form, IEditorForm
     this.treeView.HideSelection = false;
     this.treeView.Location = new System.Drawing.Point(2, 2);
     this.treeView.Name = "treeView";
-    this.treeView.Size = new System.Drawing.Size(161, 492);
+    this.treeView.Size = new System.Drawing.Size(161, 470);
     this.treeView.TabIndex = 0;
     this.treeView.Visible = false;
     // 
@@ -746,7 +746,7 @@ public class SceneEditor : Form, IEditorForm
     this.objectList.MultiSelect = false;
     this.objectList.Name = "objectList";
     this.objectList.ShowItemToolTips = true;
-    this.objectList.Size = new System.Drawing.Size(161, 470);
+    this.objectList.Size = new System.Drawing.Size(161, 448);
     this.objectList.TabIndex = 0;
     this.objectList.TileSize = new System.Drawing.Size(192, 36);
     this.objectList.UseCompatibleStateImageBehavior = false;
@@ -803,12 +803,12 @@ public class SceneEditor : Form, IEditorForm
     this.vectorTreeMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.createVectorGroupMenuItem});
     this.vectorTreeMenu.Name = "vectorTreeMenu";
-    this.vectorTreeMenu.Size = new System.Drawing.Size(153, 48);
+    this.vectorTreeMenu.Size = new System.Drawing.Size(139, 26);
     // 
     // createVectorGroupMenuItem
     // 
     this.createVectorGroupMenuItem.Name = "createVectorGroupMenuItem";
-    this.createVectorGroupMenuItem.Size = new System.Drawing.Size(152, 22);
+    this.createVectorGroupMenuItem.Size = new System.Drawing.Size(138, 22);
     this.createVectorGroupMenuItem.Text = "Create &group";
     // 
     // statusBar
@@ -2504,6 +2504,13 @@ public class SceneEditor : Form, IEditorForm
 
           e.Handled = true;
         }
+        else if(Control.ModifierKeys == Keys.None && e.KeyCode == Keys.F2 && SelectedNode != null) // F2 edits the currently-selected node
+        {
+          Cursor.Position = Editor.treeView.PointToScreen(new Point(5, 5));
+          Editor.treeView.Focus();
+          Editor.treeView.SelectedNode.BeginEdit();
+          e.Handled = true;
+        }
       }
 
       public override bool MouseClick(MouseEventArgs e)
@@ -2626,7 +2633,7 @@ public class SceneEditor : Form, IEditorForm
 
               menu.MenuItems.Add("Copy selected polygon", Editor.editCopyMenuItem_Click);
 
-              if(SelectedPolygon.HasSpline)
+              if(HasSpline(SelectedPolygon))
               {
                 menu.MenuItems.Add("Convert spline polygon to vertex polygon", menu_ConvertPolyToVertexPoly);
               }
@@ -2646,7 +2653,7 @@ public class SceneEditor : Form, IEditorForm
               bool hasSpline = false;
               foreach(VectorShape.Polygon polygon in polygons)
               {
-                if(polygon.HasSpline)
+                if(HasSpline(polygon))
                 {
                   hasSpline = true;
                   break;
@@ -2952,7 +2959,8 @@ public class SceneEditor : Form, IEditorForm
 
           // remove the name from the local resources list, since it's now a shared resource
           Editor.localResources.Remove(oldName);
-
+          // save the shape to disk
+          Editor.SaveSharedShape(SelectedShape);
           // and add the new item to the toolbox
           Editor.SetToolboxItem(new VectorShapeItem(SelectedShape));
         }
@@ -3111,7 +3119,7 @@ public class SceneEditor : Form, IEditorForm
       void CloneAndSelectPoint(int vertexIndex)
       {
         SelectedPolygon.InsertVertex(vertexIndex, SelectedPolygon.Vertices[vertexIndex].Clone());
-        SelectVertex(vertexIndex+1, true);
+        SelectVertex(vertexIndex + (PolygonsFlipped(SelectedObject) ? 0 : 1), true);
       }
 
       void DeleteSelection()
@@ -3555,7 +3563,7 @@ public class SceneEditor : Form, IEditorForm
         poly.ClearVertices();
         foreach(VectorShape.Vertex vertex in vertexPoly.Vertices)
         {
-          poly.AddVertex(vertex);
+          poly.AddVertex(vertex.Clone());
         }
       }
 
@@ -3718,7 +3726,6 @@ public class SceneEditor : Form, IEditorForm
 
         if(e.KeyCode == Keys.F2) // allow editing of node names when the user presses F2 on a selected node
         {
-          Editor.treeView.SelectedNode.Text = Editor.treeView.SelectedNode.Name;
           Editor.treeView.SelectedNode.BeginEdit();
         }
         else if(e.KeyCode == Keys.Delete)
@@ -3761,6 +3768,16 @@ public class SceneEditor : Form, IEditorForm
         }
         
         return clientDist;
+      }
+
+      /// <summary>Determines whether the polygon has any spline edges.</summary>
+      public bool HasSpline(VectorShape.Polygon poly)
+      {
+        foreach(VectorShape.Vertex vertex in poly.Vertices)
+        {
+          if(!vertex.Split) return true;
+        }
+        return false;
       }
 
       /// <summary>Determines whether the specified polygon contains the given point.</summary>
@@ -4306,14 +4323,20 @@ public class SceneEditor : Form, IEditorForm
         renderToCurrent.TabIndex = 0;
         renderToCurrent.Text = "Render to current layer";
         renderToCurrent.CheckedChanged += new EventHandler(renderToCurrent_CheckedChanged);
-        renderToCurrent.Checked = Editor.RenderToCurrentLayer;
+
+        pickToCurrent = new CheckBox();
+        pickToCurrent.Location = new Point(renderToCurrent.Left, renderToCurrent.Bottom-1);
+        pickToCurrent.Size     = renderToCurrent.Size;
+        pickToCurrent.TabIndex = 1;
+        pickToCurrent.Text     = "Pick to current layer";
+        pickToCurrent.CheckedChanged += new EventHandler(pickToCurrent_CheckedChanged);
 
         layerBox = new CheckedListBox();
-        layerBox.Location = new Point(4, 26);
-        layerBox.Size = new Size(renderToCurrent.Width, layerPanel.Height - renderToCurrent.Height);
+        layerBox.Location = new Point(renderToCurrent.Left, pickToCurrent.Bottom - 1);
+        layerBox.Size = new Size(renderToCurrent.Width, layerPanel.Height - layerBox.Top - 1);
         layerBox.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
         layerBox.IntegralHeight = false;
-        layerBox.TabIndex = 1;
+        layerBox.TabIndex = 2;
         layerBox.CheckOnClick = true;
         layerBox.ItemCheck += new ItemCheckEventHandler(layerBox_ItemCheck);
         layerBox.SelectedIndexChanged += new EventHandler(layerBox_SelectedIndexChanged);
@@ -4324,17 +4347,13 @@ public class SceneEditor : Form, IEditorForm
         }
 
         layerPanel.Controls.Add(renderToCurrent);
+        layerPanel.Controls.Add(pickToCurrent);
         layerPanel.Controls.Add(layerBox);
         layerPanel.Visible = false;
         Editor.rightPane.Panel2.Controls.Add(layerPanel);
       }
 
-      for(int i=0; i<32; i++)
-      {
-        // don't use the accessor because we want to bypass RenderToCurrentLayer
-        layerBox.SetItemChecked(i, (Editor.visibleLayerMask & (1<<i)) != 0);
-      }
-      layerBox.SelectedIndex = Editor.CurrentLayer;
+      Update();
 
       layerPanel.Visible = true;
       Editor.ShowRightPane(layerPanel);
@@ -4343,6 +4362,24 @@ public class SceneEditor : Form, IEditorForm
     public override void Deactivate()
     {
       Editor.HideRightPane();
+    }
+
+    public void Update()
+    {
+      renderToCurrent.Checked = Editor.RenderToCurrentLayer;
+      pickToCurrent.Checked   = Editor.PickToCurrentLayer;
+
+      for(int i=0; i<32; i++)
+      {
+        // don't use the accessor because we want to bypass RenderToCurrentLayer
+        layerBox.SetItemChecked(i, (Editor.visibleLayerMask & (1<<i)) != 0);
+      }
+      layerBox.SelectedIndex = Editor.CurrentLayer;
+    }
+
+    void pickToCurrent_CheckedChanged(object sender, EventArgs e)
+    {
+      Editor.PickToCurrentLayer = pickToCurrent.Checked;
     }
 
     void renderToCurrent_CheckedChanged(object sender, EventArgs e)
@@ -4369,7 +4406,7 @@ public class SceneEditor : Form, IEditorForm
     }
 
     CheckedListBox layerBox;
-    CheckBox renderToCurrent;
+    CheckBox renderToCurrent, pickToCurrent;
     Panel layerPanel;
   }
   #endregion
@@ -4875,6 +4912,14 @@ public class SceneEditor : Form, IEditorForm
         sceneView.CameraPosition = new GLPoint();
         InvalidateView();
       }
+      else if(e.Modifiers == Keys.Control && c == ' ') // ctrl-space toggles 'pickToCurrentLayer'
+      {
+        PickToCurrentLayer = !PickToCurrentLayer;
+        if(CurrentTool == Tools.Layers)
+        {
+          Tools.Layers.Update();
+        }
+      }
     }
   }
  
@@ -4975,8 +5020,9 @@ public class SceneEditor : Form, IEditorForm
 
   void renderPanel_Resize(object sender, EventArgs e)
   {
-    sceneView.Bounds = desktop.Bounds = renderPanel.ClientRectangle;
-    currentTool.PanelResized();
+    desktop.Bounds = renderPanel.ClientRectangle;
+    if(sceneView != null) sceneView.Bounds = desktop.Bounds;
+    if(CurrentTool != null) currentTool.PanelResized();
   }
   #endregion
 
@@ -5107,6 +5153,7 @@ public class SceneEditor : Form, IEditorForm
   void propertyGridMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
   {
     resetPropertyValueMenuItem.Enabled = propertyGrid.SelectedObjects.Length == 1 &&
+      propertyGrid.SelectedGridItem.PropertyDescriptor != null &&
       propertyGrid.SelectedGridItem.PropertyDescriptor.Attributes[typeof(DefaultValueAttribute)] != null;
   }
 
@@ -5173,7 +5220,7 @@ public class SceneEditor : Form, IEditorForm
     options.AllowInvisible  = true;
     options.AllowUnpickable = true;
     options.GroupMask       = 0xffffffff;
-    options.LayerMask       = CurrentLayerMask;
+    options.LayerMask       = PickLayerMask;
     options.SortByLayer     = true;
     return options;
   }
@@ -5217,8 +5264,42 @@ public class SceneEditor : Form, IEditorForm
     isClosed = true;
   }
 
+  void SaveSharedShape(VectorShape shape)
+  {
+    if(shape == null) throw new ArgumentNullException();
+
+    string shapeName = shape.Name;
+
+    // replace slashes with the directory separator character, for systems with different separator characters
+    shapeName = shapeName.Replace('\\', Path.DirectorySeparatorChar);
+    shapeName = shapeName.Replace('/', Path.DirectorySeparatorChar);
+
+    // replace invalid path characters with a tilde-encoding scheme (assumes tilde is valid...)
+    shapeName = shapeName.Replace("~", "~"+((int)'~').ToString("X"));
+    foreach(char c in Path.GetInvalidFileNameChars())
+    {
+      if(c != '\0' && c != Path.DirectorySeparatorChar && c != Path.AltDirectorySeparatorChar)
+      {
+        shapeName = shapeName.Replace(c.ToString(), "~"+((int)c).ToString("X"));
+      }
+    }
+
+    // construct the final path
+    string shapePath = Path.Combine(Project.AnimationPath, shapeName+".shape");
+    // ensure that the directory exists (the name can contain slashes, which will create directories)
+    Directory.CreateDirectory(Path.GetDirectoryName(shapePath));
+
+    // save the animation
+    using(Stream file = File.Open(shapePath, FileMode.Create, FileAccess.Write))
+    {
+      Serializer.BeginBatch();
+      Serializer.Serialize(shape, file);
+      Serializer.EndBatch();
+    }
+  }
+
   Dictionary<string,object> localResources = new Dictionary<string,object>();
-  DesktopControl desktop;
+  DesktopControl desktop = new DesktopControl();
   SceneViewControl sceneView;
   GLTexture2D traceImage;
   string levelFile;
