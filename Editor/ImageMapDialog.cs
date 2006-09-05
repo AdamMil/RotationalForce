@@ -29,6 +29,7 @@ namespace RotationalForce.Editor
     private Button btnZoomIn;
     private Button btnZoomOut;
     private ComboBox wrapMode;
+    private CheckBox chkUseColorKey;
     private TextBox imageName;
   
     public ImageMapDialog()
@@ -45,6 +46,8 @@ namespace RotationalForce.Editor
     {
       imageName.Text = Path.GetFileNameWithoutExtension(Project.DenormalizePath(imageFile)).Replace(" ", "");
       imageMap = new FullImageMap(imageName.Text, imageFile);
+      chkUseColorKey.Checked = imageMap.UseColorKey;
+
       OnTypeChanged();
       ValidateImage();
       initialized = true;
@@ -56,6 +59,8 @@ namespace RotationalForce.Editor
 
       imageMap = map;
       imageName.Text = map.Name;
+      chkUseColorKey.Checked = map.UseColorKey;
+
       OnTypeChanged();
       ValidateImage();
       initialized = true;
@@ -81,6 +86,8 @@ namespace RotationalForce.Editor
       System.Windows.Forms.Label lblCoords;
       this.btnSave = new System.Windows.Forms.Button();
       this.grpImage = new System.Windows.Forms.GroupBox();
+      this.chkUseColorKey = new System.Windows.Forms.CheckBox();
+      this.wrapMode = new System.Windows.Forms.ComboBox();
       this.texturePriority = new System.Windows.Forms.TextBox();
       this.filterMode = new System.Windows.Forms.ComboBox();
       this.imageMode = new System.Windows.Forms.ComboBox();
@@ -96,7 +103,6 @@ namespace RotationalForce.Editor
       this.btnZoomIn = new System.Windows.Forms.Button();
       this.btnZoomOut = new System.Windows.Forms.Button();
       this.renderPanel = new RotationalForce.Editor.RenderPanel();
-      this.wrapMode = new System.Windows.Forms.ComboBox();
       label1 = new System.Windows.Forms.Label();
       lblImageMode = new System.Windows.Forms.Label();
       lblImageName = new System.Windows.Forms.Label();
@@ -209,7 +215,7 @@ namespace RotationalForce.Editor
       // 
       btnCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
       btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-      btnCancel.Location = new System.Drawing.Point(86, 251);
+      btnCancel.Location = new System.Drawing.Point(86, 256);
       btnCancel.Name = "btnCancel";
       btnCancel.Size = new System.Drawing.Size(75, 23);
       btnCancel.TabIndex = 21;
@@ -219,7 +225,7 @@ namespace RotationalForce.Editor
       // btnBackColor
       // 
       btnBackColor.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-      btnBackColor.Location = new System.Drawing.Point(294, 250);
+      btnBackColor.Location = new System.Drawing.Point(294, 255);
       btnBackColor.Name = "btnBackColor";
       btnBackColor.Size = new System.Drawing.Size(75, 23);
       btnBackColor.TabIndex = 22;
@@ -237,11 +243,21 @@ namespace RotationalForce.Editor
       lblTexturePriority.Text = "Texture priority";
       lblTexturePriority.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
       // 
+      // lblCoords
+      // 
+      lblCoords.AutoSize = true;
+      lblCoords.Location = new System.Drawing.Point(147, 72);
+      lblCoords.Name = "lblCoords";
+      lblCoords.Size = new System.Drawing.Size(63, 13);
+      lblCoords.TabIndex = 5;
+      lblCoords.Text = "Coordinates";
+      lblCoords.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+      // 
       // btnSave
       // 
       this.btnSave.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
       this.btnSave.DialogResult = System.Windows.Forms.DialogResult.OK;
-      this.btnSave.Location = new System.Drawing.Point(5, 251);
+      this.btnSave.Location = new System.Drawing.Point(5, 256);
       this.btnSave.Name = "btnSave";
       this.btnSave.Size = new System.Drawing.Size(75, 23);
       this.btnSave.TabIndex = 20;
@@ -250,6 +266,7 @@ namespace RotationalForce.Editor
       // 
       // grpImage
       // 
+      this.grpImage.Controls.Add(this.chkUseColorKey);
       this.grpImage.Controls.Add(this.wrapMode);
       this.grpImage.Controls.Add(lblCoords);
       this.grpImage.Controls.Add(this.texturePriority);
@@ -262,10 +279,35 @@ namespace RotationalForce.Editor
       this.grpImage.Controls.Add(lblImageName);
       this.grpImage.Location = new System.Drawing.Point(5, 7);
       this.grpImage.Name = "grpImage";
-      this.grpImage.Size = new System.Drawing.Size(282, 101);
+      this.grpImage.Size = new System.Drawing.Size(282, 116);
       this.grpImage.TabIndex = 0;
       this.grpImage.TabStop = false;
       this.grpImage.Text = "Image settings";
+      // 
+      // chkUseColorKey
+      // 
+      this.chkUseColorKey.CheckAlign = System.Drawing.ContentAlignment.MiddleRight;
+      this.chkUseColorKey.Location = new System.Drawing.Point(112, 93);
+      this.chkUseColorKey.Name = "chkUseColorKey";
+      this.chkUseColorKey.Size = new System.Drawing.Size(123, 17);
+      this.chkUseColorKey.TabIndex = 6;
+      this.chkUseColorKey.Text = "Use color key";
+      this.chkUseColorKey.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+      this.chkUseColorKey.UseVisualStyleBackColor = true;
+      this.chkUseColorKey.CheckedChanged += new System.EventHandler(this.chkUseColorKey_CheckedChanged);
+      // 
+      // wrapMode
+      // 
+      this.wrapMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+      this.wrapMode.FormattingEnabled = true;
+      this.wrapMode.Items.AddRange(new object[] {
+            "Clamp",
+            "Repeat"});
+      this.wrapMode.Location = new System.Drawing.Point(212, 68);
+      this.wrapMode.Name = "wrapMode";
+      this.wrapMode.Size = new System.Drawing.Size(62, 21);
+      this.wrapMode.TabIndex = 5;
+      this.wrapMode.SelectedIndexChanged += new System.EventHandler(this.wrapMode_SelectedIndexChanged);
       // 
       // texturePriority
       // 
@@ -327,9 +369,9 @@ namespace RotationalForce.Editor
       this.grpTile.Controls.Add(this.tileWidth);
       this.grpTile.Controls.Add(lblTileHeight);
       this.grpTile.Controls.Add(lblTileWidth);
-      this.grpTile.Location = new System.Drawing.Point(5, 115);
+      this.grpTile.Location = new System.Drawing.Point(5, 129);
       this.grpTile.Name = "grpTile";
-      this.grpTile.Size = new System.Drawing.Size(282, 129);
+      this.grpTile.Size = new System.Drawing.Size(282, 120);
       this.grpTile.TabIndex = 10;
       this.grpTile.TabStop = false;
       this.grpTile.Text = "Tile options";
@@ -400,7 +442,7 @@ namespace RotationalForce.Editor
       // btnZoomIn
       // 
       this.btnZoomIn.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-      this.btnZoomIn.Location = new System.Drawing.Point(375, 250);
+      this.btnZoomIn.Location = new System.Drawing.Point(375, 255);
       this.btnZoomIn.Name = "btnZoomIn";
       this.btnZoomIn.Size = new System.Drawing.Size(75, 23);
       this.btnZoomIn.TabIndex = 23;
@@ -411,7 +453,7 @@ namespace RotationalForce.Editor
       // btnZoomOut
       // 
       this.btnZoomOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-      this.btnZoomOut.Location = new System.Drawing.Point(456, 250);
+      this.btnZoomOut.Location = new System.Drawing.Point(456, 255);
       this.btnZoomOut.Name = "btnZoomOut";
       this.btnZoomOut.Size = new System.Drawing.Size(75, 23);
       this.btnZoomOut.TabIndex = 24;
@@ -427,37 +469,14 @@ namespace RotationalForce.Editor
       this.renderPanel.BackColor = System.Drawing.Color.Black;
       this.renderPanel.Location = new System.Drawing.Point(294, 7);
       this.renderPanel.Name = "renderPanel";
-      this.renderPanel.Size = new System.Drawing.Size(263, 237);
+      this.renderPanel.Size = new System.Drawing.Size(263, 242);
       this.renderPanel.TabIndex = 30;
       this.renderPanel.TabStop = false;
-      this.renderPanel.RenderBackground += new PaintEventHandler(this.renderPanel_RenderBackground);
-      // 
-      // lblCoords
-      // 
-      lblCoords.AutoSize = true;
-      lblCoords.Location = new System.Drawing.Point(147, 72);
-      lblCoords.Name = "lblCoords";
-      lblCoords.Size = new System.Drawing.Size(63, 13);
-      lblCoords.TabIndex = 5;
-      lblCoords.Text = "Coordinates";
-      lblCoords.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
-      // 
-      // wrapMode
-      // 
-      this.wrapMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-      this.wrapMode.FormattingEnabled = true;
-      this.wrapMode.Items.AddRange(new object[] {
-            "Clamp",
-            "Repeat"});
-      this.wrapMode.Location = new System.Drawing.Point(212, 68);
-      this.wrapMode.Name = "wrapMode";
-      this.wrapMode.Size = new System.Drawing.Size(62, 21);
-      this.wrapMode.TabIndex = 5;
-      this.wrapMode.SelectedIndexChanged += new System.EventHandler(this.wrapMode_SelectedIndexChanged);
+      this.renderPanel.RenderBackground += new System.Windows.Forms.PaintEventHandler(this.renderPanel_RenderBackground);
       // 
       // ImageMapDialog
       // 
-      this.ClientSize = new System.Drawing.Size(565, 280);
+      this.ClientSize = new System.Drawing.Size(565, 285);
       this.Controls.Add(this.btnZoomOut);
       this.Controls.Add(this.btnZoomIn);
       this.Controls.Add(btnBackColor);
@@ -482,6 +501,8 @@ namespace RotationalForce.Editor
     void OnTypeChanged()
     {
       TiledImageMap tiled = imageMap as TiledImageMap;
+      imageMap.UseColorKey = chkUseColorKey.Checked;
+
       imageMode.SelectedItem  = tiled == null ? "Full" : "Tiled";
       filterMode.SelectedItem = imageMap.FilterMode.ToString();
       wrapMode.SelectedItem   = imageMap.TextureWrap.ToString();
@@ -809,6 +830,12 @@ namespace RotationalForce.Editor
         tiled.TileStride = new Size(tiled.TileStride.Width, value);
       }
 
+      renderPanel.InvalidateRender();
+    }
+
+    void chkUseColorKey_CheckedChanged(object sender, EventArgs e)
+    {
+      imageMap.UseColorKey = chkUseColorKey.Checked;
       renderPanel.InvalidateRender();
     }
 
