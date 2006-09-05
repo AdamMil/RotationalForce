@@ -1398,6 +1398,14 @@ public class VectorShape : Resource
       InvalidateGeometry();
     }
 
+    /// <summary>Reverses the vertices in the polygon. This can be used to convert a clockwise-defined polygon to
+    /// counterclockwise, or vice versa.
+    /// </summary>
+    public void ReverseVertices()
+    {
+      vertices.Reverse();
+    }
+
     public void Render()
     {
       if(vertices.Count < 3) return; // if we don't have a valid polygon yet, return

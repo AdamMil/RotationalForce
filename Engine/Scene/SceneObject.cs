@@ -1216,6 +1216,14 @@ public abstract class SceneObject : UniqueObject, ISerializable
   #region Serialization
   protected override void Deserialize(DeserializationStore store)
   {
+    for(int i=0; i<numLinkPoints; i++) // restore mountParent references, which aren't serialized
+    {
+      if(linkPoints[i].Object != null)
+      {
+        linkPoints[i].Object.mountParent = this;
+      }
+    }
+    
     InvalidateSpatialInfo(); // spatial information is not serialized, so we need to recalculate it
   }
   #endregion
@@ -1422,9 +1430,6 @@ public abstract class SceneObject : UniqueObject, ISerializable
 
   void UpdateSpatialInfo()
   {
-    // if we're not part of a scene, return immediately.
-    if(Scene == null) return;
-
     if(HasFlag(Flag.SpatialInfoDirty))
     {
       Vector halfSize = size*0.5;
@@ -1550,7 +1555,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
   /// <summary>The scene containing this object (or null if the object is not part of a scene).</summary>
   [NonSerialized] Scene scene;
   /// <summary>The object to which this object is mounted.</summary>
-  SceneObject mountParent;
+  [NonSerialized] SceneObject mountParent;
   /// <summary>A bitfield that identifies the groups to which this object belongs.</summary>
   uint groups = 1;
   /// <summary>The type of GL source blending to use.</summary>
