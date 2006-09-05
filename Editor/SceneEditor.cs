@@ -53,7 +53,14 @@ public class SceneEditor : Form, IEditorForm
 
     foreach(ToolboxItem item in ToolboxItem.GetItems())
     {
-      AddToolboxItem(item);
+      try
+      {
+        AddToolboxItem(item);
+      }
+      catch(ResourceNotFoundException e)
+      {
+        MessageBox.Show("Could not load item '"+item.Name+"' because "+e.Message);
+      }
     }
 
     toolBar.Items[0].Tag = Tools.Object;
@@ -135,8 +142,8 @@ public class SceneEditor : Form, IEditorForm
       }
 
       localResources.Clear();
-      string localAnimPath = Path.Combine(Project.PerLevelAnimationPath,
-                                          Path.GetFileNameWithoutExtension(fd.FileName)+".shape");
+
+      string localAnimPath = GetLocalAnimationPath(fd.FileName);
       if(File.Exists(localAnimPath))
       {
         using(SexpReader sr = new SexpReader(File.Open(localAnimPath, FileMode.Open, FileAccess.Read)))
@@ -214,14 +221,14 @@ public class SceneEditor : Form, IEditorForm
     }
 
     // save local animation resources to a per-level file
-    string localAnimPath = Path.Combine(Project.PerLevelAnimationPath,
-                                        Path.GetFileNameWithoutExtension(fileName)+".shape");
+    string localAnimPath = GetLocalAnimationPath(fileName);
     if(localResourcesUsed.Count == 0)
     {
       File.Delete(localAnimPath);
     }
     else
     {
+      Directory.CreateDirectory(Path.GetDirectoryName(localAnimPath));
       using(SexpWriter writer = new SexpWriter(File.Open(localAnimPath, FileMode.Create, FileAccess.Write)))
       {
         Serializer.BeginBatch();
@@ -248,9 +255,12 @@ public class SceneEditor : Form, IEditorForm
 
         // replace invalid path characters with a tilde-encoding scheme (assumes tilde is valid...)
         animName.Replace("~", "~"+((int)'~').ToString("X"));
-        foreach(char c in Path.GetInvalidPathChars())
+        foreach(char c in Path.GetInvalidFileNameChars())
         {
-          animName = animName.Replace(c.ToString(), "~"+((int)c).ToString("X"));
+          if(c != '\0' && c != Path.DirectorySeparatorChar && c != Path.AltDirectorySeparatorChar)
+          {
+            animName = animName.Replace(c.ToString(), "~"+((int)c).ToString("X"));
+          }
         }
 
         // construct the final path
@@ -408,6 +418,32 @@ public class SceneEditor : Form, IEditorForm
   bool renderToCurrentLayer;
   #endregion
 
+  string GetLocalAnimationPath(string sceneFile)
+  {
+    string path = GetPathMinus(sceneFile, Project.LevelsPath);
+    path = Path.Combine(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path)+".shape");
+    return Path.Combine(Project.PerLevelAnimationPath, path);
+  }
+  
+  string GetPathMinus(string path, string directory)
+  {
+    path      = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+    directory = directory.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+    if(directory[directory.Length-1] != Path.DirectorySeparatorChar)
+    {
+      directory += Path.DirectorySeparatorChar;
+    }
+
+    if(path.StartsWith(directory, StringComparison.OrdinalIgnoreCase))
+    {
+      return path.Substring(directory.Length);
+    }
+    else
+    {
+      throw new ArgumentException("The path '"+path+"' is not within directory '"+directory+"'.");
+    }
+  }
+
   Project Project
   {
     get { return EditorApp.MainForm.Project; }
@@ -433,8 +469,9 @@ public class SceneEditor : Form, IEditorForm
     System.Windows.Forms.SplitContainer mainSplitter;
     System.Windows.Forms.ListViewGroup listViewGroup1 = new System.Windows.Forms.ListViewGroup("Static Images", System.Windows.Forms.HorizontalAlignment.Left);
     System.Windows.Forms.ListViewGroup listViewGroup2 = new System.Windows.Forms.ListViewGroup("Animated Images", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Vector Animations", System.Windows.Forms.HorizontalAlignment.Left);
-    System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup3 = new System.Windows.Forms.ListViewGroup("Object Templates", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup4 = new System.Windows.Forms.ListViewGroup("Vector Shapes", System.Windows.Forms.HorizontalAlignment.Left);
+    System.Windows.Forms.ListViewGroup listViewGroup5 = new System.Windows.Forms.ListViewGroup("Miscellaneous", System.Windows.Forms.HorizontalAlignment.Left);
     System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SceneEditor));
     System.Windows.Forms.ContextMenuStrip propertyGridMenu;
     this.editMenu = new System.Windows.Forms.ToolStripMenuItem();
@@ -692,15 +729,18 @@ public class SceneEditor : Form, IEditorForm
     listViewGroup1.Name = "staticImgGroup";
     listViewGroup2.Header = "Animated Images";
     listViewGroup2.Name = "animImgGroup";
-    listViewGroup3.Header = "Vector Animations";
-    listViewGroup3.Name = "vectorAnimGroup";
-    listViewGroup4.Header = "Miscellaneous";
-    listViewGroup4.Name = "miscGroup";
+    listViewGroup3.Header = "Object Templates";
+    listViewGroup3.Name = "objectTemplateGroup";
+    listViewGroup4.Header = "Vector Shapes";
+    listViewGroup4.Name = "vectorShapeGroup";
+    listViewGroup5.Header = "Miscellaneous";
+    listViewGroup5.Name = "miscGroup";
     this.objectList.Groups.AddRange(new System.Windows.Forms.ListViewGroup[] {
             listViewGroup1,
             listViewGroup2,
             listViewGroup3,
-            listViewGroup4});
+            listViewGroup4,
+            listViewGroup5});
     this.objectList.LargeImageList = this.objectImgs;
     this.objectList.Location = new System.Drawing.Point(2, 24);
     this.objectList.MultiSelect = false;
@@ -1036,12 +1076,21 @@ public class SceneEditor : Form, IEditorForm
           return true;
         }
 
+        // if the flipping of the objects differ, we'll have to reverse the polygon vertex order of one before
+        // joining them.
+        bool reversePolygons = VectorSubTool.PolygonsFlipped(srcObj) != VectorSubTool.PolygonsFlipped(destObj);
+
         VectorShape srcShape = CloneObject(srcObj.Shape);
         foreach(VectorShape.Polygon poly in VectorSubTool.GetPolygons(srcShape.RootNode))
         {
           foreach(VectorShape.Vertex vertex in poly.Vertices)
           {
             vertex.Position = destObj.SceneToLocal(srcObj.LocalToScene(vertex.Position));
+          }
+          
+          if(reversePolygons)
+          {
+            poly.ReverseVertices();
           }
         }
 
@@ -1577,14 +1626,14 @@ public class SceneEditor : Form, IEditorForm
               }
               if(VectorSubTool.IsValidObject(obj))
               {
-                menu.MenuItems.Add("Edit vector properties",
+                menu.MenuItems.Add("Edit vector shape",
                                    delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.VectorTool; });
               }
               menu.MenuItems.Add("-");
             }
 
             menu.MenuItems.Add(new MenuItem("Delete object(s)", menu_Delete, Shortcut.Del));
-            menu.MenuItems.Add("Export object(s)", menu_Export);
+            menu.MenuItems.Add("Export object(s)...", menu_Export);
             menu.MenuItems.Add("Copy object(s)", Editor.editCopyMenuItem_Click);
             
             foreach(SceneObject obj in SelectedObjects)
@@ -2228,7 +2277,48 @@ public class SceneEditor : Form, IEditorForm
 
       void menu_Export(object sender, EventArgs e)
       {
-        MessageBox.Show("This used to work, but got erased when visual studio got bitchy! Boo."); // TODO: implement
+        // warn the user about exporting objects that reference local resources
+        foreach(SceneObject obj in SelectedObjects)
+        {
+          VectorObject vectorObj = obj as VectorObject;
+          if(vectorObj != null && Editor.IsLocalResource(vectorObj.ShapeName))
+          {
+            
+            if(MessageBox.Show("One or more selected objects reference resources local to this level. The resulting "+
+                               "object template will not be importable into other levels. If this is not what you "+
+                               "want, go back and export the resources from the level so that they can be shared. "+
+                               "Then export the objects referencing the resources. Do you want to create a "+
+                               "non-sharable object template?", "Create a non-sharable template??",
+                               MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2)
+                 == DialogResult.No)
+            {
+              return;
+            }
+
+            break;
+          }
+        }
+
+        SaveFileDialog fd = new SaveFileDialog();
+        fd.FileName = "object 1.object";
+        fd.Filter   = "Object files (*.object)|*.object";
+        fd.Title    = "Select the path to which the objects will be saved";
+        fd.InitialDirectory = Editor.Project.ObjectsPath.TrimEnd('/');
+        
+        if(fd.ShowDialog() == DialogResult.OK)
+        {
+          using(SexpWriter writer = new SexpWriter(File.Open(fd.FileName, FileMode.Create, FileAccess.Write)))
+          {
+            Serializer.BeginBatch();
+            foreach(SceneObject obj in SelectedObjects)
+            {
+              Serializer.Serialize(obj, writer);
+            }
+            Serializer.EndBatch();
+          }
+          
+          Editor.SetToolboxItem(new ObjectTemplateItem(fd.FileName));
+        }
       }
       #endregion
 
@@ -2347,12 +2437,18 @@ public class SceneEditor : Form, IEditorForm
         if(SelectedNode == null) return false;
 
         VectorShape.Node clone = CloneObject(SelectedNode);
+        bool reverseOrder = PolygonsFlipped(SelectedObject);
+
         // vertices are stored on the clipboard in scene coordinates
         foreach(VectorShape.Polygon poly in GetPolygons(clone))
         {
           foreach(VectorShape.Vertex vertex in poly.Vertices)
           {
             vertex.Position = SelectedObject.LocalToScene(vertex.Position);
+          }
+          if(reverseOrder) // we want polygons to be stored in a clockwise fashion on the clipboard
+          {
+            poly.ReverseVertices();
           }
         }
 
@@ -2444,23 +2540,46 @@ public class SceneEditor : Form, IEditorForm
               if(endPoint == -1) return true;
               int startPoint = selectedPoints[selectedPoints.Count-1];
               
-              // always select points in a clockwise fashion
-              if(startPoint <= endPoint)
+              if(PolygonsFlipped(SelectedObject)) // select points in a counterclockwise fashion
               {
-                for(int i=startPoint; i<=endPoint; i++)
+                if(endPoint <= startPoint)
                 {
-                  SelectVertex(i, false);
+                  for(int i=endPoint; i>=startPoint; i--)
+                  {
+                    SelectVertex(i, false);
+                  }
+                }
+                else
+                {
+                  for(int i=startPoint; i>=0; i--)
+                  {
+                    SelectVertex(i, false);
+                  }
+                  for(int i=SelectedPolygon.Vertices.Count-1; i>=endPoint; i--)
+                  {
+                    SelectVertex(i, false);
+                  }
                 }
               }
-              else
+              else // select points in a clockwise fashion
               {
-                for(int i=startPoint; i<SelectedPolygon.Vertices.Count; i++)
+                if(startPoint <= endPoint)
                 {
-                  SelectVertex(i, false);
+                  for(int i=startPoint; i<=endPoint; i++)
+                  {
+                    SelectVertex(i, false);
+                  }
                 }
-                for(int i=0; i<=endPoint; i++)
+                else
                 {
-                  SelectVertex(i, false);
+                  for(int i=startPoint; i<SelectedPolygon.Vertices.Count; i++)
+                  {
+                    SelectVertex(i, false);
+                  }
+                  for(int i=0; i<=endPoint; i++)
+                  {
+                    SelectVertex(i, false);
+                  }
                 }
               }
             }
@@ -2547,8 +2666,14 @@ public class SceneEditor : Form, IEditorForm
             }
 
             menu.MenuItems.Add("Delete shape", delegate(object s, EventArgs a) { DeleteSelectedObject(); });
-            menu.MenuItems.Add("Edit shape properties",
+            menu.MenuItems.Add("Edit object properties",
                                delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.SpatialTool; });
+
+            if(Editor.IsLocalResource(SelectedShape.Name))
+            {
+              menu.MenuItems.Add("Export shape...", delegate(object s, EventArgs a) { ExportLocalShape(); });
+            }
+
             menu.MenuItems.Add("-");
           }
 
@@ -2770,6 +2895,67 @@ public class SceneEditor : Form, IEditorForm
             SelectedObject.SceneToLocal(dragPoints[i] + sceneDist);
         }
         RecalculateObjectBounds();
+      }
+
+      void ExportLocalShape()
+      {
+        string badChars = null;
+        char[] invalidChars = null;
+
+        List<char> charList = new List<char>();
+        foreach(char c in Path.GetInvalidFileNameChars())
+        {
+          // directory separators are allowed in shape names
+          if(c != Path.DirectorySeparatorChar && c != Path.AltDirectorySeparatorChar)
+          {
+            charList.Add(c);
+            if(c > 32) // control characters will just ugly up the string, so we'll skip them. (and space)
+            {
+              if(badChars != null) badChars += ' ';
+              badChars += c;
+            }
+          }
+        }
+        invalidChars = charList.ToArray();
+
+        StringDialog sd = new StringDialog("Enter shape name", "Enter the new name of the shape. The name must not "+
+                                           "begin with an underscore, or contain the following characters: "+badChars);
+        sd.Validating += delegate(object s, CancelEventArgs e)
+        {
+          string value = sd.Value.Trim();
+          if(value == string.Empty || value.StartsWith("_") || value.IndexOfAny(invalidChars) != -1)
+          {
+            MessageBox.Show(sd.Prompt, sd.Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            e.Cancel = true;
+          }
+          if(Engine.Engine.HasResource<VectorShape>(value))
+          {
+            MessageBox.Show("A shape with this name already exists.", sd.Text,
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+            e.Cancel = true;
+          }
+        };
+
+        if(sd.ShowDialog() == DialogResult.OK)
+        {
+          string oldName = SelectedShape.Name;
+
+          SelectedShape.Name = sd.Value.Trim(); // rename the shape
+          foreach(SceneObject obj in Scene.PickAll()) // and update all VectorObjects that reference it
+          {
+            VectorObject vectorObj = obj as VectorObject;
+            if(vectorObj != null && vectorObj.ShapeName == oldName)
+            {
+              vectorObj.ShapeName = SelectedShape.Name;
+            }
+          }
+
+          // remove the name from the local resources list, since it's now a shared resource
+          Editor.localResources.Remove(oldName);
+
+          // and add the new item to the toolbox
+          Editor.SetToolboxItem(new VectorShapeItem(SelectedShape));
+        }
       }
 
       void RecalculateObjectBounds()
@@ -3607,6 +3793,13 @@ public class SceneEditor : Form, IEditorForm
           return false;
         }
       }
+      
+      /// <summary>Determines whether the polygon vertex order is flipped (counterclockwise) in the given object.</summary>
+      internal static bool PolygonsFlipped(VectorObject obj)
+      {
+        // if an object is flipped once, the vertex order is flipped. if it's flipped twice, they cancel out
+        return obj.HorizontalFlip ? !obj.VerticalFlip : obj.VerticalFlip;
+      }
     }
     #endregion
 
@@ -3673,8 +3866,9 @@ public class SceneEditor : Form, IEditorForm
           {
             MessageBox.Show("A vector shape referenced by a clipboard object is local to another level. To share a "+
                             "shape across levels, first right-click on an instance of the shape and save it to a "+
-                            "file. Then, it will appear in the toolpane.",
-                            "Sorry", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            "file. Then, it will appear in the toolpane. Alternately, you can clone the shape by "+
+                            "copying and pasting the root node of the shape rather than an object that references "+
+                            "the shape.", "Share-aza", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return true;
           }
         }
@@ -3875,17 +4069,6 @@ public class SceneEditor : Form, IEditorForm
       Scene.RemoveObject(obj);
     }
 
-    void DeselectObjects()
-    {
-      if(selectedObjects.Count != 0)
-      {
-        InvalidateSelectedBounds(false);
-        selectedObjects.Clear();
-        ClearSelectedObjectBounds();
-        OnSelectedObjectsChanged();
-      }
-    }
-
     Color GetInverseBackgroundColor()
     {
       Color bgColor = SceneView.BackColor;
@@ -3985,6 +4168,17 @@ public class SceneEditor : Form, IEditorForm
       InvalidateSelectedBounds(true); // invalidate the old bounds
       RecalculateSelectedBounds();    // recalculate
       InvalidateSelectedBounds(true); // invalidate the new bounds
+    }
+
+    public void DeselectObjects()
+    {
+      if(selectedObjects.Count != 0)
+      {
+        InvalidateSelectedBounds(false);
+        selectedObjects.Clear();
+        ClearSelectedObjectBounds();
+        OnSelectedObjectsChanged();
+      }
     }
 
     public void SelectObject(SceneObject obj, bool deselectOthers)
@@ -4422,19 +4616,19 @@ public class SceneEditor : Form, IEditorForm
         Rectangle displayArea = new Rectangle(new Point(), map.Frames[0].Size);
         if(displayArea.Width > displayArea.Height)
         {
-          displayArea.Height = 32 * displayArea.Height / displayArea.Width;
-          displayArea.Width  = 32;
+          displayArea.Height = iconBuffer.Width * displayArea.Height / displayArea.Width;
+          displayArea.Width  = iconBuffer.Width;
         }
         else
         {
-          displayArea.Width  = 32 * displayArea.Width / displayArea.Height;
-          displayArea.Height = 32;
+          displayArea.Width  = iconBuffer.Height * displayArea.Width / displayArea.Height;
+          displayArea.Height = iconBuffer.Height;
         }
-        displayArea.X = (32 - displayArea.Width)  / 2;
-        displayArea.Y = (32 - displayArea.Height) / 2;
+        displayArea.X = (iconBuffer.Width  - displayArea.Width)  / 2;
+        displayArea.Y = (iconBuffer.Height - displayArea.Height) / 2;
         
         GLBuffer.SetCurrent(iconBuffer);
-        Engine.Engine.ResetOpenGL(32, 32, new Rectangle(0, 0, 32, 32));
+        Engine.Engine.ResetOpenGL(iconBuffer.Width, iconBuffer.Height, new Rectangle(new Point(), iconBuffer.Size));
         GL.glClear(GL.GL_COLOR_BUFFER_BIT);
 
         GL.glEnable(GL.GL_TEXTURE_2D);
@@ -4461,7 +4655,56 @@ public class SceneEditor : Form, IEditorForm
         return AddIcon(iconBuffer.CreateBitmap(), lvItem == null ? 0 : lvItem.ImageIndex);
       }
     }
-    
+    else if(item is VectorShapeItem || item is ObjectTemplateItem)
+    {
+      Scene scene = new Scene();
+
+      SceneViewControl sceneView = new SceneViewControl();
+      sceneView.Bounds     = new Rectangle(0, 0, iconBuffer.Width, iconBuffer.Height);
+      sceneView.BackColor  = Color.White;
+      sceneView.Scene      = scene;
+
+      DesktopControl desktop = new DesktopControl();
+      desktop.Bounds = sceneView.Bounds;
+      desktop.AddChild(sceneView);
+
+      SceneObject[] objs = item.CreateSceneObjects(sceneView);
+      foreach(SceneObject obj in objs)
+      {
+        scene.AddObject(obj);
+      }
+
+      // find the rectangle that contains all of the objects
+      GLRect objBounds = objs[0].GetRotatedAreaBounds();
+      for(int i=1; i<objs.Length; i++)
+      {
+        objBounds.Unite(objs[i].GetRotatedAreaBounds());
+      }
+
+      // configure the camera to show all of the objects
+      sceneView.CameraPosition = EngineMath.GetCenterPoint(objBounds);
+      if(objBounds.Width >= objBounds.Height)
+      {
+        sceneView.CameraSize = objBounds.Width;
+        sceneView.CameraAxis = CameraAxis.X;
+      }
+      else
+      {
+        sceneView.CameraSize = objBounds.Height;
+        sceneView.CameraAxis = CameraAxis.Y;
+      }
+
+      // now render the scene
+      GLBuffer.SetCurrent(iconBuffer);
+      Engine.Engine.ResetOpenGL(desktop.Width, desktop.Height, desktop.Bounds);
+      GL.glClear(GL.GL_COLOR_BUFFER_BIT);
+      desktop.Render();
+      GL.glFlush();
+      GLBuffer.SetCurrent(null);
+
+      return AddIcon(iconBuffer.CreateBitmap(), lvItem == null ? 0 : lvItem.ImageIndex);
+    }
+
     throw new NotImplementedException();
   }
 
@@ -4495,15 +4738,52 @@ public class SceneEditor : Form, IEditorForm
     ToolboxItem item = ToolboxItem.GetItem(itemName);
     if(item != null)
     {
-      SceneObject obj = item.CreateSceneObject(sceneView);
-      obj.Position = sceneView.ClientToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
-      obj.Layer    = CurrentLayer;
-      Scene.AddObject(obj);
+      SceneObject[] objs = item.CreateSceneObjects(sceneView);
+      
+      // find the rectangle that bounds all object positions
+      double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
+      int minLayer = int.MaxValue, maxLayer = int.MinValue;
+      foreach(SceneObject obj in objs)
+      {
+        if(obj.X < x1) x1 = obj.X;
+        if(obj.X > x2) x2 = obj.X;
+        if(obj.Y < y1) y1 = obj.Y;
+        if(obj.Y > y2) y2 = obj.Y;
+        if(obj.Layer < minLayer) minLayer = obj.Layer;
+        if(obj.Layer > maxLayer) maxLayer = obj.Layer;
+      }
+
+      // find the center point of all the objects and the offset needed to center the objects around the drop point
+      GLPoint centerPoint = new GLPoint(x1+(x2-x1)*0.5, y1+(y2-y1)*0.5);
+      GLPoint dropPoint = sceneView.ClientToScene(renderPanel.PointToClient(new Point(e.X, e.Y)));
+      Vector  posOffset = dropPoint - centerPoint;
+
+      int layerOffset = CurrentLayer-minLayer, layerSpread = maxLayer-minLayer;
+
+      if(CurrentLayer + layerSpread > 31)
+      {
+        layerOffset -= CurrentLayer + layerSpread - 31;
+      }
+
+      // add each item to the scene, adjusting its position and layer
+      foreach(SceneObject obj in objs)
+      {
+        obj.Position += posOffset;
+        obj.Layer    += layerOffset;
+        Scene.AddObject(obj);
+      }
+
       InvalidateRender();
 
       CurrentTool = Tools.Object;
       Tools.Object.SubTool = Tools.Object.SpatialTool;
-      Tools.Object.SelectObject(obj, true);
+
+      // select all the objects added
+      Tools.Object.DeselectObjects();
+      foreach(SceneObject obj in objs)
+      {
+        Tools.Object.SelectObject(obj, false);
+      }
     }
   }
 
@@ -4666,11 +4946,12 @@ public class SceneEditor : Form, IEditorForm
   {
     if(currentTool.MouseWheel(e)) return;
 
+    const int DetentsPerClick = 120; // 120 is the standard delta for a single wheel click
+
     if(Control.ModifierKeys == Keys.None) // plain mouse wheeling zooms in and out
     {
       const double zoomFactor = 1.25;
-      const double DetentsPerClick = 120; // 120 is the standard delta for a single wheel click
-      double wheelMovement = e.Delta / DetentsPerClick;
+      double wheelMovement = (double)e.Delta / DetentsPerClick;
 
       if(wheelMovement < 0) // zooming out
       {
@@ -4682,6 +4963,10 @@ public class SceneEditor : Form, IEditorForm
       }
 
       InvalidateView();
+    }
+    else if(Control.ModifierKeys == Keys.Control) // ctrl-wheeling changes current layer
+    {
+      CurrentLayer = EngineMath.Clip(CurrentLayer + e.Delta/DetentsPerClick, 0, 31);
     }
   }
   
@@ -4943,7 +5228,7 @@ public class SceneEditor : Form, IEditorForm
   static GLBuffer iconBuffer = new GLBuffer(32, 32);
 }
 
-enum ToolboxCategory { StaticImages, AnimatedImages, VectorShapes, Miscellaneous }
+enum ToolboxCategory { StaticImages, AnimatedImages, ObjectTemplates, VectorShapes, Miscellaneous }
 
 #region ToolboxList
 public class ToolboxList : ListView
@@ -5004,7 +5289,10 @@ abstract class ToolboxItem
     get { return name; }
   }
   
-  public abstract SceneObject CreateSceneObject(SceneViewControl sceneView);
+  public virtual SceneObject[] CreateSceneObjects(SceneViewControl sceneView)
+  {
+    return new SceneObject[] { CreateSceneObject(sceneView) };
+  }
 
   public static void ClearItems()
   {
@@ -5034,6 +5322,8 @@ abstract class ToolboxItem
     items.Remove(itemName);
   }
 
+  protected abstract SceneObject CreateSceneObject(SceneViewControl sceneView);
+
   string name;
 
   static Dictionary<string,ToolboxItem> items = new Dictionary<string,ToolboxItem>();
@@ -5054,7 +5344,7 @@ sealed class TriggerItem : ToolboxItem
     get { return "Trigger"; }
   }
 
-  public override SceneObject CreateSceneObject(SceneViewControl sceneView)
+  protected override SceneObject CreateSceneObject(SceneViewControl sceneView)
   {
     return new TriggerObject();
   }
@@ -5084,7 +5374,7 @@ sealed class StaticImageItem : ToolboxItem
     return Engine.Engine.GetImageMap(imageMapName).Resource;
   }
 
-  public override SceneObject CreateSceneObject(SceneViewControl sceneView)
+  protected override SceneObject CreateSceneObject(SceneViewControl sceneView)
   {
     ImageMap map = GetImageMap();
     if(map.Frames.Count == 0)
@@ -5107,6 +5397,86 @@ sealed class StaticImageItem : ToolboxItem
   }
 
   string imageMapName;
+}
+#endregion
+
+#region VectorShapeItem
+sealed class VectorShapeItem : ToolboxItem
+{
+  public VectorShapeItem(VectorShape shape) : base("shape:"+shape.Name)
+  {
+    shapeName = shape.Name;
+  }
+
+  public override ToolboxCategory Category
+  {
+    get { return ToolboxCategory.VectorShapes; }
+  }
+
+  public override string DisplayName
+  {
+    get { return shapeName; }
+  }
+
+  protected override SceneObject CreateSceneObject(SceneViewControl sceneView)
+  {
+    double size = Math.Max(sceneView.CameraArea.Width, sceneView.CameraArea.Height);
+
+    VectorObject obj = new VectorObject();
+    obj.ShapeName = shapeName;
+    obj.Size      = new Vector(size/10, size/10);
+    return obj;
+  }
+
+  string shapeName;
+}
+#endregion
+
+#region ObjectTemplateItem
+sealed class ObjectTemplateItem : ToolboxItem
+{
+  public ObjectTemplateItem(string filename) : base("obj:"+filename.ToLower())
+  {
+    this.filename = filename;
+  }
+
+  public override ToolboxCategory Category
+  {
+    get { return ToolboxCategory.ObjectTemplates; }
+  }
+
+  public override string DisplayName
+  {
+    get { return Path.GetFileNameWithoutExtension(filename); }
+  }
+
+  public override SceneObject[] CreateSceneObjects(SceneViewControl sceneView)
+  {
+    using(SexpReader reader = new SexpReader(File.Open(filename, FileMode.Open, FileAccess.Read)))
+    {
+      List<SceneObject> objects = new List<SceneObject>();
+      Serializer.BeginBatch();
+      try
+      {
+        while(!reader.EOF)
+        {
+          objects.Add((SceneObject)Serializer.Deserialize(reader));
+        }
+      }
+      finally
+      {
+        Serializer.EndBatch();
+      }
+      return objects.ToArray();
+    }
+  }
+  
+  protected override SceneObject CreateSceneObject(SceneViewControl sceneView)
+  {
+    throw new NotSupportedException();
+  }
+  
+  string filename;
 }
 #endregion
 #endregion

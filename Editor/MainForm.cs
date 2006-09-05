@@ -92,12 +92,25 @@ sealed class MainForm : Form
     }
     else
     {
-      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EditorDataPath), true);
+      Engine.Engine.Initialize(new Engine.StandardFileSystem(project.EngineDataPath, project.EngineDataPath), true);
 
-      ToolboxItem.SetItem(new TriggerItem());
-      foreach(ResourceHandle<ImageMap> map in Engine.Engine.GetResources<ImageMap>())
+      // add items to the toolbox
+      ToolboxItem.SetItem(new TriggerItem()); // trigger
+
+      foreach(ResourceHandle<ImageMap> map in Engine.Engine.GetResources<ImageMap>()) // image maps
       {
         ToolboxItem.SetItem(new StaticImageItem(map.Resource));
+      }
+      
+      foreach(ResourceHandle<VectorShape> shape in Engine.Engine.GetResources<VectorShape>()) // vector shapes
+      {
+        ToolboxItem.SetItem(new VectorShapeItem(shape.Resource));
+      }
+
+      // object templates
+      foreach(string objectFile in Directory.GetFiles(project.ObjectsPath, "*.object", SearchOption.AllDirectories))
+      {
+        ToolboxItem.SetItem(new ObjectTemplateItem(objectFile));
       }
     }
   }

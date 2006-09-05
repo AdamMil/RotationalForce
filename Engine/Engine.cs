@@ -25,6 +25,12 @@ public interface ITicker
   void Tick(double timeDelta);
 }
 
+public class ResourceNotFoundException : ApplicationException
+{
+  public ResourceNotFoundException(string resourceName)
+    : base("The resource named '"+resourceName+"' could not be found.") { }
+}
+
 #region Resource
 public abstract class Resource : UniqueObject, IDisposable
 {
@@ -338,10 +344,16 @@ public static class Engine
   }
 
   /// <summary>Retrieves a resource with the given name.</summary>
+  /// <exception cref="ResourceNotFoundException">Thrown if the resource could not be found.</exception>
   public static ResourceHandle<T> GetResource<T>(string name) where T : Resource
   {
     AssertInitialized();
-    return (ResourceHandle<T>)resources[GetResourcePrefix(typeof(T)) + name];
+    ResourceHandleBase handle;
+    if(!resources.TryGetValue(GetResourcePrefix(typeof(T)) + name, out handle))
+    {
+      throw new ResourceNotFoundException(name);
+    }
+    return (ResourceHandle<T>)handle;
   }
 
   /// <summary>Retrieves all the resources of a given type.</summary>
@@ -356,6 +368,13 @@ public static class Engine
       if(handle != null) handles.Add(handle);
     }
     return handles;
+  }
+
+  /// <summary>Determines whether a resource with the given name exists.</summary>
+  public static bool HasResource<T>(string name) where T : Resource
+  {
+    AssertInitialized();
+    return resources.ContainsKey(GetResourcePrefix(typeof(T)) + name);
   }
 
   public static void UnloadResource<T>(ResourceHandle<T> handle) where T : Resource
@@ -435,9 +454,9 @@ public static class Engine
   internal static void OnResourceNameChanged(Resource resource, string oldName)
   {
     ResourceHandleBase handle;
-    if(TryGetHandle(resource, out handle))
+    string prefix = GetResourcePrefix(resource);
+    if(TryGetHandle(prefix, oldName, out handle) && handle.GetResource() == resource)
     {
-      string prefix = GetResourcePrefix(resource);
       resources.Remove(prefix + oldName);
       resources.Add(prefix + resource.Name, handle);
     }

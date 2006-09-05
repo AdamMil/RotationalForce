@@ -12,7 +12,7 @@ namespace RotationalForce.Editor
 sealed class Project
 {
   const string Images = StandardPath.Images, Animations = StandardPath.Animations, Levels = StandardPath.Scenes,
-               EditorData = "editorData", PerLevel = "perLevel";
+               PerLevel = "perLevel", Objects = StandardPath.Objects;
 
   Project(string basePath)
   {
@@ -48,11 +48,6 @@ sealed class Project
     get { return path; }
   }
 
-  public string EditorDataPath
-  {
-    get { return Path.Combine(path, EditorData); }
-  }
-
   public string EngineDataPath
   {
     get { return Path.Combine(path, "data"); }
@@ -66,6 +61,11 @@ sealed class Project
   public string LevelsPath
   {
     get { return Path.Combine(EngineDataPath, Levels); }
+  }
+  
+  public string ObjectsPath
+  {
+    get { return Path.Combine(EngineDataPath, Objects); }
   }
 
   public string GetNewShapeName()
@@ -142,7 +142,7 @@ sealed class Project
     Directory.CreateDirectory(Path.Combine(engineDataPath, Animations));
     Directory.CreateDirectory(Path.Combine(Path.Combine(engineDataPath, Animations), PerLevel));
     Directory.CreateDirectory(Path.Combine(engineDataPath, Levels));
-    Directory.CreateDirectory(Path.Combine(engineDataPath, EditorData));
+    Directory.CreateDirectory(Path.Combine(engineDataPath, Objects));
 
     StreamWriter projectFile = new StreamWriter(Path.Combine(basePath, "rfproject.xml"), false, Encoding.UTF8);
     projectFile.WriteLine(@"<?xml version=""1.0"" encoding=""utf-8"" ?>");
