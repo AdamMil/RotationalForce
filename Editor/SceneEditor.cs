@@ -14,6 +14,7 @@ using GLPoint = GameLib.Mathematics.TwoD.Point;
 using GLRect  = GameLib.Mathematics.TwoD.Rectangle;
 using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
 using Vector  = GameLib.Mathematics.TwoD.Vector;
+using Line    = GameLib.Mathematics.TwoD.Line;
 
 namespace RotationalForce.Editor
 {
@@ -39,6 +40,7 @@ public class SceneEditor : Form, IEditorForm
   private ToolStripMenuItem editPasteMenuItem;
   private ToolStripMenuItem editUnloadTraceItem;
   private ToolStripMenuItem resetPropertyValueMenuItem;
+  private ToolStripMenuItem openColorPickerMenuItem;
   private TreeView treeView;
   private ToolStripMenuItem createVectorGroupMenuItem;
   private ContextMenuStrip vectorTreeMenu;
@@ -135,8 +137,9 @@ public class SceneEditor : Form, IEditorForm
       using(SexpReader sr = new SexpReader(File.Open(fd.FileName, FileMode.Open, FileAccess.Read)))
       {
         Serializer.BeginBatch();
+        Scene scene = (Scene)Serializer.Deserialize(sr);
         sceneView = (SceneViewControl)Serializer.Deserialize(sr);
-        sceneView.Scene = (Scene)Serializer.Deserialize(sr);
+        sceneView.Scene = scene;
         Serializer.EndBatch();
       }
 
@@ -201,8 +204,8 @@ public class SceneEditor : Form, IEditorForm
     using(SexpWriter writer = new SexpWriter(File.Open(fileName, FileMode.Create, FileAccess.Write)))
     {
       Serializer.BeginBatch();
+      Serializer.Serialize(sceneView.Scene, writer);
       Serializer.Serialize(sceneView, writer);
-      Serializer.Serialize(sceneView.Scene, writer); // sceneViews don't serialize their scene objects, so do that too
       Serializer.EndBatch();
     }
 
@@ -486,6 +489,7 @@ public class SceneEditor : Form, IEditorForm
     this.objectImgs = new System.Windows.Forms.ImageList(this.components);
     this.propertyGrid = new System.Windows.Forms.PropertyGrid();
     this.resetPropertyValueMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+    this.openColorPickerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
     this.toolBar = new System.Windows.Forms.ToolStrip();
     this.vectorTreeMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
     this.createVectorGroupMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -772,7 +776,8 @@ public class SceneEditor : Form, IEditorForm
     // propertyGridMenu
     // 
     propertyGridMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.resetPropertyValueMenuItem});
+            this.resetPropertyValueMenuItem,
+            this.openColorPickerMenuItem});
     propertyGridMenu.Name = "propertyGridMenu";
     propertyGridMenu.Size = new System.Drawing.Size(132, 26);
     propertyGridMenu.Opening += new System.ComponentModel.CancelEventHandler(this.propertyGridMenu_Opening);
@@ -783,6 +788,13 @@ public class SceneEditor : Form, IEditorForm
     this.resetPropertyValueMenuItem.Size = new System.Drawing.Size(131, 22);
     this.resetPropertyValueMenuItem.Text = "Reset value";
     this.resetPropertyValueMenuItem.Click += new System.EventHandler(this.resetPropertyValueMenuItem_Click);
+    // 
+    // openColorPickerMenuItem
+    // 
+    this.openColorPickerMenuItem.Name = "openColorPickerMenuItem";
+    this.openColorPickerMenuItem.Size = new System.Drawing.Size(131, 22);
+    this.openColorPickerMenuItem.Text = "Open color picker...";
+    this.openColorPickerMenuItem.Click += new System.EventHandler(this.openColorPickerMenuItem_Click);
     // 
     // toolBar
     // 
@@ -937,11 +949,12 @@ public class SceneEditor : Form, IEditorForm
   {
     public ObjectTool(SceneEditor editor) : base(editor)
     {
-      joinTool    = new JoinSubTool(editor, this);
-      linksTool   = new LinksSubTool(editor, this);
-      mountTool   = new MountSubTool(editor, this);
-      spatialTool = new SpatialSubTool(editor, this);
-      vectorTool  = new VectorSubTool(editor, this);
+      freehandTool = new FreehandSubTool(editor, this);
+      joinTool     = new JoinSubTool(editor, this);
+      linksTool    = new LinksSubTool(editor, this);
+      mountTool    = new MountSubTool(editor, this);
+      spatialTool  = new SpatialSubTool(editor, this);
+      vectorTool   = new VectorSubTool(editor, this);
     }
 
     public SceneObject SelectedObject
@@ -962,11 +975,12 @@ public class SceneEditor : Form, IEditorForm
     }
 
     #region SubTools
-    public SpatialSubTool SpatialTool
+   
+    public FreehandSubTool FreehandTool
     {
-      get { return spatialTool; }
+      get { return freehandTool; }
     }
-    
+
     public JoinSubTool JoinTool
     {
       get { return joinTool; }
@@ -980,6 +994,11 @@ public class SceneEditor : Form, IEditorForm
     public MountSubTool MountTool
     {
       get { return mountTool; }
+    }
+
+    public SpatialSubTool SpatialTool
+    {
+      get { return spatialTool; }
     }
 
     public VectorSubTool VectorTool
@@ -1025,6 +1044,137 @@ public class SceneEditor : Form, IEditorForm
       
       ObjectTool objectTool;
     }
+
+    #region FreehandSubTool
+    public sealed class FreehandSubTool : ObjectSubTool
+    {
+      public FreehandSubTool(SceneEditor editor, ObjectTool parent) : base(editor, parent) { }
+
+      public override void Deactivate()
+      {
+        points.Clear();
+      }
+
+      public override void KeyPress(KeyEventArgs e, bool down)
+      {
+        if(e.KeyCode == Keys.Escape)
+        {
+          Panel.CancelMouseDrag();
+          ObjectTool.SubTool = ObjectTool.VectorTool;
+        }
+      }
+
+      public override bool MouseDragStart(MouseEventArgs e)
+      {
+        if(e.Button == MouseButtons.Left)
+        {
+          area = new Rectangle(e.X, e.Y, 1, 1);
+          points.Clear();
+          points.Add(e.Location);
+          return true;
+        }
+        else
+        {
+          return false;
+        }
+      }
+
+      public override void MouseDrag(MouseDragEventArgs e)
+      {
+        if(e.Offset.Width != 0 || e.Offset.Height != 0)
+        {
+          points.Add(e.Location);
+
+          area = Rectangle.Union(area, new Rectangle(e.X, e.Y, 1, 1));
+          Editor.InvalidateDecoration(area);
+        }
+      }
+
+      public override void MouseDragEnd(MouseDragEventArgs e)
+      {
+        if(points.Count < 3)
+        {
+          MessageBox.Show("Not enough points were added to construct an actual polygon. Try drawing more!");
+        }
+        else
+        {
+          List<GLPoint> glPoints = new List<GLPoint>();
+          foreach(Point pt in points)
+          {
+            glPoints.Add(SceneView.ClientToScene(pt));
+          }
+
+          // smooth the polygon by averaging each point with the surrounding two. this helps eliminate stairstepping
+          // caused by the fact that mouse input does not have subpixel precision
+          GLPoint prevPoint = glPoints[0];
+          for(int i=1; i<glPoints.Count-1; i++)
+          {
+            GLPoint thisPoint = glPoints[i];
+            glPoints[i] = new GLPoint((prevPoint.X+thisPoint.X+glPoints[i+1].X)/3,
+                                      (prevPoint.Y+thisPoint.Y+glPoints[i+1].Y)/3);
+            prevPoint = thisPoint;
+          }
+          glPoints[glPoints.Count-1] = new GLPoint((glPoints[glPoints.Count-1].X+glPoints[glPoints.Count-2].X) / 2,
+                                                   (glPoints[glPoints.Count-1].Y+glPoints[glPoints.Count-2].Y) / 2);
+
+          VectorShape shape = Editor.CreateLocalShape();
+
+          VectorShape.PolygonNode polyNode = new VectorShape.PolygonNode("poly");
+          shape.RootNode = polyNode;
+
+          double x1=double.MaxValue, y1=double.MaxValue, x2=double.MinValue, y2=double.MinValue;
+          foreach(GLPoint point in glPoints)
+          {
+            if(point.X < x1) x1 = point.X;
+            if(point.Y < y1) y1 = point.Y;
+            if(point.X > x2) x2 = point.X;
+            if(point.Y > y2) y2 = point.Y;
+          }
+
+          VectorObject obj = new VectorObject();
+          obj.ShapeName = shape.Name;
+          obj.Layer     = Editor.CurrentLayer;
+          obj.Size      = new Vector(x2-x1, y2-y1);
+          obj.Position  = new GLPoint(x1+obj.Width*0.5, y1+obj.Height*0.5);
+          Scene.AddObject(obj);
+
+          VectorShape.Vertex vertex = new VectorShape.Vertex();
+          vertex.Color = ObjectTool.GetInverseBackgroundColor();
+          vertex.Split = true;
+          foreach(GLPoint point in glPoints)
+          {
+            vertex = vertex.Clone();
+            vertex.Position = obj.SceneToLocal(point);
+            polyNode.Polygon.AddVertex(vertex);
+          }
+          
+          polyNode.Polygon.LOD = 0.2; // a LOD of 0.2 is typically a bit closer to what the user will want
+
+          ObjectTool.SelectObject(obj, true);
+          ObjectTool.SubTool = ObjectTool.VectorTool;
+          Editor.InvalidateRender();
+        }
+      }
+
+      public override void PaintDecoration(Graphics g)
+      {
+        if(points.Count > 1)
+        {
+          using(Pen pen = new Pen(ObjectTool.GetInverseBackgroundColor()))
+          {
+            for(int i=1; i<points.Count; i++)
+            {
+              g.DrawLine(pen, points[i-1], points[i]);
+            }
+            g.DrawLine(pen, points[points.Count-1], points[0]);
+          }
+        }
+      }
+
+      List<Point> points = new List<Point>();
+      Rectangle area;
+    }
+    #endregion
 
     #region JoinSubTool
     public sealed class JoinSubTool : ObjectSubTool
@@ -1652,6 +1802,9 @@ public class SceneEditor : Form, IEditorForm
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, true); });
           menu.MenuItems.Add("New spline shape",
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, false); });
+          menu.MenuItems.Add("New freehand shape",
+                             delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.FreehandTool; });
+
           if(Editor.CurrentTool.CanPaste)
           {
             menu.MenuItems.Add("Paste", Editor.editPasteMenuItem_Click);
@@ -2633,10 +2786,7 @@ public class SceneEditor : Form, IEditorForm
 
               menu.MenuItems.Add("Copy selected polygon", Editor.editCopyMenuItem_Click);
 
-              if(HasSpline(SelectedPolygon))
-              {
-                menu.MenuItems.Add("Convert spline polygon to vertex polygon", menu_ConvertPolyToVertexPoly);
-              }
+              menu.MenuItems.Add("Convert polygon to pre-subdivided polygon", menu_ConvertPolyToVertexPoly);
             }
 
             // if it has no animations, it can be joined with another vector object
@@ -2650,20 +2800,7 @@ public class SceneEditor : Form, IEditorForm
             // if it has multiple polygons, the order of the current polygon can be changed
             if(polygons.Count > 1)
             {
-              bool hasSpline = false;
-              foreach(VectorShape.Polygon polygon in polygons)
-              {
-                if(HasSpline(polygon))
-                {
-                  hasSpline = true;
-                  break;
-                }
-              }
-
-              if(hasSpline)
-              {
-                menu.MenuItems.Add("Convert spline shape to vertex shape", menu_ConvertShapeToVertexShape);
-              }
+              menu.MenuItems.Add("Convert shape to pre-subdivided shape", menu_ConvertShapeToVertexShape);
 
               if(SelectedPolygon != null)
               {
@@ -2688,6 +2825,9 @@ public class SceneEditor : Form, IEditorForm
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, true); });
           menu.MenuItems.Add("New spline shape",
                              delegate(object s, EventArgs a) { ObjectTool.CreateShape(e.Location, false); });
+          menu.MenuItems.Add("New freehand shape",
+                             delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.FreehandTool; });
+
           if(Editor.CurrentTool.CanPaste)
           {
             menu.MenuItems.Add("Paste", Editor.editPasteMenuItem_Click);
@@ -3558,13 +3698,15 @@ public class SceneEditor : Form, IEditorForm
       
       void ConvertPolyToVertexPoly(VectorShape.Polygon poly)
       {
-        VectorShape.Polygon vertexPoly = poly.CloneAsVertexPolygon();
+        VectorShape.Polygon vertexPoly = poly.CloneAsPreSubdividedPolygon();
 
         poly.ClearVertices();
         foreach(VectorShape.Vertex vertex in vertexPoly.Vertices)
         {
           poly.AddVertex(vertex.Clone());
         }
+        
+        poly.LOD = 0.0;
       }
 
       void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
@@ -3770,16 +3912,6 @@ public class SceneEditor : Form, IEditorForm
         return clientDist;
       }
 
-      /// <summary>Determines whether the polygon has any spline edges.</summary>
-      public bool HasSpline(VectorShape.Polygon poly)
-      {
-        foreach(VectorShape.Vertex vertex in poly.Vertices)
-        {
-          if(!vertex.Split) return true;
-        }
-        return false;
-      }
-
       /// <summary>Determines whether the specified polygon contains the given point.</summary>
       static bool PolygonContains(VectorShape.Polygon poly, GLPoint point)
       {
@@ -3820,6 +3952,7 @@ public class SceneEditor : Form, IEditorForm
     }
     #endregion
 
+    FreehandSubTool freehandTool;
     JoinSubTool joinTool;
     LinksSubTool linksTool;
     MountSubTool mountTool;
@@ -5152,18 +5285,44 @@ public class SceneEditor : Form, IEditorForm
   #region Other event handlers
   void propertyGridMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
   {
-    resetPropertyValueMenuItem.Enabled = propertyGrid.SelectedObjects.Length == 1 &&
-      propertyGrid.SelectedGridItem.PropertyDescriptor != null &&
-      propertyGrid.SelectedGridItem.PropertyDescriptor.Attributes[typeof(DefaultValueAttribute)] != null;
+    PropertyDescriptor prop = propertyGrid.SelectedGridItem == null ?
+      null : propertyGrid.SelectedGridItem.PropertyDescriptor;
+    
+    resetPropertyValueMenuItem.Enabled = prop != null && prop.Attributes[typeof(DefaultValueAttribute)] != null;
+    openColorPickerMenuItem.Visible    = prop != null && prop.PropertyType == typeof(Color);
   }
 
   void resetPropertyValueMenuItem_Click(object sender, EventArgs e)
   {
     PropertyDescriptor prop = propertyGrid.SelectedGridItem.PropertyDescriptor;
+    object component = propertyGrid.SelectedObjects.Length == 1 ?
+      propertyGrid.SelectedObject : propertyGrid.SelectedObjects;
     DefaultValueAttribute dv = (DefaultValueAttribute)prop.Attributes[typeof(DefaultValueAttribute)];
-    prop.SetValue(propertyGrid.SelectedObject, Convert.ChangeType(dv.Value, prop.PropertyType));
+    prop.SetValue(component, Convert.ChangeType(dv.Value, prop.PropertyType));
     propertyGrid.Refresh();
     InvalidateRender();
+  }
+
+  void openColorPickerMenuItem_Click(object sender, EventArgs e)
+  {
+    PropertyDescriptor prop = propertyGrid.SelectedGridItem.PropertyDescriptor;
+    object component = propertyGrid.SelectedObjects.Length == 1 ?
+      propertyGrid.SelectedObject : propertyGrid.SelectedObjects;
+    object value = prop.GetValue(component);
+    
+    ColorDialog cd = new ColorDialog();
+    cd.AnyColor = true;
+    cd.FullOpen = true;
+    if(value != null)
+    {
+      cd.Color = (Color)value;
+    }
+    if(cd.ShowDialog() == DialogResult.OK)
+    {
+      prop.SetValue(component, cd.Color);
+      propertyGrid.Refresh();
+      InvalidateRender();
+    }
   }
 
   void editMenu_DropDownOpening(object sender, EventArgs e)
