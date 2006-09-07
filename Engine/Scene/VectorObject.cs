@@ -1313,8 +1313,8 @@ public class VectorShape : Resource
       return poly;
     }
 
-    /// <summary>Creates a copy of this polygon with all spline edges subdivided into static vertices.</summary>
-    public Polygon CloneAsVertexPolygon()
+    /// <summary>Creates a copy of this polygon with all edges passed through the subdivision and LOD process.</summary>
+    public Polygon CloneAsPreSubdividedPolygon()
     {
       Polygon poly = Clone();
       poly.ClearVertices();
