@@ -1130,12 +1130,13 @@ public class SceneEditor : Form, IEditorForm
             if(point.X > x2) x2 = point.X;
             if(point.Y > y2) y2 = point.Y;
           }
+          double size = Math.Max(x2-x1, y2-y1);
 
           VectorObject obj = new VectorObject();
           obj.ShapeName = shape.Name;
           obj.Layer     = Editor.CurrentLayer;
-          obj.Size      = new Vector(x2-x1, y2-y1);
-          obj.Position  = new GLPoint(x1+obj.Width*0.5, y1+obj.Height*0.5);
+          obj.Size      = new Vector(size, size);
+          obj.Position  = new GLPoint(x1+(x2-x1)*0.5, y1+(y2-y1)*0.5);
           Scene.AddObject(obj);
 
           VectorShape.Vertex vertex = new VectorShape.Vertex();
@@ -1826,9 +1827,9 @@ public class SceneEditor : Form, IEditorForm
 
         dragHandle = GetHandleUnderPoint(e.Location);
 
-        // if zero or one objects are selected and the mouse cursor is not over a control handle,
+        // if the mouse cursor is not over a control handle, or the selected objects themselves, 
         // select the object under the pointer
-        if(dragHandle == Handle.None && SelectedObjects.Count < 2)
+        if(dragHandle == Handle.None && !ObjectTool.selectedObjectBounds.Contains(e.Location))
         {
           SceneObject obj = ObjectTool.ObjectUnderPoint(e.Location);
           if(obj != null) ObjectTool.SelectObject(obj, true);
@@ -2762,7 +2763,7 @@ public class SceneEditor : Form, IEditorForm
         }
         else if(e.Button == MouseButtons.Right)
         {
-          SelectObjectAndVertex(e.Location);
+          SelectObjectIfOutsideSelectedPolygon(e.Location);
           ContextMenu menu = new ContextMenu();
 
           if(SelectedObject != null)
@@ -2812,6 +2813,7 @@ public class SceneEditor : Form, IEditorForm
             menu.MenuItems.Add("Delete shape", delegate(object s, EventArgs a) { DeleteSelectedObject(); });
             menu.MenuItems.Add("Edit object properties",
                                delegate(object s, EventArgs a) { ObjectTool.SubTool = ObjectTool.SpatialTool; });
+            menu.MenuItems.Add("Reduce object to minimum size (affects rendering)", menu_ReduceObjectSize);
 
             if(Editor.IsLocalResource(SelectedShape.Name))
             {
@@ -3147,10 +3149,18 @@ public class SceneEditor : Form, IEditorForm
         // get their scene-space bounding box
         GLRect rect = shape.RootNode.GetBounds();
 
-        // we'll make the new bounds a square so that texturing looks natural, etc. so find the longest axis.
-        // the new data will be centered within the object.
-        double sceneSize = Math.Max(rect.Width, rect.Height);
-        obj.Size     = new Vector(sceneSize, sceneSize);
+        // if the object is square, we'll preserve that quality, so that texturing looks natural, etc.
+        if(obj.Width == obj.Height)
+        {
+          // find the longest axis. the new data will be centered within the object.
+          double sceneSize = Math.Max(rect.Width, rect.Height);
+          obj.Size = new Vector(sceneSize, sceneSize);
+        }
+        else // otherwise, if the user has made the object non-square, we'll preserve that quality.
+        {
+          obj.Size = rect.Size;
+        }
+
         obj.Position = EngineMath.GetCenterPoint(rect);
 
         // then convert back to local space in the new object
@@ -3450,6 +3460,22 @@ public class SceneEditor : Form, IEditorForm
         }
       }
 
+      bool SelectObjectIfOutsideSelectedPolygon(Point pt)
+      {
+        if(SelectedPolygon == null)
+        {
+          return SelectObjectIfOutsideNodeRect(pt);
+        }
+        else if(PolygonContains(SelectedPolygon, SelectedObject.SceneToLocal(SceneView.ClientToScene(pt))))
+        {
+          return true;
+        }
+        else
+        {
+          return SelectObjectAndVertex(pt);
+        }
+      }
+
       // if the mouse is over a vertex of the selected polygon (if any), selects that vertex and deselects others.
       // otherwise, if the mouse is over any polygon of any vector object, the object and polygon are selected. if the
       // mouse is over any vertex of that polygon, the vertex is selected.
@@ -3696,6 +3722,39 @@ public class SceneEditor : Form, IEditorForm
         }
       }
       
+      void menu_ReduceObjectSize(object sender, EventArgs e)
+      {
+        if(MessageBox.Show("This operation will modify all instances of this shape, and break automatic texture "+
+                           "coordinate generation and LOD. It is only intended for use as an optimization. Are you "+
+                           "sure you want to do it?", "r u sure?????", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                           MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+          return;
+        }
+
+        foreach(VectorShape.Polygon poly in GetPolygons())
+        {
+          foreach(VectorShape.Vertex vertex in poly.Vertices)
+          {
+            vertex.Position = SelectedObject.LocalToScene(vertex.Position);
+          }
+        }
+        
+        GLRect bounds = SelectedShape.RootNode.GetBounds();
+        SelectedObject.Size     = bounds.Size;
+        SelectedObject.Position = EngineMath.GetCenterPoint(bounds);
+
+        foreach(VectorShape.Polygon poly in GetPolygons())
+        {
+          foreach(VectorShape.Vertex vertex in poly.Vertices)
+          {
+            vertex.Position = SelectedObject.SceneToLocal(vertex.Position);
+          }
+        }
+        
+        ObjectTool.RecalculateAndInvalidateSelectedBounds();
+      }
+
       void ConvertPolyToVertexPoly(VectorShape.Polygon poly)
       {
         VectorShape.Polygon vertexPoly = poly.CloneAsPreSubdividedPolygon();
@@ -4043,6 +4102,8 @@ public class SceneEditor : Form, IEditorForm
             vertex.Position = obj.SceneToLocal(vertex.Position);
           }
         }
+
+        VectorSubTool.RecalculateObjectBounds(obj); // fix up the aspect ratio to make sure the object is square
 
         objects = new object[] { obj };
       }
@@ -4799,6 +4860,8 @@ public class SceneEditor : Form, IEditorForm
         
         GLBuffer.SetCurrent(iconBuffer);
         Engine.Engine.ResetOpenGL(iconBuffer.Width, iconBuffer.Height, new Rectangle(new Point(), iconBuffer.Size));
+        GL.glClearColor(Color.White);
+        GL.glColor(Color.White);
         GL.glClear(GL.GL_COLOR_BUFFER_BIT);
 
         GL.glEnable(GL.GL_TEXTURE_2D);
