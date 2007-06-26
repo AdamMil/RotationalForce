@@ -6,6 +6,7 @@ using GameLib.Mathematics.TwoD;
 using SPoint = System.Drawing.Point;
 using SRectangle = System.Drawing.Rectangle;
 using Size = System.Drawing.Size;
+using SizeF = System.Drawing.SizeF;
 
 namespace RotationalForce.Engine
 {
@@ -663,8 +664,10 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     GL.glPushMatrix(); // save the old ModelView matrix
     GL.glLoadIdentity();
 
+    DesktopControl desktop = Desktop;
     Rectangle viewArea = ClientToScene(ScreenToClient(drawArea));
-    Scene.Render(ref viewArea, LayerMask, GroupMask, RenderInvisible);
+    Scene.Render(ref viewArea, new SizeF((float)Width/desktop.Width, (float)Height/desktop.Height),
+                 LayerMask, GroupMask, RenderInvisible);
 
     GL.glPopMatrix(); // restore the ModelView matrix
     GL.glMatrixMode(GL.GL_PROJECTION); // switch to Projection mode

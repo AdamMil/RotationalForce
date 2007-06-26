@@ -502,7 +502,8 @@ public class Scene : UniqueObject, ITicker, IDisposable
   }
   #endregion
 
-  protected internal virtual void Render(ref Rectangle viewArea, uint layerMask, uint groupMask, bool renderInvisible)
+  protected internal virtual void Render(ref Rectangle viewArea, System.Drawing.SizeF viewSize,
+                                         uint layerMask, uint groupMask, bool renderInvisible)
   {
     PickOptions options = new PickOptions();
     options.AllowInvisible  = renderInvisible;
@@ -519,6 +520,9 @@ public class Scene : UniqueObject, ITicker, IDisposable
     }
 
     // loop through the layers, from back (31) to front (0)
+    float invWidthFactor = viewSize.Width / (float)viewArea.Width;    // when multiplied by an object's size, produces
+    float invHeightFactor = viewSize.Height / (float)viewArea.Height; // the size of the object on screen, from 0 to 1
+
     for(int layer=layeredRenderObjects.Length-1; layer >= 0; layer--)
     {
       List<SceneObject> layerObjects = layeredRenderObjects[layer];
@@ -526,7 +530,18 @@ public class Scene : UniqueObject, ITicker, IDisposable
 
       foreach(SceneObject obj in layerObjects)
       {
-        if(!obj.Dead) obj.Render(); // visibility checking is handled by FindObjects
+        if(!obj.Dead) // visibility checking is handled by FindObjects
+        {
+          float screenSize;
+          if(obj.AutoLOD)
+          {
+            Rectangle rect = obj.GetRotatedAreaBounds();
+            screenSize = Math.Max((float)rect.Width * invWidthFactor, (float)rect.Height * invHeightFactor);
+          }
+          else screenSize = 0;
+
+          obj.Render(screenSize);
+        }
       }
 
       layerObjects.Clear();
@@ -537,14 +552,16 @@ public class Scene : UniqueObject, ITicker, IDisposable
   {
     if(!HasFlag(Flag.Paused))
     {
-      bool applyAcceleration = HasFlag(Flag.ApplyAcceleration);
+      thisTimeDelta = timeDelta;
+
       foreach(SceneObject obj in objects)
       {
-        if(!obj.Dead) // objects could be marked dead anywhere, so we have to check this here
-        {
-          if(applyAcceleration) obj.AddVelocity(Acceleration);
-          obj.Simulate(timeDelta);
-        }
+        obj.PreSimulate(timeDelta);
+      }
+
+      foreach(SceneObject obj in objects)
+      {
+        Simulate(obj);
         if(obj.Dead) deleted.Add(obj);
       }
 
@@ -553,14 +570,26 @@ public class Scene : UniqueObject, ITicker, IDisposable
         if(!obj.Dead) obj.PostSimulate();
       }
 
-      // remove dead objects from the scene
-      foreach(SceneObject obj in deleted)
+      if(deleted.Count != 0)
       {
-        RemoveObject(obj);
+        // remove dead objects from the scene
+        foreach(SceneObject obj in deleted)
+        {
+          RemoveObject(obj);
+        }
+        deleted.Clear();
       }
-      deleted.Clear();
 
       elapsedTime += timeDelta;
+    }
+  }
+  
+  protected internal void Simulate(SceneObject obj)
+  {
+    if(!obj.Dead) // objects could be marked dead anywhere, so we have to check this here
+    {
+      if(HasFlag(Flag.ApplyAcceleration)) obj.AddVelocity(Acceleration);
+      obj.Simulate(thisTimeDelta);
     }
   }
 
@@ -592,9 +621,10 @@ public class Scene : UniqueObject, ITicker, IDisposable
   Vector acceleration;
 
   /// <summary>The total elapsed simulation time for this scene, in seconds.</summary>
+  internal double thisTimeDelta;
   double elapsedTime;
   
-  [NonSerialized] List<SceneObject> objects = new List<SceneObject>();
+  [NonSerialized] internal List<SceneObject> objects = new List<SceneObject>();
   /// <summary>Holds objects which are pending deletion.</summary>
   [NonSerialized] List<SceneObject> deleted = new List<SceneObject>();
   /// <summary>An array of list containing the objects to render.</summary>

@@ -45,12 +45,7 @@
     <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\GameLib\GameLib.csproj">
-      <Project>{79014105-2BDA-4D27-98AE-2DE3F5254252}</Project>
-      <Name>GameLib</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
+    <Compile Include="ComponentModel.cs" />
     <Compile Include="Engine.cs" />
     <Compile Include="FileSystem.cs" />
     <Compile Include="GUI\DesktopControl.cs" />
@@ -67,6 +62,20 @@
     <Compile Include="Serialization.cs" />
     <Compile Include="Strings.cs" />
     <Compile Include="Video.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\GameLib\Base\GameLib.Base.csproj">
+      <Project>{711792B7-5B4A-4BAC-9FAE-1476F4A4D5C3}</Project>
+      <Name>GameLib.Base</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\GameLib\ThreeD\GameLib.ThreeD.csproj">
+      <Project>{25A1BE8F-A834-46B3-BBA1-CBCB909E02BD}</Project>
+      <Name>GameLib.ThreeD</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\GameLib\Video\GameLib.Video.csproj">
+      <Project>{C54986D4-0E7D-461B-ACB8-1C19FF78481B}</Project>
+      <Name>GameLib.Video</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="XSD\" />

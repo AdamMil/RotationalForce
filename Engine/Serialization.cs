@@ -166,40 +166,55 @@ public enum SexpNodeType
 #endregion
 
 #region SexpReader
+/// <summary>This class represents a reader that can read a sequence of S-expressions.</summary>
 public sealed class SexpReader : IDisposable
 {
+  /// <summary>Initializes the reader with a stream assumed to be encoded as UTF-8.</summary>
   public SexpReader(Stream stream) : this(stream, Encoding.UTF8) { }
 
+  /// <summary>Initializes the reader with the given stream and encoding.</summary>
   public SexpReader(Stream stream, Encoding encoding) : this(new StreamReader(stream, encoding)) { }
 
+  /// <summary>Initializes the reader with the given <see cref="TextReader"/>.</summary>
   public SexpReader(TextReader reader)
   {
     if(reader == null) throw new ArgumentNullException();
     this.reader = reader;
-    NextChar(); // read the first character, if there is one
-    Read(); // advance to the first node
+    NextChar(); // read the first character if any. ReadFrom*() assume we're at the first character of the next item
+    Read(); // advance to the first S-expression node if any
   }
 
+  /// <summary>Gets how deeply nested the reader is within the tag tree.</summary>
+  public int Depth
+  {
+    get { return tagNames.Count; }
+  }
+
+  /// <summary>Gets whether the <see cref="SexpReader"/> has consumed all data.</summary>
   public bool EOF
   {
     get { return nodeType == SexpNodeType.EOF; }
   }
 
+  /// <summary>Gets the <see cref="SexpNodeType"/> of the node at which the reader is currently positioned.</summary>
   public SexpNodeType NodeType
   {
     get { return nodeType; }
   }
 
+  /// <summary>Gets the name of the tag in which the reader is currently positioned.</summary>
   public string TagName
   {
     get { return tagNames.Peek(); }
   }
 
+  /// <summary>Closes the reader's underlying stream.</summary>
   public void Close()
   {
     reader.Close();
   }
 
+  /// <summary>Disposes the reader's underlying stream.</summary>
   public void Dispose()
   {
     reader.Dispose();
@@ -266,14 +281,14 @@ public sealed class SexpReader : IDisposable
   {
     if(nodeType != SexpNodeType.Begin || !string.Equals(TagName, name, StringComparison.Ordinal))
     {
-      throw new InvalidOperationException("The reader is not positioned at a the beginning of an element named '"+
+      throw new InvalidOperationException("The reader is not positioned at the beginning of an element named '"+
                                           name+"'.");
     }
     Read();
   }
 
   /// <summary>Asserts that the reader is positioned at text content, returns the content, and then calls
-  /// <see cref="Read"/>.
+  /// <see cref="Read"/> to advance past the content.
   /// </summary>
   public string ReadContent()
   {
@@ -282,7 +297,9 @@ public sealed class SexpReader : IDisposable
     return content;
   }
 
-  /// <summary>Asserts that the reader is positioned at the end of an element and then calls <see cref="Read"/>.</summary>
+  /// <summary>Asserts that the reader is positioned at the end of an element and then calls <see cref="Read"/> to
+  /// advance to the next item.
+  /// </summary>
   public void ReadEndElement()
   {
     if(nodeType != SexpNodeType.End)
@@ -295,6 +312,7 @@ public sealed class SexpReader : IDisposable
   /// <summary>Asserts that the reader is positioned at the beginning of an element with the given name, calls
   /// <see cref="Read"/>, gets the element content if any, and finally calls <see cref="ReadEndElement"/>.
   /// </summary>
+  /// <returns>The text content of the element if there is any, and an empty string otherwise.</returns>
   public string ReadElement(string name)
   {
     ReadBeginElement(name);
@@ -303,45 +321,34 @@ public sealed class SexpReader : IDisposable
     return content;
   }
 
-  /// <summary>Skips to the end of the current node (skipping over all subnodes).</summary>
+  /// <summary>Skips past the current node (skipping over all subnodes as well).</summary>
   public void Skip()
   {
     if(EOF) return;
 
-    if(tagNames.Count == 0) // if we're at the "root" node (outside any node), read to EOF
-    {
-      do Read(); while(!EOF);
-    }
-    else
-    {
-      string tag = TagName;
-      int  depth = tagNames.Count;
+    string tag = TagName;
+    int  depth = tagNames.Count;
 
-      // read until the end of the current node
-      while(nodeType != SexpNodeType.End || tagNames.Count != depth ||
-            !string.Equals(TagName, tag, StringComparison.Ordinal))
-      {
-        Read();
-      }
-
-      Read(); // then read one more
+    // read until the end of the current node
+    while(nodeType != SexpNodeType.End || tagNames.Count != depth ||
+          !string.Equals(TagName, tag, StringComparison.Ordinal))
+    {
+      Read();
     }
+
+    Read(); // then read one more (to advance past the end of the current node)
   }
 
+  /// <summary>Returns a string briefly describing the current reader state.</summary>
   public override string ToString()
   {
-    return nodeType == SexpNodeType.EOF ? "[" + nodeType + "]" : string.Format("[{0} {1}]", TagName, nodeType);
+    return nodeType == SexpNodeType.EOF ? "[EOF]" : string.Format("[{0} {1}]", TagName, nodeType);
   }
 
-  bool ReaderAtEOF
-  {
-    get { return atEOF; }
-  }
-
-  // at the beginning of the data, we expect to see the beginning of a node or EOF
+  // at the beginning of the stream, we expect to see the beginning of a node or EOF
   void ReadFromBOF()
   {
-    if(ReaderAtEOF)
+    if(streamAtEOF)
     {
       nodeType = SexpNodeType.EOF;
     }
@@ -352,11 +359,11 @@ public sealed class SexpReader : IDisposable
     }
   }
 
-  // after the beginning of a node, we may find content, a begin node, or the node end
+  // after the beginning of a node, we may find content, another node, or the node end
   void ReadFromBegin()
   {
-    // we'll be positioned on the character immediately after the tag name, which should be a parethesis.
-    if(ReaderAtEOF) // if we're at EOF, throw an exception
+    // we'll be positioned on the character immediately after the tag name.
+    if(streamAtEOF)
     {
       throw UnexpectedEOF();
     }
@@ -374,12 +381,12 @@ public sealed class SexpReader : IDisposable
     }
   }
 
-  // after content, we may find a begin node or the end of the current node
+  // after text content, we may find another node or the end of the current node
   void ReadFromContent()
   {
     // we'll be positioned on the character immediately following the content, which should be a parenthesis.
 
-    if(ReaderAtEOF)
+    if(streamAtEOF)
     {
       throw UnexpectedEOF();
     }
@@ -397,14 +404,14 @@ public sealed class SexpReader : IDisposable
     }
   }
 
-  // after a node end, we expect EOF (only at the root), more content (not at the root), or a begin node
+  // after a node end, we expect EOF (only at the root), more content (except at the root), or another root node
   void ReadFromEnd()
   {
     tagNames.Pop();
     NextChar(); // advance past closing parenthesis
     SkipWhitespace();
 
-    if(ReaderAtEOF) // if we're at EOF, it's an error if not all tags are closed
+    if(streamAtEOF) // if we're at EOF, it's an error if not all tags are closed
     {
       if(tagNames.Count == 0)
       {
@@ -415,7 +422,7 @@ public sealed class SexpReader : IDisposable
         throw UnexpectedEOF();
       }
     }
-    else if(thisChar == '(') // if we're at a begin node, read it
+    else if(thisChar == '(') // if we're at another root node, read it
     {
       ReadStartNode();
     }
@@ -430,7 +437,7 @@ public sealed class SexpReader : IDisposable
     {
       if(tagNames.Count == 0)
       {
-        throw InvalidData("unexpected text content");
+        throw InvalidData("unexpected text content"); // content must not appear outside a tag
       }
       else
       {
@@ -463,12 +470,13 @@ public sealed class SexpReader : IDisposable
   {
     StringBuilder sb = new StringBuilder();
 
-    while(thisChar != '(' && thisChar != ')' && (!stopAtWhitespace || !char.IsWhiteSpace(thisChar)) && !ReaderAtEOF)
+    // read until we find a node delimiter, EOF, or whitespace if stopAtWhitespace is true
+    while(thisChar != '(' && thisChar != ')' && (!stopAtWhitespace || !char.IsWhiteSpace(thisChar)) && !streamAtEOF)
     {
-      if(thisChar == '\\')
+      if(thisChar == '\\') // use backslash as an escape character
       {
         NextChar();
-        if(ReaderAtEOF) throw new EndOfStreamException();
+        if(streamAtEOF) throw new EndOfStreamException();
       }
       sb.Append(thisChar);
       NextChar();
@@ -488,21 +496,20 @@ public sealed class SexpReader : IDisposable
   void NextChar()
   {
     int c = reader.Read();
-    if(c == -1)
+    if(c == -1) // if we're at the end of the stream
     {
-      atEOF = true;
+      streamAtEOF = true;
       thisChar = '\0';
     }
     else
     {
       thisChar = (char)c;
-
       if(thisChar == '\n')
       {
         line++;
         column = 1;
       }
-      else if(thisChar != '\r')
+      else if(thisChar != '\r') // don't count the \r in \r\n pairs as a column
       {
         column++;
       }
@@ -520,13 +527,20 @@ public sealed class SexpReader : IDisposable
                                                   line, column, TagName));
   }
 
+  /// <summary>The text stream.</summary>
   TextReader reader;
+  /// <summary>A stack of open tags in which the reader is positioned.</summary>
   Stack<string> tagNames = new Stack<string>();
+  /// <summary>The current text content, or null if the reader is not positioned at a text node.</summary>
   string content;
+  /// <summary>The current position of the reader in the stream.</summary>
   int line=1, column=1;
+  /// <summary>The character most-recently read from the stream.</summary>
   char thisChar;
+  /// <summary>The type of node at which the reader is currently positioned.</summary>
   SexpNodeType nodeType;
-  bool atEOF;
+  /// <summary>Whether or not we've reached the end of the stream.</summary>
+  bool streamAtEOF;
 }
 #endregion
 

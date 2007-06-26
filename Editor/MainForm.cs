@@ -34,6 +34,9 @@ sealed class MainForm : Form
   {
     InitializeComponent();
     UpdateTitle();
+
+    TypeDescriptionProvider defaultProvider = TypeDescriptor.GetProvider(typeof(object));
+    TypeDescriptor.AddProvider(new MyTypeDescriptionProvider(defaultProvider), typeof(object));
   }
 
   public Project Project

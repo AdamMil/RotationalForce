@@ -56,7 +56,7 @@ public abstract class ImageMap : Resource
   #region Frame
   public sealed class Frame
   {
-    internal Frame(uint textureID, Rectangle imageArea, Size textureSize)
+    internal Frame(int textureID, Rectangle imageArea, Size textureSize)
     {
       this.textureID = textureID;
       this.x         = (double)imageArea.X / textureSize.Width;
@@ -88,7 +88,7 @@ public abstract class ImageMap : Resource
     }
 
     internal double x, y, width, height;
-    uint textureID;
+    int textureID;
     Size imageSize;
     internal bool clampLeft, clampRight, clampTop, clampBottom;
   }
@@ -206,7 +206,7 @@ public abstract class ImageMap : Resource
 
     if(modeDirty) // if the texture mode has changed, tell GL about it
     {
-      uint textureWrap = TextureWrap == TextureWrap.Clamp ? GL.GL_CLAMP : GL.GL_REPEAT;
+      int textureWrap = TextureWrap == TextureWrap.Clamp ? GL.GL_CLAMP : GL.GL_REPEAT;
       GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, textureWrap);
       GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, textureWrap);
 
@@ -308,7 +308,7 @@ public abstract class ImageMap : Resource
 
       if(textureID != 0) // if the texture was allocated
       {
-        uint oldTextureID;
+        int oldTextureID;
         GL.glGetIntegerv(GL.GL_TEXTURE_BINDING_2D, out oldTextureID);
 
         try
@@ -371,7 +371,7 @@ public abstract class ImageMap : Resource
   protected virtual void OnFilterModeChanged() { }
 
   [NonSerialized] protected List<Frame> frames = new List<Frame>();
-  [NonSerialized] protected uint textureID;
+  [NonSerialized] protected int textureID;
 
   double leftEdge, rightEdge, topEdge, bottomEdge;
   string imageFile;

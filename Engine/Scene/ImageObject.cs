@@ -43,14 +43,14 @@ public class StaticImageObject : SceneObject
     }
   }
 
-  protected override void RenderContent()
+  protected override void RenderContent(float screenSize)
   {
     ImageMap imageMap = mapHandle == null ? null : mapHandle.Resource;
 
     // use default rendering if the image map is null or the frame number is invalid
     if(imageMap == null || frameNumber >= imageMap.Frames.Count)
     {
-      base.RenderContent();
+      base.RenderContent(screenSize);
     }
     else
     {

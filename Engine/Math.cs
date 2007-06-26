@@ -105,7 +105,13 @@ public static class EngineMath
   {
     Debug.Assert(!double.IsInfinity(value) && !double.IsNaN(value), "Not a valid floating point number.");
   }
-  
+
+  [Conditional("DEBUG")]
+  public static void AssertValidFloat(float value)
+  {
+    Debug.Assert(!float.IsInfinity(value) && !float.IsNaN(value), "Not a valid floating point number.");
+  }
+
   [Conditional("DEBUG")]
   public static void AssertValidFloats(params double[] values)
   {
