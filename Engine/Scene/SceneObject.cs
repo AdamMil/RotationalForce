@@ -21,10 +21,10 @@ public enum ShadeModel : byte
 
 #region Blending-related types
 /// <summary>An enum containing acceptable source blending modes.</summary>
-public enum SourceBlend : uint
+public enum SourceBlend
 {
   /// <summary>Use the blend mode of the parent object.</summary>
-  Default           = 0xffffffff,
+  Default           = -1,
   Zero              = GL.GL_ZERO,
   One               = GL.GL_ONE,
   DestColor         = GL.GL_DST_COLOR,
@@ -37,10 +37,10 @@ public enum SourceBlend : uint
 }
 
 /// <summary>An enum containing acceptable destination blending modes.</summary>
-public enum DestinationBlend : uint
+public enum DestinationBlend
 {
   /// <summary>Use the blend mode of the parent object.</summary>
-  Default           = 0xffffffff,
+  Default           = -1,
   Zero              = GL.GL_ZERO,
   One               = GL.GL_ONE,
   SrcColor          = GL.GL_SRC_COLOR,
@@ -64,12 +64,9 @@ public enum CollisionResponse : byte
 {
   /// <summary>Nothing happens, although the collision callbacks will still be called.</summary>
   None,
-  /// <summary>
-  /// The object will bounce off of the object it hit, meaning that one or both velocity components will be reversed.
-  /// </summary>
+  /// <summary>The object will bounce off of the object it hit, meaning that its velocity will be reversed.</summary>
   Bounce,
-  /// <summary>The object will clamp against the surface that it hit, and any non-parallel velocity will be cancelled.
-  /// </summary>
+  /// <summary>The object will clamp against the surface that it hit, and any non-parallel velocity will be cancelled.</summary>
   Clamp,
   /// <summary>The object will come to rest.</summary>
   Stop,
@@ -77,19 +74,18 @@ public enum CollisionResponse : byte
   Kill
 }
 
-/// <param name="sender">The object under consideration. For the <see cref="CollisionObject.Hit"/> event, this is
-/// the object that has hit <paramref name="other"/>. For the <see cref="CollisionObject.HitBy"/> event, this is the
-/// object that has been hit by <paramref name="other"/>.
-/// </param>
-/// <param name="other">The other object in the collision. For the <see cref="CollisionObject.Hit"/> event, this is
-/// the object that has been hit by <paramref name="sender"/>. For the <see cref="CollisionObject.HitBy"/> event,
-/// this is the object that hit the <paramref name="sender"/>.
-/// </param>
-public delegate void CollisionEventHandler(SceneObject sender, SceneObject other);
+public struct Collision
+{
+  public SceneObject First, Second;
+  public Point FirstPoint, SecondPoint;
+  public Vector Normal;
+}
+
+public delegate void CollisionEventHandler(ref Collision collision);
 
 /// <summary>This method is called to determine whether two objects have collided.</summary>
 /// <returns>True if they have collided and false if not.</returns>
-public delegate bool CustomCollisionDetector(SceneObject a, SceneObject b);
+public delegate bool CustomCollisionDetector(SceneObject a, SceneObject b, out Collision collision);
 #endregion
 
 public delegate void SceneObjectEventHandler(SceneObject obj);
@@ -165,8 +161,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
   #endregion
   
   #region Collision detection
-  public event CollisionEventHandler Hit;
-  public event CollisionEventHandler HitBy;
+  public event CollisionEventHandler Collision;
   
   /// <summary>Gets/sets a custom collision detection function. Note that custom collision detection will only be
   /// called after all other tests have passed.
@@ -231,9 +226,9 @@ public abstract class SceneObject : UniqueObject, ISerializable
   }
 
   [Category("Collisions")]
-  [Description("Determines whether this object sends collisions to other objects. If set to false, other objects can "+
-    "hit this one, but cannot be hit by this one.")]
-  [DefaultValue(false)]
+  [Description("Determines whether this object sends collisions to other objects. When a collision occurs, if this "+
+    "is false, the other object in the collision will have no collision response and no notification.")]
+  [DefaultValue(true)]
   public bool SendsCollisions
   {
     get { return HasFlag(Flag.SendsCollisions); }
@@ -241,9 +236,9 @@ public abstract class SceneObject : UniqueObject, ISerializable
   }
   
   [Category("Collisions")]
-  [Description("Determines whether this object receives collisions from other objects. If set to false, other "+
-    "objects cannot hit this one, although they can still be hit by it.")]
-  [DefaultValue(false)]
+  [Description("Determines whether this object receives collisions from other objects. When a collision occurs, if "+
+    "this is false, the object will have no collision response and no notification.")]
+  [DefaultValue(true)]
   public bool ReceivesCollisions
   {
     get { return HasFlag(Flag.ReceivesCollisions); }
@@ -295,15 +290,17 @@ public abstract class SceneObject : UniqueObject, ISerializable
     collisionX = x1;
     collisionY = y1;
     collisionRight  = x2;
-    collisionBottom = y2;    
+    collisionBottom = y2;
+    collisionRadius    = Math.Max(x2-x1, y2-y1);
+    collisionRadiusSqr = collisionRadius * collisionRadius;
 
     flags = (flags & ~Flag.CollisionMask) | Flag.RectangleCollision;
   }
 
-  public void SetPolygonalCollisionArea(params Point[] points)
+  public void SetPolygonalCollisionArea(params Point[] localPoints)
   {
     #if DEBUG
-    foreach(Point point in points)
+    foreach(Point point in localPoints)
     {
       EngineMath.AssertValidFloats(point.X, point.Y);
     }
@@ -312,14 +309,18 @@ public abstract class SceneObject : UniqueObject, ISerializable
     throw new NotImplementedException();
   }
 
-  protected virtual void OnHit(SceneObject hit)
+  protected virtual void OnCollision(ref Collision collision)
   {
-    if(Hit != null) Hit(this, hit);
+    if(Collision != null) Collision(ref collision);
   }
   
-  protected virtual void OnHitBy(SceneObject hitter)
+  protected bool CollisionEffectivelyEnabled
   {
-    if(HitBy != null) HitBy(this, hitter);
+    get
+    {
+      return HasFlag(Flag.CollisionEnabled) && HasFlag(Flag.CollisionMask) &&
+             HasFlag(Flag.SendsCollisions|Flag.ReceivesCollisions);
+    }
   }
   #endregion
 
@@ -910,8 +911,11 @@ public abstract class SceneObject : UniqueObject, ISerializable
     get { return velocity; }
     set
     {
-      EngineMath.AssertValidFloats(value.X, value.Y);
-      velocity = value;
+      if(!HasFlag(Flag.Immobile)) // disallow changes to our velocity while we're immobile
+      {
+        EngineMath.AssertValidFloats(value.X, value.Y);
+        velocity = value;
+      }
     }
   }
 
@@ -1078,12 +1082,20 @@ public abstract class SceneObject : UniqueObject, ISerializable
   }
 
   [Category("Physics")]
-  [Description("Determines whether the object is immobile. Immobile objects will not be moved by the engine.")]
+  [Description("Determines whether the object is immobile. Immobile objects will not be moved or rotated by the "+
+    "engine.")]
   [DefaultValue(false)]
   public bool Immobile
   {
     get { return HasFlag(Flag.Immobile); }
-    set { SetFlag(Flag.Immobile, value); }
+    set
+    {
+      SetFlag(Flag.Immobile, value);
+      if(value) // reset our velocity if we're made immobile
+      {
+        velocity = new Vector();
+      }
+    }
   }
 
   /// <summary>Gets/sets the object's lifetime in seconds.</summary>
@@ -1128,7 +1140,14 @@ public abstract class SceneObject : UniqueObject, ISerializable
     set { SetFlag(Flag.Visible, value); }
   }
 
-  /// <summary>Returns a value indicating whether the object has been marked for deletion.</summary>
+  /// <summary>Gets whether the object supports automatic level-of-detail calculations.</summary>
+  [Browsable(false)]
+  public virtual bool AutoLOD
+  {
+    get { return false; }
+  }
+
+  /// <summary>Gets whether the object has been marked for deletion.</summary>
   [Browsable(false)]
   public bool Dead
   {
@@ -1260,13 +1279,17 @@ public abstract class SceneObject : UniqueObject, ISerializable
   }
   #endregion
 
-  protected internal virtual void Render()
+  /// <param name="screenSize">A value from 0 to 1 that represents the size of the shape on screen, with one
+  /// meaning that the shape takes up a very large portion of the screen and zero meaning that it takes up a very
+  /// small portion of the screen. This will only be valid if <see cref="AutoLOD"/> is true.
+  /// </param>
+  protected internal virtual void Render(float screenSize)
   {
     if(BlendingEnabled) // first set up the blending parameters
     {
       GL.glEnable(GL.GL_BLEND);
-      GL.glBlendFunc((uint)(sourceBlend == SourceBlend.Default ? SourceBlend.One : sourceBlend),
-                     (uint)(destBlend == DestinationBlend.Default ? DestinationBlend.Zero : destBlend));
+      GL.glBlendFunc((int)(sourceBlend == SourceBlend.Default ? SourceBlend.One : sourceBlend),
+                     (int)(destBlend == DestinationBlend.Default ? DestinationBlend.Zero : destBlend));
     }
 
     GL.glColor(color); // we'll always set the blendColor, because some objects just use it as their color
@@ -1278,7 +1301,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     GL.glScaled(Width  * (EffectiveHFlip ? -0.5 : 0.5),     // set up local coordinates (scale so that -1 to 1
                 Height * (EffectiveVFlip ? -0.5 : 0.5), 1); // covers our area, including flipping)
 
-    RenderContent(); // now allow the derived class to render the content
+    RenderContent(screenSize); // now allow the derived class to render the content
 
     GL.glPopMatrix(); // restore the old ModelView matrix
 
@@ -1287,8 +1310,9 @@ public abstract class SceneObject : UniqueObject, ISerializable
       GL.glDisable(GL.GL_BLEND);
     }
   }
-  
-  protected virtual void RenderContent()
+
+  /// <param name="screenSize">A value from 0 to 1 that represents the size of the shape on screen.</param>
+  protected virtual void RenderContent(float screenSize)
   {
     // the default implementation just renders a white box
     GL.glColor(Color.White);
@@ -1300,33 +1324,38 @@ public abstract class SceneObject : UniqueObject, ISerializable
     GL.glEnd();
   }
 
-  protected internal virtual void Simulate(double timeDelta)
+  protected internal virtual void PreSimulate(double timeDelta)
   {
+    // we'll calculate the new velocity in PreSimulate because the collision detection in Simulate will assume that all
+    // velocities are set (so that it can project objects to where they would be in 'timeDelta' seconds)
     if(!HasFlag(Flag.Immobile))
     {
       Rotation += autoRotation * timeDelta;
       velocity += acceleration * timeDelta; // calculate our new velocity by applying acceleration
-      Point newPos = Position + velocity * timeDelta; // find what our new position would be if there were no collisions
-
-      /* TODO: do collision detection here */
-
-      Position = newPos;
     }
   }
 
-  protected internal virtual void PostSimulate() { }
+  protected internal virtual void Simulate(double timeDelta)
+  {
+    TryMove(timeDelta); // attempt to move us, doing collision detection
+  }
+
+  protected internal virtual void PostSimulate()
+  {
+    SetFlag(Flag.MovementDone, false);
+  }
 
   [Flags]
   enum Flag : uint
   {
     /// <summary>Determines whether collision detection is enabled.</summary>
     CollisionEnabled=0x01,
-    /// <summary>Determines whether this object will trigger collision events in other objects, and whether the
-    /// <see cref="Hit"/> event will be raised.
+    /// <summary>Determines whether this object will trigger collision events in other objects (whether this object can
+    /// hit other objects).
     /// </summary>
     SendsCollisions=0x02,
-    /// <summary>Determines whether this object will receive collisions from other objects, and whether the
-    /// <see cref="HitBy"/> event will be raised.
+    /// <summary>Determines whether this object will receive collisions from other objects (whether this object can be
+    /// hit by other objects).
     /// </summary>
     ReceivesCollisions=0x04,
     /// <summary>No collision area will be defined. Collision detection will always fail, unless combined with custom
@@ -1371,6 +1400,8 @@ public abstract class SceneObject : UniqueObject, ISerializable
     InheritProperties=0x8000,
     /// <summary>Determines whether the object will track its mount parent's rotation.</summary>
     TrackRotation=0x10000,
+    /// <summary>Determines whether the object's basic movement (with collision detection) has been done.</summary>
+    MovementDone=0x20000,
   }
 
   struct SpatialInfo
@@ -1385,11 +1416,108 @@ public abstract class SceneObject : UniqueObject, ISerializable
   /// <summary>Returns true if the given object flag is set.</summary>
   bool HasFlag(Flag flag) { return (flags & flag) != 0; }
 
+  /// <summary>Returns true if all of the given object flags are set.</summary>
+  bool HasFlags(Flag flag) { return (flags & flag) == flag; }
+
   /// <summary>Sets or clears the given object flag.</summary>
   void SetFlag(Flag flag, bool value)
   {
     if(value) flags |= flag;
     else flags &= ~flag;
+  }
+
+  void HandleCollision(ref Collision collision, double timeDelta)
+  {
+    // at this point, collision.First has not yet moved. collision.Second might have moved. we'll execute the collision
+    // responses of both objects, and then mark them both as moved.
+    throw new NotImplementedException("collision responses");
+
+    // mark both objects as having moved
+    collision.First.SetFlag(Flag.MovementDone, true);
+    collision.Second.SetFlag(Flag.MovementDone, true);
+  }
+
+  void TryMove(double timeDelta)
+  {
+    if(HasFlag(Flag.Immobile|Flag.MovementDone)) return; // if we're immobile or we've already moved, don't do anything
+
+    if(!CollisionEffectivelyEnabled) // otherwise, if collision detection is disabled, simply move
+    {
+      position += velocity;
+    }
+    else
+    {
+      // if collision detection is enabled for this object, we'll have to check other objects along our path
+      while(true)
+      {
+        // do collision detection with other objects and find the nearest collision
+        Collision closestCollision = new Collision();
+        double distance = double.MaxValue;
+        foreach(SceneObject obj in scene.objects)
+        {
+          Collision collision;
+          if(WouldCollideWith(obj, timeDelta, out collision)) // if we would collide with this object along our path...
+          {
+            // our object is the 'First' object, so get the distance from the other collision point to our center
+            double distSqr = collision.SecondPoint.DistanceSquaredTo(position);
+            if(distSqr < distance) // we only want the nearest collision
+            {
+              distance = distSqr;
+              closestCollision = collision;
+            }
+          }
+        }
+
+        if(closestCollision.Second == null) // if there was no collision, move us and be done.
+        {
+          position += velocity;
+          break;
+        }
+        else // otherwise, there was a potential collision
+        {
+          // if the other object has already been moved, or is immobile, then we need to handle the collision. if it's
+          // already in the movement stack, then again we need to handle the collision, to prevent infinite recursion.
+          if(closestCollision.Second.HasFlag(Flag.Immobile|Flag.MovementDone) ||
+             collisionStack.Contains(closestCollision.Second))
+          {
+            HandleCollision(ref closestCollision, timeDelta);
+            break;
+          }
+          else // otherwise, it's possible the second object will collide with a third and not block us after all.
+          {
+            collisionStack.Add(this); // add ourselves to the collision stack
+            closestCollision.Second.TryMove(scene.thisTimeDelta); // so try running the second object's movement.
+            collisionStack.RemoveAt(collisionStack.Count-1); // and remove us
+            // if our MovementDone flag has become true, it means the other object handled our collision and moved us
+            if(HasFlag(Flag.MovementDone))
+            {
+              break; // so we're done
+            }
+            // otherwise, the second object collided with a third, and might not be in our way any longer.
+            // try again in the outer loop
+          }
+        }
+      }
+
+      SetFlag(Flag.MovementDone, true); // mark that our movement is done
+    }
+  }
+
+  bool WouldCollideWith(SceneObject other, double timeDelta, out Collision collision)
+  {
+    // first check to ensure that collision in both objects is enabled, and that the layer and group masks match.
+    if(!other.CollisionEffectivelyEnabled || // it's assumed to be enabled in 'this'
+       (collisionLayers & other.collisionLayers & LayerMask & other.LayerMask) == 0 ||
+       (collisionGroups & other.collisionGroups & GroupMask & other.GroupMask) == 0)
+    {
+      collision = new Collision(); // if not, no collision between these objects can occur
+      return false;
+    }
+
+    // projects both objects by their current velocity 'timeDelta' units, if their MovementDone flags are false.
+    // otherwise, it uses their current locations. if a collision would have occurred, returns true and populates
+    // 'collision'. returns false otherwise
+    throw new NotImplementedException("Collisions");
   }
 
   void InvalidateSpatialInfo() { InvalidateSpatialInfo(false); }
@@ -1565,11 +1693,13 @@ public abstract class SceneObject : UniqueObject, ISerializable
   /// <summary>A custom collision detector, or null if one is not defined.</summary>
   CustomCollisionDetector collisionDetector;
   /// <summary>A collection of several object flags.</summary>
-  Flag flags = Flag.Visible | Flag.SpatialInfoDirty;
+  Flag flags = Flag.Visible | Flag.SendsCollisions | Flag.ReceivesCollisions | Flag.SpatialInfoDirty;
   /// <summary>Determines how the object will react when it collides with something.</summary>
   CollisionResponse collisionResponse = CollisionResponse.Clamp;
   /// <summary>A number (0-31) that determines which layer this object is on.</summary>
   byte layer;
+  
+  static List<SceneObject> collisionStack = new List<SceneObject>();
 }
 
 } // namespace RotationalForce.Engine

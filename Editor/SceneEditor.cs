@@ -1149,7 +1149,7 @@ public class SceneEditor : Form, IEditorForm
             polyNode.Polygon.AddVertex(vertex);
           }
           
-          polyNode.Polygon.LOD = 0.2; // a LOD of 0.2 is typically a bit closer to what the user will want
+          polyNode.Polygon.MinimumLOD = polyNode.Polygon.MaximumLOD = 0.85f; // 0.85 is typically a bit closer to what the user will want
 
           ObjectTool.SelectObject(obj, true);
           ObjectTool.SubTool = ObjectTool.VectorTool;
@@ -2925,10 +2925,9 @@ public class SceneEditor : Form, IEditorForm
 
           // get the size of the polygon in scene coordinates, so we can scaling the texture movement by the mouse
           // movement.
-          GLRect polyBounds   = SelectedPolygon.GetBounds();
-          Vector sceneSize    = SelectedObject.LocalToScene(polyBounds.Size);
+          GLRect polyBounds   = SelectedObject.LocalToScene(SelectedPolygon.GetBounds());
           GLPoint sceneCenter = EngineMath.GetCenterPoint(polyBounds);
-          dragSize = Math.Max(sceneSize.X, sceneSize.Y);
+          dragSize = Math.Max(polyBounds.Width, polyBounds.Height);
 
           if(Control.ModifierKeys == Keys.None)
           {
@@ -3436,7 +3435,7 @@ public class SceneEditor : Form, IEditorForm
       // otherwise, calls SelectObjectAndVertex to select an object.
       bool SelectObjectIfOutsideNodeRect(Point pt)
       {
-        if(GetSelectedNodeClientBounds().Contains(pt))
+        if(SelectedNode != null && GetSelectedNodeClientBounds().Contains(pt))
         {
           return true;
         }
@@ -3739,7 +3738,7 @@ public class SceneEditor : Form, IEditorForm
             vertex.Position = SelectedObject.LocalToScene(vertex.Position);
           }
         }
-        
+
         GLRect bounds = SelectedShape.RootNode.GetBounds();
         SelectedObject.Size     = bounds.Size;
         SelectedObject.Position = EngineMath.GetCenterPoint(bounds);
@@ -3751,7 +3750,7 @@ public class SceneEditor : Form, IEditorForm
             vertex.Position = SelectedObject.SceneToLocal(vertex.Position);
           }
         }
-        
+
         ObjectTool.RecalculateAndInvalidateSelectedBounds();
       }
 
@@ -3765,7 +3764,7 @@ public class SceneEditor : Form, IEditorForm
           poly.AddVertex(vertex.Clone());
         }
         
-        poly.LOD = 0.0;
+        poly.MinimumLOD = poly.MaximumLOD = 1;
       }
 
       void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)

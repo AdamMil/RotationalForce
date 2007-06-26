@@ -189,7 +189,7 @@ public class AnimatedObject : SceneObject
     }
   }
 
-  protected override void RenderContent()
+  protected override void RenderContent(float screenSize)
   {
     if(Animation != null)
     {
@@ -197,7 +197,7 @@ public class AnimatedObject : SceneObject
     }
     else
     {
-      base.RenderContent(); // use default rendering if there's no animation set
+      base.RenderContent(screenSize); // use default rendering if there's no animation set
     }
   }
 

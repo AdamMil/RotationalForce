@@ -431,7 +431,13 @@ public static class Engine
         {
           T resource = null;
           try { resource = Serializer.Deserialize(reader) as T; }
-          catch { }
+          catch
+          {
+            // TODO: we should have a way to report this
+            // attempted to recover from a failed deserialization
+            while(!reader.EOF && reader.Depth != 0) reader.Skip();
+          }
+
           if(resource != null)
           {
             AddResource<T>(resource);

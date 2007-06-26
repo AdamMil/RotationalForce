@@ -31,12 +31,12 @@ public class TriggerObject : SceneObject
   public event TriggerEventHandler ObjectEnter;
   public event TriggerEventHandler ObjectLeave;
 
-  protected override void OnHitBy(SceneObject hitter) // this should only be called once per object per frame
+  protected override void OnCollision(ref Collision collision) // this should only be called once per object per frame
   {
-    base.OnHitBy(hitter);
+    base.OnCollision(ref collision);
 
     if(hitThisFrame == null) hitThisFrame = new List<SceneObject>(2);
-    hitThisFrame.Add(hitter);
+    hitThisFrame.Add(collision.First == this ? collision.Second : collision.First);
   }
 
   protected internal override void PostSimulate()
@@ -84,7 +84,7 @@ public class TriggerObject : SceneObject
  	  }
   }
 
-  protected override void RenderContent()
+  protected override void RenderContent(float screenSize)
   {
     switch(CollisionArea)
     {
