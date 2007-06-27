@@ -1291,7 +1291,7 @@ public class SceneEditor : Form, IEditorForm
         Object.Rotation = previousRotation;
 
         SceneView.CameraPosition = previousViewCenter;
-        SceneView.CameraSize     = previousViewZoom;
+        SceneView.CameraZoom     = previousViewZoom;
         Editor.InvalidateView();
         
         linkPoints = null;
@@ -4132,7 +4132,7 @@ public class SceneEditor : Form, IEditorForm
             obj.Layer = layer;
           }
           EditorApp.MainForm.StatusText = "Object(s) moved to layer "+layer;
-          Editor.CurrentLayer = layer;
+          //Editor.CurrentLayer = layer;
           Editor.InvalidateRender();
           e.Handled = true;
         }
@@ -5102,7 +5102,7 @@ public class SceneEditor : Form, IEditorForm
       {
         CurrentLayer = c == '0' ? 9 : c-'1'; // '1'-'9' are layers 0-8. '0' is layer 9.
       }
-      else if(char.ToUpper(c)=='R') // pressing R resets the camera view
+      else if(char.ToUpper(c)=='R' || e.KeyCode == Keys.Home) // pressing R or Home resets the camera view
       {
         sceneView.CameraZoom     = 1;
         sceneView.CameraPosition = new GLPoint();

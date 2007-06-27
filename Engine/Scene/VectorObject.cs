@@ -1705,7 +1705,10 @@ public class VectorShape : Resource
       if(blendEnabled) // restore blending options to the default
       {
         if(blendWasDisabled) GL.glDisable(GL.GL_BLEND); // only disable blending if we were the one to enable it
-        GL.glBlendFunc(oldSourceBlend, oldDestBlend);   // restore the previous blending mode
+        if(sourceBlend != SourceBlend.Default || destBlend != DestinationBlend.Default)
+        {
+          GL.glBlendFunc(oldSourceBlend, oldDestBlend);   // restore the previous blending mode if we changed it
+        }
         GL.glHint(GL.GL_LINE_SMOOTH_HINT, GL.GL_FASTEST);
       }
     }
