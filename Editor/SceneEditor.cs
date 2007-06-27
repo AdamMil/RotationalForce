@@ -1141,7 +1141,7 @@ public class SceneEditor : Form, IEditorForm
 
           VectorShape.Vertex vertex = new VectorShape.Vertex();
           vertex.Color = ObjectTool.GetInverseBackgroundColor();
-          vertex.Split = true;
+          vertex.Type  = VectorShape.VertexType.Split;
           foreach(GLPoint point in glPoints)
           {
             vertex = vertex.Clone();
@@ -2577,6 +2577,7 @@ public class SceneEditor : Form, IEditorForm
         Editor.treeView.DragOver        -= treeView_DragOver;
         Editor.treeView.ItemDrag        -= treeView_ItemDrag;
         Editor.treeView.KeyDown         -= treeView_KeyDown;
+        Editor.treeView.MouseDown       -= treeView_MouseDown;
         Editor.treeView.AllowDrop = false;
         Editor.treeView.LabelEdit = false;
         Editor.treeView.ContextMenuStrip = null;
@@ -2751,7 +2752,8 @@ public class SceneEditor : Form, IEditorForm
             if(SelectObjectAndVertex(e.Location) && selectedPoints.Count == 1)
             {
               VectorShape.Vertex vertex = SelectedPolygon.Vertices[selectedPoints[0]];
-              vertex.Split = !vertex.Split;
+              vertex.Type = vertex.Type == VectorShape.VertexType.Normal ?
+                VectorShape.VertexType.Split : VectorShape.VertexType.Normal;
               ObjectTool.InvalidateSelectedBounds(true);
             }
           }
@@ -4087,10 +4089,11 @@ public class SceneEditor : Form, IEditorForm
         shape.RootNode = (VectorShape.Node)EditorApp.Clipboard.Deserialize()[0]; // there's only one node on the clipboard
 
         GLRect bounds = shape.RootNode.GetBounds(); // the node geometry is stored in scene units
+        double largestDimension = Math.Max(bounds.Width, bounds.Height);
 
         VectorObject obj = new VectorObject();
-        obj.Size      = bounds.Size;
-        obj.Position  = EngineMath.GetCenterPoint(bounds);
+        obj.Size      = new Vector(largestDimension, largestDimension); // make the object square so that texturing,
+        obj.Position  = EngineMath.GetCenterPoint(bounds);              // etc works normally
         obj.ShapeName = shape.Name;
 
         // convert scene units back to local units
@@ -4101,8 +4104,6 @@ public class SceneEditor : Form, IEditorForm
             vertex.Position = obj.SceneToLocal(vertex.Position);
           }
         }
-
-        VectorSubTool.RecalculateObjectBounds(obj); // fix up the aspect ratio to make sure the object is square
 
         objects = new object[] { obj };
       }
@@ -4123,7 +4124,7 @@ public class SceneEditor : Form, IEditorForm
       if(!e.Handled)
       {
         char c = char.ToLowerInvariant((char)e.KeyValue);
-        if(e.Modifiers == Keys.Alt && c >= '0' && c <= '9')
+        if(e.Modifiers == Keys.Control && c >= '0' && c <= '9') // ctrl-# moves objects between layers
         {
           int layer = c=='0' ? 9 : c-'1';
           foreach(SceneObject obj in selectedObjects)
@@ -4135,12 +4136,12 @@ public class SceneEditor : Form, IEditorForm
           Editor.InvalidateRender();
           e.Handled = true;
         }
-        else if(down && e.Modifiers == Keys.Shift && c == 'v')
+        else if(down && e.Modifiers == Keys.Shift && c == 'v') // shift-v selects the vector subtool
         {
           SubTool = VectorTool;
           e.Handled = true;
         }
-        else if(down && e.Modifiers == Keys.Shift && c == 's')
+        else if(down && e.Modifiers == Keys.Shift && c == 's') // shift-s selects the spatial subtool
         {
           SubTool = SpatialTool;
           e.Handled = true;
@@ -4229,7 +4230,7 @@ public class SceneEditor : Form, IEditorForm
       VectorShape.Vertex vertex = new VectorShape.Vertex();
       vertex.Color    = GetInverseBackgroundColor();
       vertex.Position = new GLPoint(-1, -1);
-      vertex.Split    = breakVertices;
+      vertex.Type     = breakVertices ? VectorShape.VertexType.Split : VectorShape.VertexType.Normal;
       polyNode.Polygon.AddVertex(vertex);
 
       vertex = vertex.Clone();
@@ -5292,8 +5293,8 @@ public class SceneEditor : Form, IEditorForm
 
   void SceneEditor_GotFocus(object sender, EventArgs e)
   {
-    // since we can't easily propogate texture modes between rendering contexts, we'll simply reset the mode whenever
-    // we get focus
+    // since we can't easily propogate texture modes between rendering contexts,
+    // we'll simply reset the mode whenever we get focus
     foreach(ResourceHandle<ImageMap> handle in Engine.Engine.GetResources<ImageMap>())
     {
       if(handle.Resource != null) handle.Resource.InvalidateMode();
