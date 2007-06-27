@@ -1480,7 +1480,7 @@ public class VectorShape : Resource
         vertex.Color        = subPoints[i].Color;
         vertex.Position     = subPoints[i].Position;
         vertex.TextureCoord = subPoints[i].TextureCoord;
-        vertex.Split        = true;
+        vertex.Type         = VertexType.Split;
         poly.AddVertex(vertex);
       }
 
@@ -1564,6 +1564,7 @@ public class VectorShape : Resource
       }
 
       bool blendWasDisabled = false; // is blending currently disabled? (meaning we need to enable it?)
+      int oldSourceBlend=0, oldDestBlend=0;
 
       if(blendEnabled) // first set up the blending parameters
       {
@@ -1573,10 +1574,10 @@ public class VectorShape : Resource
         // set blend mode if necessary (pulling values from the parent object for Default)
         if(sourceBlend != SourceBlend.Default || destBlend != DestinationBlend.Default)
         {
-          GL.glBlendFunc(sourceBlend == SourceBlend.Default ?
-                          GL.glGetIntegerv(GL.GL_BLEND_SRC) : (int)sourceBlend,
-                         destBlend == DestinationBlend.Default ?
-                          GL.glGetIntegerv(GL.GL_BLEND_DST) : (int)destBlend);
+          oldSourceBlend = GL.glGetIntegerv(GL.GL_BLEND_SRC);
+          oldDestBlend   = GL.glGetIntegerv(GL.GL_BLEND_DST);
+          GL.glBlendFunc(sourceBlend == SourceBlend.Default ? oldSourceBlend : (int)sourceBlend,
+                         destBlend == DestinationBlend.Default ? oldDestBlend : (int)destBlend);
         }
       }
 
@@ -1704,6 +1705,7 @@ public class VectorShape : Resource
       if(blendEnabled) // restore blending options to the default
       {
         if(blendWasDisabled) GL.glDisable(GL.GL_BLEND); // only disable blending if we were the one to enable it
+        GL.glBlendFunc(oldSourceBlend, oldDestBlend);   // restore the previous blending mode
         GL.glHint(GL.GL_LINE_SMOOTH_HINT, GL.GL_FASTEST);
       }
     }
@@ -1919,11 +1921,11 @@ public class VectorShape : Resource
     {
       lod.ResetSubPoints(); // reset our array of subdivision points, and clear the LOD state
 
-      // start by checking if it's a fully-broken shape (plain polygon) or fully-joined shape (closed spline shape)
+      // start by checking if it's a fully-joined shape (closed spline shape -- no split/forced vertices)
       int firstBreak = -1;
       for(int i=0; i<vertices.Count; i++)
       {
-        if(vertices[i].Split)
+        if(vertices[i].Type != VertexType.Normal)
         {
           firstBreak = i;
           break;
@@ -1937,7 +1939,7 @@ public class VectorShape : Resource
           // get the indices of the four spline control points for a closed spline.
           int i0 = GetClosedIndex(0, vertexIndex), i1 = GetClosedIndex(1, vertexIndex),
               i2 = GetClosedIndex(2, vertexIndex), i3 = GetClosedIndex(3, vertexIndex);
-          SubdivideSegment(ref lod, i0, i1, i2, i3); // and subdivide this 
+          SubdivideSegment(ref lod, i0, i1, i2, i3, false); // and subdivide this 
         }
       }
       else // the shaped is composed of straight-line segments, possibly with spline-based segments too
@@ -1951,7 +1953,7 @@ public class VectorShape : Resource
           {
             if(++lastEdge == vertices.Count) lastEdge = 0; // move to the next point
             examined++;                                    // mark it examined
-          } while(!vertices[lastEdge].Split);
+          } while(vertices[lastEdge].Type == VertexType.Normal);
 
           // 'edgeEnd' points to the next broken vertex. the spline goes from 'breakPoint' to 'edgeEnd', inclusive.
           int splineLength = breakPoint<lastEdge ? lastEdge-breakPoint : vertices.Count-breakPoint+lastEdge; // # of edges in spline
@@ -1963,16 +1965,16 @@ public class VectorShape : Resource
             subPoint.Color        = vertices[breakPoint].Color;
             subPoint.Position     = vertices[breakPoint].Position;
             subPoint.TextureCoord = vertices[breakPoint].TextureCoord;
-            lod.AddSubPoint(ref subPoint);
+            lod.AddSubPoint(ref subPoint, vertices[breakPoint].Type == VertexType.Forced);
           }
           else // otherwise, there are multiple edges involved in this segment, so use a clamped b-spline
           {
             // to create a clamped b-spline, we pretend that there are three of each first and last control point
             for(int i=-2; i < splineLength; i++)
             {
-              int i0 = GetClampedIndex(i, breakPoint, lastEdge), i1 = GetClampedIndex(i+1, breakPoint, lastEdge),
+              int i0 = GetClampedIndex(i, breakPoint, lastEdge),   i1 = GetClampedIndex(i+1, breakPoint, lastEdge),
                   i2 = GetClampedIndex(i+2, breakPoint, lastEdge), i3 = GetClampedIndex(i+3, breakPoint, lastEdge);
-              SubdivideSegment(ref lod, i0, i1, i2, i3);
+              SubdivideSegment(ref lod, i0, i1, i2, i3, i == -2 && vertices[breakPoint].Type == VertexType.Forced);
             }
           }
 
@@ -1984,7 +1986,7 @@ public class VectorShape : Resource
     }
 
     /// <summary>Given the indices of four control points, subdivides a b-spline.</summary>
-    void SubdivideSegment(ref LODData lod, int i0, int i1, int i2, int i3)
+    void SubdivideSegment(ref LODData lod, int i0, int i1, int i2, int i3, bool forceFirstPoint)
     {
       for(int i=0; i<subdivisions; i++)
       {
@@ -2033,7 +2035,7 @@ public class VectorShape : Resource
           subPoint.Color = Color.FromArgb(a, r, g, b);
         }
 
-        lod.AddSubPoint(ref subPoint); // attempt to add the new point to the shape
+        lod.AddSubPoint(ref subPoint, forceFirstPoint && i == 0); // attempt to add the new point to the shape
       }
     }
     #endregion
@@ -2066,17 +2068,18 @@ public class VectorShape : Resource
       public bool TessellationDirty, TexCoordsDirty;
 
       /// <summary>Takes a <see cref="SubPoint"/> and adds to the subdivision array if it is necessary for the given LOD.</summary>
-      public void AddSubPoint(ref SubPoint subPoint)
+      public void AddSubPoint(ref SubPoint subPoint, bool forced)
       {
         // the LOD algorithm does not a have enough information until at least two points have been considered, so we'll
         // keep track of the number of points considered.
         SubState.PointsConsidered++;
 
         // the algorithm works by keeping track of 2 points, a Base point, which is the last point added, and the
-        // point considered most recently. the angle change of each point is calculated based on the difference from the
-        // previous angle. the changes are summed, and when the total angular deviation passes a certain threshold,
+        // point considered most recently. the angle change of each point is calculated based on the difference from
+        // the previous angle. the changes are summed, and when the total angular deviation passes a certain threshold,
         // the point /before/ the one causing the deviation to pass the threshold is added, and the deviation reset to
-        // zero. the very first point considered is also stored so that AddSubPoint() can simply be called one last time
+        // zero.
+        // the very first point considered is also stored so that AddSubPoint() can simply be called one last time
         // with the original point if the shape is a closed shape.
 
         if(SubState.PointsConsidered >= 3) // if this is the third or subsequent point, we can apply the LOD algorithm
@@ -2094,23 +2097,25 @@ public class VectorShape : Resource
 
           SubState.Deviation += delta; // accumulate the delta into the total angular deviation
           double threshold = (Math.PI/4) * (1-Threshold); // the value from 0 to 1 maps to pi/4 to 0 radians
-          if(Math.Abs(SubState.Deviation) >= threshold) // if the magnitude of the deviation reaches the LOD threshold
-          {
+          if(SubState.PrevForced || Math.Abs(SubState.Deviation) >= threshold) // if the deviation reaches the LOD
+          {                                                                    // threshold or the point was forced
             AddSubPointToArray(ref SubState.PrevPoint); // add the previous point to the array
             SubState.BasePoint = SubState.PrevPoint;    // update the BasePoint
-            SubState.Deviation = 0;                     // and reset the deviation to zero
-          }
+            SubState.Deviation = 0; // and reset the deviation to zero. we don't try to leave the "extra" deviation in
+          }                         // there because it may be very large, and what should we do in that case?
 
-          SubState.PrevPoint = subPoint; // in all cases, update the previous point
-          SubState.PrevAngle = newAngle; // and the previous angle
+          SubState.PrevPoint  = subPoint; // in all cases, update the previous point,
+          SubState.PrevAngle  = newAngle; // the previous angle,
+          SubState.PrevForced = forced;   // and the previous forced state
         }
         else if(SubState.PointsConsidered == 2)
         {
           // if this is the second point being considered, store it into PrevPoint and calculate the angle between it
           // and the base point. then set the deviation to zero.
-          SubState.PrevPoint = subPoint;
-          SubState.PrevAngle = Math2D.AngleBetween(SubState.BasePoint.Position, SubState.PrevPoint.Position);
-          SubState.Deviation = 0;
+          SubState.PrevPoint  = subPoint;
+          SubState.PrevAngle  = Math2D.AngleBetween(SubState.BasePoint.Position, SubState.PrevPoint.Position);
+          SubState.PrevForced = forced;
+          SubState.Deviation  = 0;
         }
         else
         {
@@ -2140,14 +2145,14 @@ public class VectorShape : Resource
       public void FlushSubPoints()
       {
         // since the shape is always closed, call AddSubPoint() one last time with the original point
-        AddSubPoint(ref SubState.FirstPoint);
+        AddSubPoint(ref SubState.FirstPoint, false);
       }
 
       /// <summary>Resets the subdivision process state.</summary>
       public void ResetSubPoints()
       {
         NumSubPoints = 0;
-        SubState.PointsConsidered = 0;
+        SubState = new SubdivisionState();
       }
 
       public void Tessellate()
@@ -2239,6 +2244,7 @@ public class VectorShape : Resource
         public SubPoint BasePoint, PrevPoint;
         public double PrevAngle, Deviation;
         public int PointsConsidered;
+        public bool PrevForced;
       }
 
       /// <summary>The state of the current subdivision process.</summary>
@@ -2294,6 +2300,8 @@ public class VectorShape : Resource
   }
   #endregion
 
+  public enum VertexType : byte { Normal, Split, Forced }
+
   #region Vertex
   public sealed class Vertex
   {
@@ -2328,16 +2336,17 @@ public class VectorShape : Resource
       }
     }
 
-    /// <summary>Determines whether the vertex will split the shape's spline, causing a break in continuity.</summary>
-    [Description("Whether the vertex will split the shape's spline, causing a break in continuity.")]
-    public bool Split
+    /// <summary>Gets or sets the vertex type, including whether it's split or always included in the shape.</summary>
+    [Description("The type of the vertex, including whether it's splits the spline curve, or is always included "+
+      "regardless of LOD settings.")]
+    public VertexType Type
     {
-      get { return split; }
+      get { return type; }
       set
       {
-        if(value != split)
+        if(value != type)
         {
-          split = value;
+          type = value;
           InvalidateGeometry();
         }
       }
@@ -2361,7 +2370,7 @@ public class VectorShape : Resource
       vertex.color        = color;
       vertex.position     = position;
       vertex.textureCoord = textureCoord;
-      vertex.split        = split;
+      vertex.type         = type;
       return vertex;
     }
 
@@ -2383,8 +2392,7 @@ public class VectorShape : Resource
     Point textureCoord;
     /// <summary>The vertex's color.</summary>
     Color color;
-    /// <summary>Whether this vertex splits the spline shape.</summary>
-    bool split;
+    VertexType type;
   }
   #endregion
 

@@ -634,6 +634,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
 
   static void PrepareObjectForRemoval(SceneObject obj)
   {
+    if(obj.Mounted) obj.Dismount();
     obj.Scene = null;
   }
 }
