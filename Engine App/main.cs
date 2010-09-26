@@ -14,8 +14,10 @@ public class RectangleObject : SceneObject
     SetBlendingMode(SourceBlend.SrcAlpha, DestinationBlend.OneMinusSrcAlpha);
   }
 
-  protected override void RenderContent()
+  protected override void RenderContent(float screenSize)
   {
+    base.RenderContent(screenSize);
+
     if(BlendingEnabled)
     {
       GL.glEnable(GL.GL_LINE_SMOOTH);

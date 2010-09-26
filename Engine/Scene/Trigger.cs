@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Interop.OpenGL;
-using GameLib.Mathematics.TwoD;
-using Color = System.Drawing.Color;
+using Color=System.Drawing.Color;
 
 namespace RotationalForce.Engine
 {

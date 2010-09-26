@@ -2,11 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using GameLib.Mathematics;
-using GameLib.Mathematics.TwoD;
+using AdamMil.Mathematics.Geometry;
+using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Interop.OpenGL;
+using GameLib.Mathematics;
 using RotationalForce.Engine.Design;
-using Color = System.Drawing.Color;
+using Color=System.Drawing.Color;
 
 namespace RotationalForce.Engine
 {
@@ -1568,7 +1569,7 @@ public class VectorShape : Resource
 
       if(blendEnabled) // first set up the blending parameters
       {
-        blendWasDisabled = GL.glIsEnabled(GL.GL_BLEND) == 0;
+        blendWasDisabled = !GL.glIsEnabled(GL.GL_BLEND);
         if(blendWasDisabled) GL.glEnable(GL.GL_BLEND); // enable blending if it was disabled
 
         // set blend mode if necessary (pulling values from the parent object for Default)

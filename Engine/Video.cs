@@ -1,9 +1,9 @@
 using System;
 using System.Drawing;
 using GameLib.Interop.OpenGL;
-using GLVideo = GameLib.Video.Video;
-using GLPoint = GameLib.Mathematics.TwoD.Point;
-using Vector  = GameLib.Mathematics.TwoD.Vector;
+using GLPoint=AdamMil.Mathematics.Geometry.TwoD.Point;
+using GLVideo=GameLib.Video.Video;
+using Vector=AdamMil.Mathematics.Geometry.TwoD.Vector;
 
 namespace RotationalForce.Engine
 {

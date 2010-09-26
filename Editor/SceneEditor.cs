@@ -8,13 +8,13 @@ using System.Windows.Forms;
 using RotationalForce.Engine;
 using GameLib.Interop.OpenGL;
 using GameLib.Video;
-using MathConst = GameLib.Mathematics.MathConst;
-using Math2D  = GameLib.Mathematics.TwoD.Math2D;
-using GLPoint = GameLib.Mathematics.TwoD.Point;
-using GLRect  = GameLib.Mathematics.TwoD.Rectangle;
-using GLPoly  = GameLib.Mathematics.TwoD.Polygon;
-using Vector  = GameLib.Mathematics.TwoD.Vector;
-using Line    = GameLib.Mathematics.TwoD.Line;
+using MathConst = AdamMil.Mathematics.Geometry.MathConst;
+using Math2D  = AdamMil.Mathematics.Geometry.TwoD.Math2D;
+using GLPoint = AdamMil.Mathematics.Geometry.TwoD.Point;
+using GLRect  = AdamMil.Mathematics.Geometry.TwoD.Rectangle;
+using GLPoly  = AdamMil.Mathematics.Geometry.TwoD.Polygon;
+using Vector  = AdamMil.Mathematics.Geometry.TwoD.Vector;
+using Line    = AdamMil.Mathematics.Geometry.TwoD.Line;
 
 namespace RotationalForce.Editor
 {

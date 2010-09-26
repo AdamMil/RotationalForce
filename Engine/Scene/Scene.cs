@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using AdamMil.Mathematics.Geometry;
+using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Mathematics;
-using GameLib.Mathematics.TwoD;
 
 namespace RotationalForce.Engine
 {
