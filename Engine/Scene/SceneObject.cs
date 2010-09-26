@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using AdamMil.Mathematics.Geometry;
+using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Input;
-using GameLib.Mathematics;
-using GameLib.Mathematics.TwoD;
 using GameLib.Interop.OpenGL;
-using Color = System.Drawing.Color;
+using GameLib.Mathematics;
+using Color=System.Drawing.Color;
 
 // TODO: replace some rotatation code with code that checks for 90/180/270 degrees and does perfect rotations [with no
 // floating point error due to conversion to radians])
@@ -1611,7 +1612,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
       if(rotation != 0)
       {
         double sin, cos;
-        GLMath.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
+        Math2D.GetRotationFactors(rotation * MathConst.DegreesToRadians, out sin, out cos);
 
         // finish recalculating the world points associated with each link point
         for(int i=0; i<numLinkPoints; i++)

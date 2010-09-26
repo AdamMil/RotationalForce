@@ -6,7 +6,7 @@ using System.Windows.Forms;
 using GameLib.Interop.OpenGL;
 using GameLib.Video;
 using RotationalForce.Engine;
-using GLPoint = GameLib.Mathematics.TwoD.Point;
+using GLPoint = AdamMil.Mathematics.Geometry.TwoD.Point;
 
 namespace RotationalForce.Editor
 {

@@ -990,8 +990,8 @@ public static class Serializer
     typeDict["decimal"]  = typeof(decimal);
     typeDict["sbyte"]    = typeof(sbyte);
 
-    typeDict["point"]    = typeof(GameLib.Mathematics.TwoD.Point);
-    typeDict["vector"]   = typeof(GameLib.Mathematics.TwoD.Vector);
+    typeDict["point"]    = typeof(AdamMil.Mathematics.Geometry.TwoD.Point);
+    typeDict["vector"]   = typeof(AdamMil.Mathematics.Geometry.TwoD.Vector);
   }
 
   /// <summary>Resets the pool of known objects. This should be called before each block of
@@ -1283,11 +1283,11 @@ public static class Serializer
       case TypeCode.Int32:  return "int";
       case TypeCode.Int64:  return "long";
       case TypeCode.Object:
-        if(type == typeof(GameLib.Mathematics.TwoD.Point))
+        if(type == typeof(AdamMil.Mathematics.Geometry.TwoD.Point))
         {
           return "point";
         }
-        else if(type == typeof(GameLib.Mathematics.TwoD.Vector))
+        else if(type == typeof(AdamMil.Mathematics.Geometry.TwoD.Vector))
         {
           return "vector";
         }

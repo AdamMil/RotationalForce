@@ -5,7 +5,7 @@ using System.Drawing;
 using System.IO;
 using GameLib.Interop.OpenGL;
 using GameLib.Video;
-using GLPoint = GameLib.Mathematics.TwoD.Point;
+using GLPoint = AdamMil.Mathematics.Geometry.TwoD.Point;
 
 namespace RotationalForce.Engine
 {

@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Interop.OpenGL;
-using GameLib.Mathematics.TwoD;
-using SPoint = System.Drawing.Point;
-using SRectangle = System.Drawing.Rectangle;
-using Size = System.Drawing.Size;
-using SizeF = System.Drawing.SizeF;
+using Size=System.Drawing.Size;
+using SizeF=System.Drawing.SizeF;
+using SPoint=System.Drawing.Point;
+using SRectangle=System.Drawing.Rectangle;
 
 namespace RotationalForce.Engine
 {

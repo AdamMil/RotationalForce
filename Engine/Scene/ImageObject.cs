@@ -1,7 +1,7 @@
 using System;
 using System.ComponentModel;
+using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Interop.OpenGL;
-using GameLib.Mathematics.TwoD;
 
 namespace RotationalForce.Engine
 {

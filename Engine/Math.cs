@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-using GameLib.Mathematics.TwoD;
+using AdamMil.Mathematics.Geometry.TwoD;
 
 namespace RotationalForce.Engine
 {
@@ -156,7 +156,7 @@ public static class EngineMath
 
   public static double CalculateLinearDelta(double linearDelta, InterpolationMode mode)
   {
-    if(linearDelta < 0) return 0;
+    if(linearDelta <= 0) return 0;
     else if(linearDelta >= 1) return 1;
 
     if(mode == InterpolationMode.Sigmoid || mode == InterpolationMode.FastSigmoid) // Sigmoid-ish interpolation
