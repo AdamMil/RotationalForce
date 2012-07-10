@@ -1280,8 +1280,8 @@ public abstract class SceneObject : UniqueObject, ISerializable
   }
   #endregion
 
-  /// <param name="screenSize">A value from 0 to 1 that represents the size of the shape on screen, with one
-  /// meaning that the shape takes up a very large portion of the screen and zero meaning that it takes up a very
+  /// <param name="screenSize">A value from 0 to 1 that represents the size of the shape on screen, with 1
+  /// meaning that the shape takes up a very large portion of the screen and 0 meaning that it takes up a very
   /// small portion of the screen. This will only be valid if <see cref="AutoLOD"/> is true.
   /// </param>
   protected internal virtual void Render(float screenSize)
