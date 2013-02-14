@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using AdamMil.Mathematics.Geometry;
-using AdamMil.Mathematics.Geometry.TwoD;
 using GameLib.Mathematics;
 
 namespace RotationalForce.Engine
@@ -36,7 +35,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
   }
 
   #region Acceleration
-  public Vector Acceleration
+  public Vector2 Acceleration
   {
     get { return acceleration; }
     set
@@ -55,7 +54,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
   
   public void SetAcceleration(double xv, double yv)
   {
-    Acceleration = new Vector(xv, yv);
+    Acceleration = new Vector2(xv, yv);
   }
 
   public void SetAccelerationPolar(double angle, double magnitude)
@@ -63,7 +62,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
     EngineMath.AssertValidFloat(angle);
     EngineMath.AssertValidFloat(magnitude);
     Acceleration = magnitude == 0.0 ?
-      new Vector() : new Vector(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
+      new Vector2() : new Vector2(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
   }
   #endregion
 
@@ -127,19 +126,19 @@ public class Scene : UniqueObject, ITicker, IDisposable
 
       SceneObject IEnumerator<SceneObject>.Current
       {
-	      get { return objects.Current; }
+        get { return objects.Current; }
       }
 
       void IDisposable.Dispose() { }
 
       object System.Collections.IEnumerator.Current
       {
-	      get { return objects.Current; }
+        get { return objects.Current; }
       }
 
       void System.Collections.IEnumerator.Reset()
       {
- 	      objects.Reset();
+        objects.Reset();
       }
 
       protected IEnumerator<SceneObject> objects;
@@ -195,7 +194,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
   #region CircleEnumerable
   sealed class CircleEnumerable : PickEnumerable
   {
-    public CircleEnumerable(List<SceneObject> objects, PickOptions options, Point worldPoint, double radius)
+    public CircleEnumerable(List<SceneObject> objects, PickOptions options, Point2 worldPoint, double radius)
       : base(objects, options)
     { 
       this.circle = new Circle(worldPoint.X, worldPoint.Y, radius);
@@ -215,22 +214,22 @@ public class Scene : UniqueObject, ITicker, IDisposable
       
       public override bool MoveNext()
       {
- 	      while(objects.MoveNext())
- 	      {
- 	        SceneObject obj = objects.Current;
- 	        if(CanPick(obj, parent.options))
- 	        {
- 	          if(parent.options.RequireContainment)
- 	          {
- 	            if(obj.ContainedBy(parent.circle)) return true;
- 	          }
- 	          else if(obj.Intersects(parent.circle))
- 	          {
- 	            return true;
- 	          }
- 	        }
- 	      }
- 	      return false;
+        while(objects.MoveNext())
+        {
+          SceneObject obj = objects.Current;
+          if(CanPick(obj, parent.options))
+          {
+            if(parent.options.RequireContainment)
+            {
+              if(obj.ContainedBy(parent.circle)) return true;
+            }
+            else if(obj.Intersects(parent.circle))
+            {
+              return true;
+            }
+          }
+        }
+        return false;
       }
 
       CircleEnumerable parent;
@@ -243,10 +242,10 @@ public class Scene : UniqueObject, ITicker, IDisposable
   #region LineEnumerable
   sealed class LineEnumerable : PickEnumerable
   {
-    public LineEnumerable(List<SceneObject> objects, PickOptions options, Point startPoint, Point endPoint)
+    public LineEnumerable(List<SceneObject> objects, PickOptions options, Point2 startPoint, Point2 endPoint)
       : base(objects, options)
     { 
-      this.line = new Line(startPoint, endPoint);
+      this.line = new Line2(startPoint, endPoint);
     }
 
     public override IEnumerator<SceneObject> GetEnumerator()
@@ -263,28 +262,28 @@ public class Scene : UniqueObject, ITicker, IDisposable
       
       public override bool MoveNext()
       {
- 	      while(objects.MoveNext())
- 	      {
- 	        SceneObject obj = objects.Current;
- 	        if(CanPick(obj, parent.options) && obj.Intersects(parent.line))
- 	        {
+        while(objects.MoveNext())
+        {
+          SceneObject obj = objects.Current;
+          if(CanPick(obj, parent.options) && obj.Intersects(parent.line))
+          {
             return true;
- 	        }
- 	      }
- 	      return false;
+          }
+        }
+        return false;
       }
 
       LineEnumerable parent;
     }
 
-    Line line;
+    Line2 line;
   }
   #endregion
 
   #region PointEnumerable
   sealed class PointEnumerable : PickEnumerable
   {
-    public PointEnumerable(List<SceneObject> objects, PickOptions options, Point worldPoint)
+    public PointEnumerable(List<SceneObject> objects, PickOptions options, Point2 worldPoint)
       : base(objects, options)
     { 
       point = worldPoint;
@@ -304,21 +303,21 @@ public class Scene : UniqueObject, ITicker, IDisposable
       
       public override bool MoveNext()
       {
- 	      while(objects.MoveNext())
- 	      {
- 	        SceneObject obj = objects.Current;
- 	        if(CanPick(obj, parent.options) && obj.Contains(parent.point))
- 	        {
+        while(objects.MoveNext())
+        {
+          SceneObject obj = objects.Current;
+          if(CanPick(obj, parent.options) && obj.Contains(parent.point))
+          {
             return true;
- 	        }
- 	      }
- 	      return false;
+          }
+        }
+        return false;
       }
 
       PointEnumerable parent;
     }
 
-    Point point;
+    Point2 point;
   }
   #endregion
 
@@ -345,25 +344,25 @@ public class Scene : UniqueObject, ITicker, IDisposable
       
       public override bool MoveNext()
       {
- 	      while(objects.MoveNext())
- 	      {
- 	        SceneObject obj = objects.Current;
- 	        if(CanPick(obj, parent.options))
- 	        {
- 	          if(parent.options.RequireContainment)
- 	          {
- 	            if(obj.ContainedBy(parent.rect))
- 	            {
- 	              return true;
- 	            }
- 	          }
- 	          else if(obj.Intersects(parent.rect))
- 	          {
- 	            return true;
- 	          }
- 	        }
- 	      }
- 	      return false;
+        while(objects.MoveNext())
+        {
+          SceneObject obj = objects.Current;
+          if(CanPick(obj, parent.options))
+          {
+            if(parent.options.RequireContainment)
+            {
+              if(obj.ContainedBy(parent.rect))
+              {
+                return true;
+              }
+            }
+            else if(obj.Intersects(parent.rect))
+            {
+              return true;
+            }
+          }
+        }
+        return false;
       }
 
       RectangleEnumerable parent;
@@ -413,34 +412,34 @@ public class Scene : UniqueObject, ITicker, IDisposable
     return Pick(PickAll(options), callback, context);
   }
 
-  public IEnumerable<SceneObject> PickCircle(Point worldPoint, double radius, PickOptions options)
+  public IEnumerable<SceneObject> PickCircle(Point2 worldPoint, double radius, PickOptions options)
   {
     return Pick(new CircleEnumerable(objects, options, worldPoint, radius), options.SortByLayer);
   }
 
-  public uint PickCircle(Point worldPoint, double radius, PickOptions options,
+  public uint PickCircle(Point2 worldPoint, double radius, PickOptions options,
                          ObjectFinderCallback callback, object context)
   {
     return Pick(PickCircle(worldPoint, radius, options), callback, context);
   }
 
-  public IEnumerable<SceneObject> PickLine(Point startPoint, Point endPoint, PickOptions options)
+  public IEnumerable<SceneObject> PickLine(Point2 startPoint, Point2 endPoint, PickOptions options)
   {
     return Pick(new LineEnumerable(objects, options, startPoint, endPoint), options.SortByLayer);
   }
 
-  public uint PickLine(Point startPoint, Point endPoint, PickOptions options,
+  public uint PickLine(Point2 startPoint, Point2 endPoint, PickOptions options,
                        ObjectFinderCallback callback, object context)
   {
     return Pick(PickLine(startPoint, endPoint, options), callback, context);
   }
 
-  public IEnumerable<SceneObject> PickPoint(Point worldPoint, PickOptions options)
+  public IEnumerable<SceneObject> PickPoint(Point2 worldPoint, PickOptions options)
   {
     return Pick(new PointEnumerable(objects, options, worldPoint), options.SortByLayer);
   }
 
-  public uint PickPoint(Point worldPoint, PickOptions options, ObjectFinderCallback callback, object context)
+  public uint PickPoint(Point2 worldPoint, PickOptions options, ObjectFinderCallback callback, object context)
   {
     return Pick(PickPoint(worldPoint, options), callback, context);
   }
@@ -619,7 +618,7 @@ public class Scene : UniqueObject, ITicker, IDisposable
 
   /// <summary>An acceleration applied to all objects in the scene.</summary>
   /// <remarks>This is used for things like gravity.</remarks>
-  Vector acceleration;
+  Vector2 acceleration;
 
   /// <summary>The total elapsed simulation time for this scene, in seconds.</summary>
   internal double thisTimeDelta;

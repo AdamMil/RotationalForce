@@ -1,6 +1,6 @@
 using System;
 using System.ComponentModel;
-using AdamMil.Mathematics.Geometry.TwoD;
+using AdamMil.Mathematics.Geometry;
 using GameLib.Interop.OpenGL;
 
 namespace RotationalForce.Engine
@@ -57,13 +57,13 @@ public class StaticImageObject : SceneObject
       GL.glEnable(GL.GL_TEXTURE_2D);
       imageMap.BindFrame(frameNumber);
       GL.glBegin(GL.GL_QUADS);
-        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point(0, 0)));
+        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point2(0, 0)));
         GL.glVertex2d(-1, -1);
-        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point(1, 0)));
+        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point2(1, 0)));
         GL.glVertex2d(1, -1);
-        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point(1, 1)));
+        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point2(1, 1)));
         GL.glVertex2d(1, 1);
-        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point(0, 1)));
+        GL.glTexCoord2d(imageMap.GetTextureCoord(frameNumber, new Point2(0, 1)));
         GL.glVertex2d(-1, 1);
       GL.glEnd();
       GL.glDisable(GL.GL_TEXTURE_2D);

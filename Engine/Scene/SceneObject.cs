@@ -2,11 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using AdamMil.Mathematics.Geometry;
-using AdamMil.Mathematics.Geometry.TwoD;
+using GameLib;
 using GameLib.Input;
 using GameLib.Interop.OpenGL;
 using GameLib.Mathematics;
-using Color=System.Drawing.Color;
 
 // TODO: replace some rotatation code with code that checks for 90/180/270 degrees and does perfect rotations [with no
 // floating point error due to conversion to radians])
@@ -78,8 +77,8 @@ public enum CollisionResponse : byte
 public struct Collision
 {
   public SceneObject First, Second;
-  public Point FirstPoint, SecondPoint;
-  public Vector Normal;
+  public Point2 FirstPoint, SecondPoint;
+  public Vector2 Normal;
 }
 
 public delegate void CollisionEventHandler(ref Collision collision);
@@ -95,10 +94,10 @@ public struct LinkPoint
 {
   /// <summary>The offset of the link point from the center of the object, in local coordinates.</summary>
   /// <remarks>This value does not take into account the rotation of the object.</remarks>
-  public Vector Offset;
+  public Vector2 Offset;
   /// <summary>The position of the link point within the world, in world coordinates.</summary>
   /// <remarks>This value takes into account the rotation of the object.</remarks>
-  public Point ScenePoint;
+  public Point2 ScenePoint;
   /// <summary>The link point's ID.</summary>
   public int ID;
   /// <summary>The object that is mounted to this link point. This can be null.</summary>
@@ -145,13 +144,13 @@ public abstract class SceneObject : UniqueObject, ISerializable
     set { destBlend = value; }
   }
 
-  public double GetBlendAlpha() { return color.A / 255.0; }
+  public double GetBlendAlpha() { return color.Alpha / 255.0; }
 
   public void SetBlendAlpha(double alpha)
   {
     EngineMath.AssertValidFloat(alpha);
     if(alpha < 0 || alpha > 1) throw new ArgumentOutOfRangeException("alpha", "Alpha value must be from 0 to 1");
-    color = Color.FromArgb((int)(alpha * 255), color.R, color.G, color.B);
+    color = new Color(color, (byte)(alpha * 255));
   }
 
   public void SetBlendingMode(SourceBlend source, DestinationBlend destination)
@@ -298,10 +297,10 @@ public abstract class SceneObject : UniqueObject, ISerializable
     flags = (flags & ~Flag.CollisionMask) | Flag.RectangleCollision;
   }
 
-  public void SetPolygonalCollisionArea(params Point[] localPoints)
+  public void SetPolygonalCollisionArea(params Point2[] localPoints)
   {
     #if DEBUG
-    foreach(Point point in localPoints)
+    foreach(Point2 point in localPoints)
     {
       EngineMath.AssertValidFloats(point.X, point.Y);
     }
@@ -326,9 +325,9 @@ public abstract class SceneObject : UniqueObject, ISerializable
   #endregion
 
   #region Coordinate conversion
-  public Point LocalToScene(Point localPoint) { return LocalToScene(localPoint.X, localPoint.Y); }
+  public Point2 LocalToScene(Point2 localPoint) { return LocalToScene(localPoint.X, localPoint.Y); }
 
-  public Point LocalToScene(double localX, double localY)
+  public Point2 LocalToScene(double localX, double localY)
   {
     EngineMath.AssertValidFloats(localX, localY);
 
@@ -337,7 +336,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     if(VerticalFlip)   localY = -localY;
 
     // orient the point with our rotation
-    Vector offset = new Vector(localX, localY);
+    Vector2 offset = new Vector2(localX, localY);
     double rotation = EffectiveRotation;
     if(rotation != 0) offset.Rotate(rotation * MathConst.DegreesToRadians);
 
@@ -345,10 +344,10 @@ public abstract class SceneObject : UniqueObject, ISerializable
     return position + LocalToScene(offset);
   }
   
-  public Vector LocalToScene(Vector localSize)
+  public Vector2 LocalToScene(Vector2 localSize)
   {
     EngineMath.AssertValidFloats(localSize.X, localSize.Y);
-    return new Vector(localSize.X*0.5*Width, localSize.Y*0.5*Height);
+    return new Vector2(localSize.X*0.5*Width, localSize.Y*0.5*Height);
   }
   
   public Rectangle LocalToScene(Rectangle localRect)
@@ -360,19 +359,19 @@ public abstract class SceneObject : UniqueObject, ISerializable
     return new Rectangle(LocalToScene(x, y), LocalToScene(localRect.Size));
   }
 
-  public Point SceneToLocal(Point scenePoint) { return SceneToLocal(scenePoint.X, scenePoint.Y); }
+  public Point2 SceneToLocal(Point2 scenePoint) { return SceneToLocal(scenePoint.X, scenePoint.Y); }
 
-  public Point SceneToLocal(double sceneX, double sceneY)
+  public Point2 SceneToLocal(double sceneX, double sceneY)
   {
     EngineMath.AssertValidFloats(sceneX, sceneY);
 
     // center the point around our origin, and scale it down by half our size (so it ends up between -1 and 1)
-    Point localPoint = new Point((sceneX - position.X)*2/Width, (sceneY - position.Y)*2/Height);
+    Point2 localPoint = new Point2((sceneX - position.X)*2/Width, (sceneY - position.Y)*2/Height);
     // then rotate it if necessary
     double rotation = EffectiveRotation;
     if(rotation != 0)
     {
-      localPoint = new Vector(localPoint).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
+      localPoint = new Vector2(localPoint).Rotated(-rotation * MathConst.DegreesToRadians).ToPoint();
     }
 
     // negate coordinates according to our hflip and vflip flags
@@ -382,15 +381,15 @@ public abstract class SceneObject : UniqueObject, ISerializable
     return localPoint;
   }
   
-  public Vector SceneToLocal(Vector sceneSize)
+  public Vector2 SceneToLocal(Vector2 sceneSize)
   {
     EngineMath.AssertValidFloats(sceneSize.X, sceneSize.Y);
-    return new Vector(sceneSize.X*2/Width, sceneSize.Y*2/Height);
+    return new Vector2(sceneSize.X*2/Width, sceneSize.Y*2/Height);
   }
 
   public Rectangle SceneToLocal(Rectangle sceneRect)
   {
-    Point pt = SceneToLocal(sceneRect.Location);
+    Point2 pt = SceneToLocal(sceneRect.Location);
     // SceneToLocal(pt) will flip X and Y. We don't want that to happen, so we cancel it out
     if(HorizontalFlip) pt.X = -pt.X;
     if(VerticalFlip)   pt.Y = -pt.Y;
@@ -481,7 +480,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     }
   }
 
-  internal bool Contains(Point point)
+  internal bool Contains(Point2 point)
   {
     UpdateSpatialInfo();
 
@@ -509,7 +508,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     }
   }
 
-  internal bool Intersects(Line segment)
+  internal bool Intersects(Line2 segment)
   {
     UpdateSpatialInfo();
 
@@ -565,7 +564,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
 
   /// <summary>Gets the position of a link point (or mount point), in world coordinates.</summary>
   /// <param name="linkID">The ID of the link point to find.</param>
-  public Point GetLinkPoint(int linkID)
+  public Point2 GetLinkPoint(int linkID)
   {
     int index = FindLinkPoint(linkID);
     if(index == -1) throw new ArgumentException("The link with linkID "+linkID+" could not be found.");
@@ -605,7 +604,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
 
     int index = FindLinkPoint(linkID);
     if(index == -1) throw new ArgumentException("The link with linkID "+linkID+" could not be found.");
-    linkPoints[index].Offset     = new Vector(localX, localY);
+    linkPoints[index].Offset     = new Vector2(localX, localY);
     linkPoints[index].ScenePoint = LocalToScene(localX, localY);
   }
 
@@ -629,7 +628,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     linkPoints[numLinkPoints].ID          = linkID;
     linkPoints[numLinkPoints].Object      = child;
     linkPoints[numLinkPoints].ObjectOwned = owned;
-    linkPoints[numLinkPoints].Offset      = new Vector(localX, localY);
+    linkPoints[numLinkPoints].Offset      = new Vector2(localX, localY);
     linkPoints[numLinkPoints].ScenePoint  = LocalToScene(localX, localY);
     numLinkPoints++;
 
@@ -776,7 +775,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
 
   [Category("Spatial")]
   [Description("The position of the object's center point, in scene coordinates.")]
-  public Point Position
+  public Point2 Position
   {
     get { return position; }
     set
@@ -792,7 +791,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
   
   [Category("Spatial")]
   [Description("The size of the object, in scene coordinates.")]
-  public Vector Size
+  public Vector2 Size
   {
     get { return size; }
     set
@@ -814,28 +813,28 @@ public abstract class SceneObject : UniqueObject, ISerializable
   public double X
   {
     get { return position.X; }
-    set { Position = new Point(value, Y); }
+    set { Position = new Point2(value, Y); }
   }
   
   [Browsable(false)]
   public double Y
   {
     get { return position.Y; }
-    set { Position = new Point(X, value); }
+    set { Position = new Point2(X, value); }
   }
 
   [Browsable(false)]
   public double Width
   {
     get { return size.X; }
-    set { Size = new Vector(value, Height); }
+    set { Size = new Vector2(value, Height); }
   }
   
   [Browsable(false)]
   public double Height
   {
     get { return size.Y; }
-    set { Size = new Vector(Width, value); }
+    set { Size = new Vector2(Width, value); }
   }
 
   [Category("Spatial")]
@@ -871,25 +870,25 @@ public abstract class SceneObject : UniqueObject, ISerializable
 
   public void SetBounds(double x, double y, double width, double height)
   {
-    Position = new Point(x, y);
-    Size     = new Vector(width, height);
+    Position = new Point2(x, y);
+    Size     = new Vector2(width, height);
   }
 
   public void SetPosition(double x, double y)
   {
-    Position = new Point(x, y);
+    Position = new Point2(x, y);
   }
 
   public void SetSize(double width, double height)
   {
-    Size = new Vector(width, height);
+    Size = new Vector2(width, height);
   }
   #endregion
 
   #region Velocity, acceleration
   [Category("Physics")]
   [Description("The object's acceleration, in scene units per second per second.")]
-  public Vector Acceleration
+  public Vector2 Acceleration
   {
     get { return acceleration; }
     set
@@ -907,7 +906,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
 
   [Category("Physics")]
   [Description("The object's velocity, in scene units per second.")]
-  public Vector Velocity
+  public Vector2 Velocity
   {
     get { return velocity; }
     set
@@ -924,22 +923,22 @@ public abstract class SceneObject : UniqueObject, ISerializable
   public double VelocityX
   {
     get { return velocity.X; }
-    set { Velocity = new Vector(value, VelocityY); } 
+    set { Velocity = new Vector2(value, VelocityY); } 
   }
 
   [Browsable(false)]
   public double VelocityY
   {
     get { return velocity.Y; }
-    set { Velocity = new Vector(VelocityX, value); } 
+    set { Velocity = new Vector2(VelocityX, value); } 
   }
 
   public void AddVelocity(double xv, double yv)
   {
-    Velocity += new Vector(xv, yv);
+    Velocity += new Vector2(xv, yv);
   }
 
-  public void AddVelocity(Vector v)
+  public void AddVelocity(Vector2 v)
   {
     Velocity += v;
   }
@@ -949,13 +948,13 @@ public abstract class SceneObject : UniqueObject, ISerializable
     EngineMath.AssertValidFloats(angle, magnitude);
     if(magnitude != 0.0)
     {
-      Velocity += new Vector(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
+      Velocity += new Vector2(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
     }
   }
 
   public void SetAcceleration(double xv, double yv)
   {
-    Acceleration = new Vector(xv, yv);
+    Acceleration = new Vector2(xv, yv);
   }
 
   public void SetAccelerationPolar(double angle, double magnitude)
@@ -963,14 +962,14 @@ public abstract class SceneObject : UniqueObject, ISerializable
     EngineMath.AssertValidFloats(angle, magnitude);
 
     Acceleration = magnitude == 0.0 ?
-      new Vector() : new Vector(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
+      new Vector2() : new Vector2(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
   }
 
   public void SetAtRest() { SetVelocity(0, 0); }
 
   public void SetVelocity(double xv, double yv)
   {
-    Velocity = new Vector(xv, yv);
+    Velocity = new Vector2(xv, yv);
   }
 
   public void SetVelocityPolar(double angle, double magnitude)
@@ -983,7 +982,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     }
     else
     {
-      velocity = new Vector(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
+      velocity = new Vector2(0, magnitude).Rotated(angle * MathConst.DegreesToRadians);
     }
   }
   #endregion
@@ -1094,7 +1093,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
       SetFlag(Flag.Immobile, value);
       if(value) // reset our velocity if we're made immobile
       {
-        velocity = new Vector();
+        velocity = new Vector2();
       }
     }
   }
@@ -1561,7 +1560,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
   {
     if(HasFlag(Flag.SpatialInfoDirty))
     {
-      Vector halfSize = size*0.5;
+      Vector2 halfSize = size*0.5;
       double rotation = EffectiveRotation;
       spatial.Area = new Rectangle(position.X-halfSize.X, position.Y-halfSize.Y, size.X, size.Y);
       spatial.Rotation =
@@ -1599,7 +1598,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
     if(HasFlag(Flag.LinkPointsDirty))
     {
       /* recalculate the world points associated with each link point. */
-      Vector halfSize = size*0.5;
+      Vector2 halfSize = size*0.5;
 
       // start out by setting all the world points to the local-space offsets
       for(int i=0; i<numLinkPoints; i++)
@@ -1625,7 +1624,7 @@ public abstract class SceneObject : UniqueObject, ISerializable
       for(int i=0; i<numLinkPoints; i++)
       {
         // finally, scale by our size and offset by our position
-        linkPoints[i].ScenePoint = new Point(linkPoints[i].ScenePoint.X*halfSize.X + position.X,
+        linkPoints[i].ScenePoint = new Point2(linkPoints[i].ScenePoint.X*halfSize.X + position.X,
                                              linkPoints[i].ScenePoint.Y*halfSize.Y + position.Y);
       }
       
@@ -1664,13 +1663,13 @@ public abstract class SceneObject : UniqueObject, ISerializable
   /// <summary>The object's color.</summary>
   Color color = Color.White;
   /// <summary>The position of the object, in world units, within the parent object.</summary>
-  Point position;
+  Point2 position;
   /// <summary>The size of the object, in world units.</summary>
-  Vector size = new Vector(10, 10);
+  Vector2 size = new Vector2(10, 10);
   /// <summary>The velocity of the object, in world units per second.</summary>
-  Vector velocity;
+  Vector2 velocity;
   /// <summary>The acceleration of the object, in world units per second per second.</summary>
-  Vector acceleration;
+  Vector2 acceleration;
   /// <summary>The rotation of the object, in degrees.</summary>
   double rotation;
   /// <summary>The rotational velocity of the object, in degrees per second.</summary>
