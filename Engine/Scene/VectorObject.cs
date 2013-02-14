@@ -3,11 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using AdamMil.Mathematics.Geometry;
-using AdamMil.Mathematics.Geometry.TwoD;
+using GameLib;
 using GameLib.Interop.OpenGL;
 using GameLib.Mathematics;
 using RotationalForce.Engine.Design;
-using Color=System.Drawing.Color;
 
 namespace RotationalForce.Engine
 {
@@ -210,14 +209,14 @@ public class VectorShape : Resource
 
           if(modData.Scalings != null)
           {
-            Vector scale = modData.Scalings[frameIndex], nextScale = modData.Scalings[nextFrameIndex];
+            Vector2 scale = modData.Scalings[frameIndex], nextScale = modData.Scalings[nextFrameIndex];
             affectedNode.tempScaling.X *= EngineMath.Interpolate(scale.X, nextScale.X, delta);
             affectedNode.tempScaling.Y *= EngineMath.Interpolate(scale.Y, nextScale.Y, delta);
           }
 
           if(modData.Translations != null)
           {
-            Vector translation = modData.Translations[frameIndex],
+            Vector2 translation = modData.Translations[frameIndex],
                nextTranslation = modData.Translations[nextFrameIndex];
             affectedNode.tempTranslation.X += EngineMath.Interpolate(translation.X, nextTranslation.X, delta);
             affectedNode.tempTranslation.Y += EngineMath.Interpolate(translation.Y, nextTranslation.Y, delta);
@@ -246,8 +245,8 @@ public class VectorShape : Resource
 
           if(modData.Scalings != null)
           {
-            Vector scale0 = modData.Scalings[prevFrame], scale1 = modData.Scalings[frameIndex],
-                   scale2 = modData.Scalings[endFrame],  scale3 = modData.Scalings[nextFrame];
+            Vector2 scale0 = modData.Scalings[prevFrame], scale1 = modData.Scalings[frameIndex],
+                    scale2 = modData.Scalings[endFrame],  scale3 = modData.Scalings[nextFrame];
             CatmullInterpolator ci = new CatmullInterpolator(scale0.X, scale1.X, scale2.X, scale3.X,
                                                              frameTime0, frameTime1, frameTime2);
             affectedNode.tempScaling.X *= ci.Interpolate(delta, deltaSquared, deltaCubed);
@@ -258,8 +257,8 @@ public class VectorShape : Resource
 
           if(modData.Translations != null)
           {
-            Vector trans0 = modData.Translations[prevFrame], trans1 = modData.Translations[frameIndex],
-                   trans2 = modData.Translations[endFrame],  trans3 = modData.Translations[nextFrame];
+            Vector2 trans0 = modData.Translations[prevFrame], trans1 = modData.Translations[frameIndex],
+                    trans2 = modData.Translations[endFrame],  trans3 = modData.Translations[nextFrame];
             CatmullInterpolator ci = new CatmullInterpolator(trans0.X, trans1.X, trans2.X, trans3.X,
                                                              frameTime0, frameTime1, frameTime2);
             affectedNode.tempTranslation.X += ci.Interpolate(delta, deltaSquared, deltaCubed);
@@ -288,7 +287,7 @@ public class VectorShape : Resource
 
     struct ModifierData
     {
-      public ModifierData(double[] rotation, Vector[] scaling, Vector[] translation, Polygon[] polygons)
+      public ModifierData(double[] rotation, Vector2[] scaling, Vector2[] translation, Polygon[] polygons)
       {
         Rotations    = rotation;
         Scalings     = scaling;
@@ -297,7 +296,7 @@ public class VectorShape : Resource
       }
 
       public double[] Rotations;
-      public Vector[] Scalings, Translations;
+      public Vector2[] Scalings, Translations;
       public Polygon[] Polygons;
     }
 
@@ -313,7 +312,7 @@ public class VectorShape : Resource
         // after all modifications have been applied. if a node has no rotations, etc, over the course of the
         // animation, the array will be null.
         double[] rotation = null;
-        Vector[] scaling = null, translation = null;
+        Vector2[] scaling = null, translation = null;
         Polygon[] polygons = null;
 
         for(int frameIndex=0; frameIndex<frames.Count; frameIndex++)
@@ -369,23 +368,23 @@ public class VectorShape : Resource
               {
                 if(scaling == null)
                 {
-                  scaling = new Vector[frames.Count];
+                  scaling = new Vector2[frames.Count];
                   // scaling is done by multiplication, so the identity value is not zero, but one. initialize to that.
                   for(int i=0; i<=frameIndex; i++)
                   {
-                    scaling[i] = new Vector(1, 1);
+                    scaling[i] = new Vector2(1, 1);
                   }
                 }
 
                 scaling[frameIndex] =
-                  new Vector(scaling[frameIndex].X*mod.Scaling.X, scaling[frameIndex].Y*mod.Scaling.Y);
+                  new Vector2(scaling[frameIndex].X*mod.Scaling.X, scaling[frameIndex].Y*mod.Scaling.Y);
               }
 
               if(mod.Translation.X != 0 || mod.Translation.Y != 0)
               {
                 if(translation == null)
                 {
-                  translation = new Vector[frames.Count];
+                  translation = new Vector2[frames.Count];
                 }
                 translation[frameIndex] += mod.Translation;
               }
@@ -610,7 +609,7 @@ public class VectorShape : Resource
     /// <summary>A pair of scaling factors to be applied to the node. The pair (1, 1) will result in no scaling, while
     /// (2, 0.5) will double the size in the X dimension while halving the size in the Y dimension.
     /// </summary>
-    public Vector Scaling
+    public Vector2 Scaling
     {
       get { return scaling; }
       set
@@ -625,7 +624,7 @@ public class VectorShape : Resource
     }
 
     /// <summary>The distance that the node will be translated, in local coordinates.</summary>
-    public Vector Translation
+    public Vector2 Translation
     {
       get { return translation; }
       set
@@ -639,7 +638,7 @@ public class VectorShape : Resource
       }
     }
 
-    Vector scaling = new Vector(1, 1), translation;
+    Vector2 scaling = new Vector2(1, 1), translation;
     double rotation;
   }
 
@@ -695,7 +694,7 @@ public class VectorShape : Resource
     /// <summary>Gets or sets the origin point of the node, which is the point around which the node will be rotated.
     /// The point is specified in local coordinates relative to the center of the node.
     /// </summary>
-    public Point Origin
+    public Point2 Origin
     {
       get { return origin; }
       set
@@ -727,7 +726,7 @@ public class VectorShape : Resource
 
         GL.glScaled(tempScaling.X, tempScaling.Y, 1);
 
-        tempScaling = new Vector(1, 1);
+        tempScaling = new Vector2(1, 1);
       }
 
       // if rotation is applied to this node, rotate the matrix and reset the rotation.
@@ -765,7 +764,7 @@ public class VectorShape : Resource
 
         GL.glTranslated(tempTranslation.X, tempTranslation.Y, 0);
         
-        tempTranslation = new Vector();
+        tempTranslation = new Vector2();
       }
       
       RenderContent(screenSize); // render the content of this node with the transformations applied
@@ -780,7 +779,7 @@ public class VectorShape : Resource
 #warning RecalculateEffectiveOrigins is never called
     internal void RecalculateEffectiveOrigins()
     {
-      effectiveOrigin = EngineMath.GetCenterPoint(GetBounds()) + new Vector(origin);
+      effectiveOrigin = EngineMath.GetCenterPoint(GetBounds()) + new Vector2(origin);
 
       foreach(Node node in Children)
       {
@@ -794,12 +793,12 @@ public class VectorShape : Resource
     /// <summary>The node's name.</summary>
     string name;
     /// <summary>The origin point relative to the center of the geometry.</summary>
-    Point origin;
+    Point2 origin;
     /// <summary>The absolute origin point in local space.</summary>
-    Point effectiveOrigin;
+    Point2 effectiveOrigin;
 
     // these are only used temporarily, for the current render
-    [NonSerialized] internal Vector tempScaling = new Vector(1, 1), tempTranslation;
+    [NonSerialized] internal Vector2 tempScaling = new Vector2(1, 1), tempTranslation;
     [NonSerialized] internal double tempRotation;
   }
   #endregion
@@ -1130,7 +1129,7 @@ public class VectorShape : Resource
     /// <remarks>Texture offset is only used when autogenerating texture coordinates.</remarks>
     [Category("Texture")]
     [Description("The amount by which the texture is shifted, in texture coordinates.")]
-    public Vector TextureOffset
+    public Vector2 TextureOffset
     {
       get { return textureOffset; }
       set
@@ -1650,7 +1649,7 @@ public class VectorShape : Resource
         GL.glDisable(GL.GL_TEXTURE_2D);
       }
 
-      if(strokeWidth != 0 && strokeColor.A != 0) // if stroking is enabled
+      if(strokeWidth != 0 && strokeColor.Alpha != 0) // if stroking is enabled
       {
         GL.glLineWidth(strokeWidth); // set the stroke width
 
@@ -1662,7 +1661,7 @@ public class VectorShape : Resource
 
         if(!setVertexColor) // if the shade model is flat, we'll set the color once
         {
-          GL.glColor(vertices[0].Color.A, StrokeColor);
+          GL.glColor(vertices[0].Color.Alpha, StrokeColor);
         }
 
         // now stroke the edges of the polygon
@@ -1675,7 +1674,7 @@ public class VectorShape : Resource
           {
             if(setVertexColor)
             {
-              GL.glColor(vertices[i].Color.A, strokeColor);
+              GL.glColor(vertices[i].Color.Alpha, strokeColor);
             }
             GL.glVertex2d(vertices[i].Position);
           }
@@ -1687,7 +1686,7 @@ public class VectorShape : Resource
           {
             if(setVertexColor)
             {
-              GL.glColor(subPoints[i].Color.A, strokeColor);
+              GL.glColor(subPoints[i].Color.Alpha, strokeColor);
             }
             GL.glVertex2d(subPoints[i].Position);
           }
@@ -1759,13 +1758,13 @@ public class VectorShape : Resource
         textureAspect = (double)size.Width / size.Height;
       }
 
-      Point[] texCoords = new Point[lod.NumSubPoints]; // create a working buffer
+      Point2[] texCoords = new Point2[lod.NumSubPoints]; // create a working buffer
 
       // first find the bounding rectangle of the polygon's vertices
       double x1 = double.MaxValue, y1 = double.MaxValue, x2 = double.MinValue, y2 = double.MinValue;
       for(int i=0; i<texCoords.Length; i++)
       {
-        Point pt = lod.SubPoints[i].Position;
+        Point2 pt = lod.SubPoints[i].Position;
         if(pt.X < x1) x1 = pt.X;
         if(pt.X > x2) x2 = pt.X;
         if(pt.Y < y1) y1 = pt.Y;
@@ -1815,7 +1814,7 @@ public class VectorShape : Resource
       // finally, assign the coordinates back, plus the texture offset, and an offset to get the coordinates back to
       // what would be expected for texture coordinates. (we were using -0.5repeat to 0.5repeat. this puts it back to
       // 0 to 1repeat)
-      Vector offset = new Vector(textureRepeat*0.5, textureRepeat*0.5) - textureOffset.Rotated(rotation);
+      Vector2 offset = new Vector2(textureRepeat*0.5, textureRepeat*0.5) - textureOffset.Rotated(rotation);
       for(int i=0; i<texCoords.Length; i++)
       {
         lod.SubPoints[i].TextureCoord = texCoords[i] + offset;
@@ -1880,7 +1879,7 @@ public class VectorShape : Resource
 
     struct SubPoint
     {
-      public Point Position, TextureCoord;
+      public Point2 Position, TextureCoord;
       public Color Color;
     }
 
@@ -2024,19 +2023,19 @@ public class VectorShape : Resource
         }
         else // otherwise, we do.
         {
-          int a, r, g, b;
+          byte a, r, g, b;
 
           // use the same blending factors to calculate the interpolated colors
-          a = (int)Math.Round(vertices[i0].Color.A*b0 + vertices[i1].Color.A*b1 +
-                              vertices[i2].Color.A*b2 + vertices[i3].Color.A*b3);
-          r = (int)Math.Round(vertices[i0].Color.R*b0 + vertices[i1].Color.R*b1 +
-                              vertices[i2].Color.R*b2 + vertices[i3].Color.R*b3);
-          g = (int)Math.Round(vertices[i0].Color.G*b0 + vertices[i1].Color.G*b1 +
-                              vertices[i2].Color.G*b2 + vertices[i3].Color.G*b3);
-          b = (int)Math.Round(vertices[i0].Color.B*b0 + vertices[i1].Color.B*b1 +
-                              vertices[i2].Color.B*b2 + vertices[i3].Color.B*b3);
+          a = (byte)Math.Round(vertices[i0].Color.Alpha*b0 + vertices[i1].Color.Alpha*b1 +
+                               vertices[i2].Color.Alpha*b2 + vertices[i3].Color.Alpha*b3);
+          r = (byte)Math.Round(vertices[i0].Color.R*b0 + vertices[i1].Color.R*b1 +
+                               vertices[i2].Color.R*b2 + vertices[i3].Color.R*b3);
+          g = (byte)Math.Round(vertices[i0].Color.G*b0 + vertices[i1].Color.G*b1 +
+                               vertices[i2].Color.G*b2 + vertices[i3].Color.G*b3);
+          b = (byte)Math.Round(vertices[i0].Color.B*b0 + vertices[i1].Color.B*b1 +
+                               vertices[i2].Color.B*b2 + vertices[i3].Color.B*b3);
 
-          subPoint.Color = Color.FromArgb(a, r, g, b);
+          subPoint.Color = new Color(r, g, b, a);
         }
 
         lod.AddSubPoint(ref subPoint, forceFirstPoint && i == 0); // attempt to add the new point to the shape
@@ -2267,7 +2266,7 @@ public class VectorShape : Resource
     /// <summary>The selected texture frame.</summary>
     [NonSerialized] int frameNumber;
     /// <summary>The offset within the texture.</summary>
-    Vector textureOffset;
+    Vector2 textureOffset;
     /// <summary>The texture aspect ratio, as width / height.</summary>
     double textureAspect = 1;
     /// <summary>The texture rotation, in degrees.</summary>
@@ -2326,7 +2325,7 @@ public class VectorShape : Resource
 
     /// <summary>Gets/sets the vertex's position within the polygon, in local coordinates (-1 to 1).</summary>
     [Description("The vertex's position within the polygon, in local coordinates (-1 to 1).")]
-    public Point Position
+    public Point2 Position
     {
       get { return position; }
       set
@@ -2358,7 +2357,7 @@ public class VectorShape : Resource
 
     /// <summary>Gets or sets the vertex's texture coordinates.</summary>
     [Description("The vertex's texture coordinates.")]
-    public Point TextureCoord
+    public Point2 TextureCoord
     {
       get { return textureCoord; }
       set
@@ -2389,11 +2388,11 @@ public class VectorShape : Resource
     }
 
     /// <summary>This vertex's position within the polygon.</summary>
-    Point position;
+    Point2 position;
     /// <summary>
     /// This vertex's texture coordinate. It will only be used if a texture is specified in the parent polygon.
     /// </summary>
-    Point textureCoord;
+    Point2 textureCoord;
     /// <summary>The vertex's color.</summary>
     Color color;
     VertexType type;

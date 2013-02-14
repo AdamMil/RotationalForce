@@ -1,9 +1,8 @@
 using System;
 using System.Drawing;
+using AdamMil.Mathematics.Geometry;
 using GameLib.Interop.OpenGL;
-using GLPoint=AdamMil.Mathematics.Geometry.TwoD.Point;
-using GLVideo=GameLib.Video.Video;
-using Vector=AdamMil.Mathematics.Geometry.TwoD.Vector;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace RotationalForce.Engine
 {
@@ -51,12 +50,12 @@ static class Video
   #endregion
   
   #region World space functions
-  public static void FillCircle(GLPoint center, double radius)
+  public static void FillCircle(Point2 center, double radius)
   {
     const int Subdivisions = 32;
     const double AngleScale = Math.PI / (Subdivisions/2); // 2pi/subdivisions. NOTE: revise if Subdivisions is odd
 
-    Vector vector = new Vector(radius, 0);
+    Vector2 vector = new Vector2(radius, 0);
 
     GL.glBegin(GL.GL_TRIANGLE_FAN);
       GL.glVertex2d(center);

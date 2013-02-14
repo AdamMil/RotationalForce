@@ -9,12 +9,12 @@ using RotationalForce.Engine;
 using GameLib.Interop.OpenGL;
 using GameLib.Video;
 using MathConst = AdamMil.Mathematics.Geometry.MathConst;
-using Math2D  = AdamMil.Mathematics.Geometry.TwoD.Math2D;
-using GLPoint = AdamMil.Mathematics.Geometry.TwoD.Point;
-using GLRect  = AdamMil.Mathematics.Geometry.TwoD.Rectangle;
-using GLPoly  = AdamMil.Mathematics.Geometry.TwoD.Polygon;
-using Vector  = AdamMil.Mathematics.Geometry.TwoD.Vector;
-using Line    = AdamMil.Mathematics.Geometry.TwoD.Line;
+using Math2D  = AdamMil.Mathematics.Geometry.Math2D;
+using GLPoint = AdamMil.Mathematics.Geometry.Point2;
+using GLRect  = AdamMil.Mathematics.Geometry.Rectangle;
+using GLPoly  = AdamMil.Mathematics.Geometry.Polygon;
+using Vector  = AdamMil.Mathematics.Geometry.Vector2;
+using Line    = AdamMil.Mathematics.Geometry.Line2;
 
 namespace RotationalForce.Editor
 {

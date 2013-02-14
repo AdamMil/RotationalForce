@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using AdamMil.Mathematics.Geometry.TwoD;
+using AdamMil.Mathematics.Geometry;
 using GameLib.Interop.OpenGL;
 using Size=System.Drawing.Size;
 using SizeF=System.Drawing.SizeF;
@@ -36,7 +36,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
 {
   public SceneViewControl()
   {
-    TargetCameraPosition = CameraPosition = new Point(0, 0);
+    TargetCameraPosition = CameraPosition = new Point2(0, 0);
     TargetCameraSize     = CameraSize     = 100;
     TargetCameraZoom     = CameraZoom     = 1;
     Engine.AddTicker(this);
@@ -92,7 +92,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     get
     {
       CalculateCameraView();
-      Vector size = new Vector(UnitsPerPixel*Width, UnitsPerPixel*Height);
+      Vector2 size = new Vector2(UnitsPerPixel*Width, UnitsPerPixel*Height);
       return new Rectangle(currentCamera.Center.X-size.X/2, currentCamera.Center.Y-size.Y/2, size.X, size.Y);
     }
   }
@@ -100,7 +100,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// <summary>Gets/sets the center point of the current camera view within the scene, in scene units.</summary>
   [Category("Camera")]
   [Description("The center point of the camera view, in scene units.")]
-  public Point CameraPosition
+  public Point2 CameraPosition
   {
     get { return currentCamera.Center; }
     set
@@ -117,7 +117,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public double CameraX
   {
     get { return CameraPosition.X; }
-    set { CameraPosition = new Point(value, CameraPosition.Y); }
+    set { CameraPosition = new Point2(value, CameraPosition.Y); }
   }
 
   /// <summary>Gets/sets the Y coordinate of the center point of the current camera view within the scene, in scene units.</summary>
@@ -125,7 +125,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public double CameraY
   {
     get { return CameraPosition.Y; }
-    set { CameraPosition = new Point(CameraPosition.X, value); }
+    set { CameraPosition = new Point2(CameraPosition.X, value); }
   }
 
   /// <summary>Gets/sets the size of the current camera view within the scene, in scene units.</summary>
@@ -174,7 +174,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   
   /// <summary>Gets/sets the center point of the target camera view within the scene, in scene units.</summary>
   [Browsable(false)]
-  public Point TargetCameraPosition
+  public Point2 TargetCameraPosition
   {
     get { return targetCamera.Center; }
     set
@@ -322,7 +322,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
     if(HasFlag(Flag.CameraDirty))
     {
       UnitsPerPixel = currentCamera.Size / (AxisLength * currentCamera.CameraZoom);
-      Vector size = new Vector(UnitsPerPixel*Width, UnitsPerPixel*Height);
+      Vector2 size = new Vector2(UnitsPerPixel*Width, UnitsPerPixel*Height);
       ZoomedArea = new Rectangle(currentCamera.Center.X-size.X/2, currentCamera.Center.Y-size.Y/2, size.X, size.Y);
     }
   }
@@ -398,7 +398,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   /// </remarks>
   [Category("Mounting")]
   [Description("An arbitrary offset applied to the camera's mount point.")]
-  public Vector MountOffset
+  public Vector2 MountOffset
   {
     get { return mountOffset; }
     set
@@ -490,18 +490,18 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
   
   /// <summary>Gets the current mount position, in scene units.</summary>
-  Point CameraMountTarget
+  Point2 CameraMountTarget
   {
     get
     {
       // get the base mount position
-      Point position = CameraMountPosition;
+      Point2 position = CameraMountPosition;
       // then apply the lookahead and offset
       return position + mountObject.Velocity*mountLookahead + mountOffset;
     }
   }
   
-  Point CameraMountPosition
+  Point2 CameraMountPosition
   {
     get { return mountLinkID == -1 ? mountObject.Position : mountObject.GetLinkPoint(mountLinkID); }
   }
@@ -519,19 +519,19 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
   
   /// <summary>Converts a distance in client coordinates to a distance in scene coordinates.</summary>
-  public Vector ClientToScene(Size clientSize)
+  public Vector2 ClientToScene(Size clientSize)
   {
     CalculateCameraView();
-    return new Vector(clientSize.Width*UnitsPerPixel, clientSize.Height*UnitsPerPixel);
+    return new Vector2(clientSize.Width*UnitsPerPixel, clientSize.Height*UnitsPerPixel);
   }
 
   /// <summary>Converts a point relative to the client area of the scene view to a point within the scene.</summary>
   /// <param name="clientPoint">A point relative to the client area of the scene view, in pixels.</param>
   /// <returns>The point within the scene, in scene units.</returns>
-  public Point ClientToScene(SPoint clientPoint)
+  public Point2 ClientToScene(SPoint clientPoint)
   {
     CalculateCameraView();
-    return new Point(ZoomedArea.X + clientPoint.X*UnitsPerPixel, ZoomedArea.Y + clientPoint.Y*UnitsPerPixel);
+    return new Point2(ZoomedArea.X + clientPoint.X*UnitsPerPixel, ZoomedArea.Y + clientPoint.Y*UnitsPerPixel);
   }
 
   /// <summary>Converts a rectangle relative to the client area of the scene view to a rectangle within the scene.</summary>
@@ -540,13 +540,13 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   public Rectangle ClientToScene(SRectangle clientRect)
   {
     return new Rectangle(ClientToScene(clientRect.Location), // ClientToScene will call CalculateCameraView
-                         new Vector(clientRect.Width*UnitsPerPixel, clientRect.Height*UnitsPerPixel));
+                         new Vector2(clientRect.Width*UnitsPerPixel, clientRect.Height*UnitsPerPixel));
   }
 
   /// <summary>Converts a point within the scene to a point relative to the client area of the scene view.</summary>
   /// <param name="clientPoint">A point within the scene, in scene units.</param>
   /// <returns>The point relative to the client area of the scene view, in pixels.</returns>
-  public SPoint SceneToClient(Point scenePoint)
+  public SPoint SceneToClient(Point2 scenePoint)
   {
     EngineMath.AssertValidFloats(scenePoint.X, scenePoint.Y);
     CalculateCameraView();
@@ -566,7 +566,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   }
 
   /// <summary>Converts a distance in scene coordinates to a distance in client coordinates.</summary>
-  public Size SceneToClient(Vector sceneSize)
+  public Size SceneToClient(Vector2 sceneSize)
   {
     EngineMath.AssertValidFloats(sceneSize.X, sceneSize.Y);
     CalculateCameraView();
@@ -715,8 +715,8 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
       }
       else
       {
-        Point  target   = CameraMountTarget;
-        Vector vector   = target - currentCamera.Center;
+        Point2  target   = CameraMountTarget;
+        Vector2 vector   = target - currentCamera.Center;
         double distance = vector.LengthSqr; // distance to mount target, squared
 
         // if the distance is near zero, we can't normalize the vector. and we're close enough anyway.
@@ -773,7 +773,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   struct CameraView
   {
     /// <summary>The center of the scene to view, in scene units.</summary>
-    public Point Center;
+    public Point2 Center;
     /// <summary>The size of the scene to view, in scene units, assuming the camera is not zoomed.</summary>
     public double Size;
     /// <summary>The zoom factor of the camera, which should be a positive number.</summary>
@@ -811,7 +811,7 @@ public class SceneViewControl : GuiControl, ITicker, IDisposable
   double interpolationPosition;
 
   /// <summary>An arbitrary offset applied to the camera's mount target.</summary>
-  Vector mountOffset;
+  Vector2 mountOffset;
   /// <summary>A maximum radius for the camera mount point.</summary>
   double mountRadius;
   /// <summary>How rigid the mount is. With higher values, the camera will approach its target more quickly.</summary>

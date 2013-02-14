@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Drawing;
 using System.IO;
+using AdamMil.Mathematics.Geometry;
 using GameLib.Interop.OpenGL;
 using GameLib.Video;
-using GLPoint = AdamMil.Mathematics.Geometry.TwoD.Point;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace RotationalForce.Engine
 {
@@ -77,9 +78,9 @@ public abstract class ImageMap : Resource
       get { return imageSize; }
     }
 
-    internal GLPoint GetTextureCoord(GLPoint frameCoord)
+    internal Point2 GetTextureCoord(Point2 frameCoord)
     {
-      return new GLPoint(x + frameCoord.X*width, y + frameCoord.Y*height);
+      return new Point2(x + frameCoord.X*width, y + frameCoord.Y*height);
     }
 
     internal void Bind()
@@ -223,11 +224,11 @@ public abstract class ImageMap : Resource
   /// will work for this texture. See <see cref="TextureWrap"/> for more details about texture wrapping.
   /// </param>
   /// <returns>Returns the OpenGL texture coordinates corresponding to the coordinates within the frame.</returns>
-  public GLPoint GetTextureCoord(int frameIndex, GLPoint frameCoord)
+  public Point2 GetTextureCoord(int frameIndex, Point2 frameCoord)
   {
     EnsureFrames();
     Frame frame = frames[frameIndex];
-    GLPoint pt = frame.GetTextureCoord(frameCoord);
+    Point2 pt = frame.GetTextureCoord(frameCoord);
 
     if(filterMode == FilterMode.Smooth && textureWrap == TextureWrap.Clamp) // if we need edge clamping
     {

@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-using AdamMil.Mathematics.Geometry.TwoD;
+using AdamMil.Mathematics.Geometry;
 
 namespace RotationalForce.Engine
 {
@@ -132,12 +132,12 @@ public static class EngineMath
     return Math.Abs(a-b) < Epsilon;
   }
 
-  public static bool Equivalent(Point a, Point b)
+  public static bool Equivalent(Point2 a, Point2 b)
   {
     return Equivalent(a.X, b.X) && Equivalent(a.Y, b.Y);
   }
 
-  public static bool Equivalent(Vector a, Vector b)
+  public static bool Equivalent(Vector2 a, Vector2 b)
   {
     return Equivalent(a.X, b.X) && Equivalent(a.Y, b.Y);
   }
@@ -149,9 +149,9 @@ public static class EngineMath
   }
   #endregion
 
-  public static Point GetCenterPoint(Rectangle rect)
+  public static Point2 GetCenterPoint(Rectangle rect)
   {
-    return new Point(rect.X + rect.Width/2, rect.Y + rect.Height/2);
+    return new Point2(rect.X + rect.Width/2, rect.Y + rect.Height/2);
   }
 
   public static double CalculateLinearDelta(double linearDelta, InterpolationMode mode)
@@ -200,16 +200,16 @@ public static class EngineMath
                          Interpolate(start.Width, end.Width, delta), Interpolate(start.Height, end.Height, delta));
   }
 
-  public static Point Interpolate(ref Point start, ref Point end, double delta, InterpolationMode mode)
+  public static Point2 Interpolate(ref Point2 start, ref Point2 end, double delta, InterpolationMode mode)
   {
     delta = CalculateLinearDelta(delta, mode);
-    return new Point(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
+    return new Point2(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
   }
 
-  public static Vector Interpolate(ref Vector start, ref Vector end, double delta, InterpolationMode mode)
+  public static Vector2 Interpolate(ref Vector2 start, ref Vector2 end, double delta, InterpolationMode mode)
   {
     delta = CalculateLinearDelta(delta, mode);
-    return new Vector(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
+    return new Vector2(Interpolate(start.X, end.X, delta, mode), Interpolate(start.Y, end.Y, delta, mode));
   }
 
   public static double Interpolate(double start, double end, double delta, InterpolationMode mode)
